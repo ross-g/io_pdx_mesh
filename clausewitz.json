@@ -1,0 +1,63 @@
+{
+    "standard_previewer": {
+        "animation": [
+            "idle",
+            "moving",
+            "attack",
+            "death",
+            "idle2"
+        ],
+        "material": [
+            "PdxMeshStandard",
+            "PdxMeshTextureAtlas",
+            "PdxMeshAlphaBlend",
+            "PdxMeshAlphaAdditive",
+            "PdxMeshWater"
+        ],
+        "path": "X:/project/tools/pdx_editor/game",
+        "target_exe": "X:/project/tools/pdx_editor/game/pdx_editor_D.exe"
+    },
+    "hearts_of_iron": {
+        "animation": [
+            "idle",
+            "moving",
+            "attack",
+            "death",
+            "idle2" ],
+        "material": [
+            "PdxMeshHoI4",
+            "PdxMeshAdvanced",
+            "PdxMeshAdvancedSnow"
+        ],
+        "path": "X:/project/hoi4/game",
+        "target_exe": "X:/project/hoi4/game/hoi4_D.exe"
+    },
+    "stellaris": {
+        "animation": [
+            "planet_rotation",
+            "idle",
+            "death",
+            "happy",
+            "happy2",
+            "sad",
+            "sad2"
+        ],
+        "material": [
+            "PdxMeshShip",
+            "PdxMeshTerra",
+            "PdxMeshPlanet",
+            "PdxMeshStar",
+            "PdxMeshAtmosphere",
+            "PdxMeshClouds",
+            "PdxMeshFleetTypeIndicator",
+            "PdxMeshAlphaAdditive",
+            "PdxMeshTextureAtlas",
+            "PdxMeshAlphaBlend",
+            "PdxMeshPortrait",
+            "PdxMeshPortraitClothes",
+            "PdxMeshPortraitHair"
+        ],
+        "path": "X:/Steam/steamapps/common/Stellaris",
+        "target_exe": "X:/Steam/steamapps/common/Stellaris/stellaris.exe"
+    }
+}
