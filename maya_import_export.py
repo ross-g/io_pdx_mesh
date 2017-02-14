@@ -12,8 +12,11 @@ import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
 import maya.api.OpenMaya as OpenMaya2    # Maya Python API 2.0
 
 sys.path.append(r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh")
-try: reload(pdx_data)
-except: import pdx_data
+try:
+    import pdx_data
+    reload(pdx_data)
+except:
+    import pdx_data
 
 
 """ ================================================================================================
@@ -52,6 +55,9 @@ def create_FileTexture(tex_filepath):
 
 
 def create_Shader(shader_name, PDX_material, texture_dir):
+    """
+        
+    """
     new_shader = pmc.shadingNode('phong', asShader=True, name=shader_name)
     new_shadinggroup= pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{}_SG'.format(shader_name))
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
@@ -105,7 +111,80 @@ def create_Locator(PDX_locator):
     m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
 
 
-def create_Mesh(PDX_mesh):
+def create_Skeleton(PDX_bone_list):
+    # keep track of bones as we create them
+    bone_list = [None for _ in range(0, len(PDX_bone_list))]
+
+    pmc.select(clear=True)
+    for bone in PDX_bone_list:
+        index = bone.ix[0]
+        transform = bone.tx
+        parent = getattr(bone, 'pa', None)
+
+        # create joint
+        new_bone = pmc.joint()
+        pmc.select(new_bone)
+        valid_name = bone.name.split(':')[-1]
+        pmc.rename(new_bone, valid_name)     # TODO: setup namespaces properly?
+        pmc.parent(new_bone, world=True)
+        bone_list[index] = new_bone
+        new_bone.radius.set(0.5)
+        
+        # set transform
+        mat = pmdt.Matrix(
+            transform[0], transform[1], transform[2], 0.0,
+            transform[3], transform[4], transform[5], 0.0,
+            transform[6], transform[7], transform[8], 0.0,
+            transform[9], transform[10], transform[11], 1.0
+        )
+        pmc.xform(matrix = mat.inverse())   # set transform to inverse of matrix in world-space
+        pmc.select(clear=True)
+        
+        # connect to parent
+        if parent is not None:
+            parent_bone = bone_list[parent[0]]
+            pmc.connectJoint(new_bone, parent_bone, parentMode=True)
+
+    return bone_list
+
+
+def create_Skin(mesh, PDX_skin, skeleton):
+    # create dictionary of skinning info per vertex
+    skin_dict = dict()
+
+    num_infs = PDX_skin.bones[0]
+    for vtx in xrange(0, len(PDX_skin.ix)/num_infs):
+        skin_dict[vtx] = dict(joints=[], weights=[])
+
+    # gather joint index that each vert is skinned to
+    for vtx, j in enumerate(xrange(0, len(PDX_skin.ix), num_infs)):
+        skin_dict[vtx]['joints'] = PDX_skin.ix[j:j+num_infs]
+    # gather skin weight for each joint in the vertex skin
+    for vtx, w in enumerate(xrange(0, len(PDX_skin.ix), num_infs)):
+        skin_dict[vtx]['weights'] = PDX_skin.w[w:w+num_infs]
+    
+    # select mesh and joints
+    pmc.select(mesh, skeleton)
+
+    # create skin cluster
+    skin_cluster = pmc.skinCluster(bindMethod=0, skinMethod=0, normalizeWeights=1, forceNormalizeWeights=True, 
+                                   maximumInfluences=num_infs, obeyMaxInfluences=True, 
+                                   name='sc_{}'.format(mesh.name()))
+
+    # set skin weights
+    for v in xrange(len(skin_dict.keys())):
+        joints = [skeleton[j] for j in skin_dict[v]['joints']]
+        weights = skin_dict[v]['weights']
+        # normalise joint weights
+        norm_weights = [float(w)/sum(weights) for w in weights]
+        # strip zero weight entries
+        joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
+
+        pmc.skinPercent(skin_cluster, '{}.vtx[{}]'.format(mesh.name(), v),
+                        transformValue=joint_weights, normalize=True)
+
+
+def create_Mesh(PDX_mesh, path):
     # name and namespace
     mesh_name = PDX_mesh.name.split(':')[-1]        # TODO: check for identical mesh names, this just means material will be different
     namespaces = PDX_mesh.name.split(':')[:-1]      # TODO: setup namespaces properly
@@ -131,6 +210,15 @@ def create_Mesh(PDX_mesh):
 
     # material
     mat = PDX_mesh.material
+
+    # skeleton
+    skeleton = None
+    if hasattr(PDX_mesh, 'skeleton') and PDX_mesh.skeleton:
+        skeleton = PDX_mesh.skeleton
+    # skin
+    skin = None
+    if hasattr(PDX_mesh, 'skin'):
+        skin = PDX_mesh.skin
 
 
     # create the data structures for mesh and transform
@@ -175,6 +263,8 @@ def create_Mesh(PDX_mesh):
     m_FnMesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
     m_FnMesh.setName(mesh_name)
     m_DagMod.doIt()     # sets up the transform parent to the mesh shape
+    # PyNode for the mesh
+    new_mesh = pmc.PyNode(mesh_name)
 
     # apply the vertex normal data
     if norms:
@@ -199,46 +289,23 @@ def create_Mesh(PDX_mesh):
         # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
         m_FnMesh.assignUVs(uvCounts, uvIds, 'map1')     # note bulk assignment via .assignUVs only works to the default UV set!
 
+
     # setup the material
     shader_name = 'Phong_'+mesh_name
-    texture_dir = os.path.split(filepath)[0]
+    texture_dir = path
     shader, s_group = create_Shader(shader_name, mat, texture_dir)
 
-    pmc.select(mesh_name)
+    pmc.select(new_mesh)
+    new_mesh.backfaceCulling.set(1)
     pmc.hyperShade(assign=s_group)
 
 
-def create_Skeleton(bone_data):
-    pmc.select(clear=True)
-    # keep track of bones as we create them
-    bone_list = [None for _ in range(0, len(bone_data))]
-
-    for bone in bone_data:
-        index = bone.ix[0]
-        transform = bone.tx
-        parent = getattr(bone, 'pa', None)
-            
-        # create joint
-        new_bone = pmc.joint()
-        pmc.select(new_bone)
-        pmc.rename(new_bone, bone.name)     # TODO: setup namespaces properly
-        bone_list[index] = new_bone
-        new_bone.radius.set(0.5)
-        
-        # set transform
-        mat = pmdt.Matrix(
-            transform[0], transform[1], transform[2], 0.0,
-            transform[3], transform[4], transform[5], 0.0,
-            transform[6], transform[7], transform[8], 0.0,
-            transform[9], transform[10], transform[11], 1.0
-        )
-        pmc.xform(matrix = mat.inverse())   # set transform to inverse of matrix in world-space
-        pmc.select(clear=True)
-        
-        # connect to parent
-        if parent is not None:
-            parent_bone = bone_list[parent[0]]
-            pmc.connectJoint(new_bone, parent_bone, parentMode=True)
+    # setup skeleton and skinning
+    bone_list = []
+    if skeleton:
+        bone_list = create_Skeleton(skeleton)
+    if skin and bone_list:
+        create_Skin(new_mesh, skin, bone_list)
 
 
 """ ================================================================================================
@@ -247,16 +314,16 @@ def create_Skeleton(bone_data):
 """
 
 # read the data
-filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\fallen_empire_large_warship.mesh"
-filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\JAP_01.mesh"
-
-asset = pdx_data.read_meshfile(filepath, to_stdout=True)
-
-for mesh in asset.meshes:
-    create_Mesh(mesh)
-
-for mesh in asset.meshes:
-    create_Skeleton(mesh.skeleton)
-    
-for loc in asset.locators:
-    create_Locator(loc)
+# filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\fallen_empire_large_warship.mesh"
+# filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\JAP_01.mesh"
+#
+# asset = pdx_data.read_meshfile(filepath, to_stdout=True)
+#
+# for mesh in asset.meshes:
+#     create_Skeleton(mesh.skeleton)
+#
+# for mesh in asset.meshes:
+#     create_Mesh(mesh)
+#
+# for loc in asset.locators:
+#     create_Locator(loc)

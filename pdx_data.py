@@ -82,7 +82,6 @@ def parseObject(bdata, pos):
     # skip and record any repeated '[' characters
     objdepth = 0
     while struct.unpack('c', bdata[pos])[0] == '[':
-        # TODO: we are assuming the object hierarchy is predefined, unknown hierarchy might parse incorrectly
         objdepth += 1
         pos += 1
 
@@ -166,12 +165,14 @@ def parseData(bdata, pos):
 def read_meshfile(filepath, to_stdout=False, full=False):
     """
         Reads through a .mesh file and instantiates PDX... classes based on the file hierarchy
-
+        
+        TODO
         This might need re-architecting, using nested lists to create the hierarchy leads to lots of arbitrary traversing the list back up the hierarchy
         where we need to reference anything other than the immediate parent, this could also be problematic where we have multiples of the same object
         type in a file.
         Possibly use tree structure?  https://gist.github.com/hrldcpr/2012250
         Possibly use named tuples? ordered dict?  https://docs.python.org/2.7/library/collections.html
+        Possibly use self-defining classes?
     """
     # read the data
     fdata = readBinaryFile(filepath)
@@ -280,18 +281,18 @@ class PDXmodel(object):
     def __str__(self):
         string = '{}'.format(self.filename)
         string += '\n\tmeshes:'
-        for m in self.meshes:
-            string += '\n\t\t{}'.format(m)
+        for mesh in self.meshes:
+            string += '\n\t\t{}'.format(mesh)
         string += '\n\tlocators:'
-        for l in self.locators:
-            string += '\n\t\t{}'.format(l)
+        for loc in self.locators:
+            string += '\n\t\t{}'.format(loc)
 
         return string
 
 class PDXmesh(object):
     """
         object    (object)
-            shape    (object)
+            shape    (object)  shape name in Maya
                 mesh    (object)
                     p    (float)  verts
                     n    (float)  normals
@@ -322,16 +323,15 @@ class PDXmesh(object):
         self.skeleton = []    # a list of bone objects
 
     def __str__(self):
-        # return json.dumps(self.__dict__, skipkeys=True, indent=4, sort_keys=True)
         return 'PDXmesh-{}'.format(self.name)
 
 class PDXmaterial(object):
     """
         material    (object)
             shader    (string)  shader name
-            diff    (string)  texture_diffuse
-            n    (string)  texture_normal
-            spec    (string)  texture_spec
+            diff    (string)  diffuse texture
+            n    (string)  normal texture
+            spec    (string)  specular texture
     """
     def __init__(self):
         self.shader = None
@@ -344,17 +344,16 @@ class PDXmaterial(object):
         return texture_dict
         
     def __str__(self):
-        return 'PDXmaterial'
+        return 'PDXmaterial-{}'.format(self.shader)
 
 class PDXskin(object):
     """
         skin    (object)
-            bones    (int)  used bones?
-            ix    (int)  skin ids
-            w    (float)  skin weights
+            bones    (int)  number of influences, used to traverse other data
+            ix    (int)  bone indices per vert
+            w    (float)  skin weights per vert corresponding to the bone indices
     """
     def __init__(self):
-        pass
         self.bones = None
         self.ix = None
         self.w = None
@@ -436,7 +435,7 @@ General binary format is:
         object    (object)  parent item for all 3D objects
             shape    (object)
                 mesh    (object)
-                    ...  multiple meshes per shape, used for different materials
+                    ...  multiple meshes per shape, used for different material IDs
                 mesh    (object)
                     ...
                 mesh    (object)
