@@ -4,37 +4,55 @@
     author : ross-g
 """
 
-import os, sys
+import os
+import sys
 import struct
-import json
-
-clear = lambda: os.system('cls')
-
-
-""" ================================================================================================
-    Variables.
-====================================================================================================
-"""
-
-SETTINGS_FILE = os.path.join(os.environ['HOME'], 'Documents', 'Paradox Interactive', 'PdxExporter', 'settings', 'clausewitz.txt')
+try:
+    import xml.etree.cElementTree as Xml
+except ImportError:
+    import xml.etree.ElementTree as Xml
 
 
 """ ================================================================================================
-    Functions for reading binary data files.
+    PDX data classes.
 ====================================================================================================
 """
 
-def readBinaryFile(filepath):
-    with open(filepath, 'rb') as file:
-        data = file.read()
 
-    return data
+class PDXData(object):
+    """
+        Simple class to turn an XML element with attributes into a object for more convenient
+        access to attributes.
+    """
+    def __init__(self, element):
+        # use element tag as object name
+        setattr(self, 'name', element.tag)
+        # set element attributes as object attributes
+        for attr in element.attrib:
+            setattr(self, attr, element.attrib[attr])
+        # iterate over element children, set these as attributes which nest further PDXData objects
+        for child in list(element):
+            child_data = type(self)(child)
+            setattr(self, child.tag, child_data)
+
+    def __str__(self):
+        string = list()
+        for k, v in self.__dict__.iteritems():
+            string.append('{}: {}'.format(k, v))
+        return '\n'.join(string)
+
+
+""" ================================================================================================
+    Functions for reading and parsing binary data.
+====================================================================================================
+"""
+
 
 def parseBinary(bdata):
     # determine the file length
     eof = len(bdata)
 
-    # set inital position in file to skip '@@b@'
+    # set initial position in file to skip '@@b@'
     pos = 4
     objdepth = 0
 
@@ -43,7 +61,8 @@ def parseBinary(bdata):
     while pos < eof:
         if struct.unpack('c', bdata[pos])[0] == '!':
             # we have a property
-            if objdepth == None: objdepth = 0
+            if objdepth is None:
+                objdepth = 0
             prop_name, prop_values, pos = parseProperty(bdata, pos)
             parent = obj_list[objdepth][-1]
             print "  "*objdepth+"  property:", prop_name, "("+parent+")", "\n", prop_values
@@ -61,6 +80,7 @@ def parseBinary(bdata):
         else:
             raise NotImplementedError("Unknown object encountered.")
 
+
 def parseProperty(bdata, pos):
     # starting at '!'
     pos += 1
@@ -77,6 +97,7 @@ def parseProperty(bdata, pos):
     prop_values, pos = parseData(bdata, pos)
 
     return (prop_name, prop_values, pos)
+
 
 def parseObject(bdata, pos):
     # skip and record any repeated '[' characters
@@ -97,6 +118,7 @@ def parseObject(bdata, pos):
 
     return (obj_name, objdepth, pos)
 
+
 def parseString(bdata, pos, length):
     string = struct.unpack('c'*length, bdata[pos:pos+length])
 
@@ -105,6 +127,7 @@ def parseString(bdata, pos, length):
         string = string[:-1]
 
     return ''.join(string)
+
 
 def parseData(bdata, pos):
     datavalues = []
@@ -162,29 +185,23 @@ def parseData(bdata, pos):
 
     return (datavalues, pos)
 
-def read_meshfile(filepath, to_stdout=False, full=False):
+
+def read_meshfile(filepath, to_stdout=False):
     """
-        Reads through a .mesh file and instantiates PDX... classes based on the file hierarchy
-        
-        TODO
-        This might need re-architecting, using nested lists to create the hierarchy leads to lots of arbitrary traversing the list back up the hierarchy
-        where we need to reference anything other than the immediate parent, this could also be problematic where we have multiples of the same object
-        type in a file.
-        Possibly use tree structure?  https://gist.github.com/hrldcpr/2012250
-        Possibly use named tuples? ordered dict?  https://docs.python.org/2.7/library/collections.html
-        Possibly use self-defining classes?
+        Reads through a .mesh file and gathers all the data into hierarchical element structure
+        The resulting XML is not natively writable to string as it contains Python lists
     """
     # read the data
-    fdata = readBinaryFile(filepath)
+    with open(filepath, 'rb') as fp:
+        fdata = fp.read()
 
-    # create the asset class, this represents the whole file
-    pdxasset = PDXmodel(os.path.split(filepath)[1])
-    # create a nested list to store the object hierarchy, this get populated by strings or classes 
-    # depending on how we're handing the specific object
-    obj_list = [['file']]
-    obj_depth = 0
-    
-    
+    # create a ordered dictionary to store the object hierarchy
+    file_element = Xml.Element('File')
+    file_element.attrib = dict(
+        name=os.path.split(filepath)[1],
+        path=os.path.split(filepath)[0]
+    )
+
     # determine the file length
     eof = len(fdata)
     # set position in file to skip '@@b@'
@@ -193,207 +210,49 @@ def read_meshfile(filepath, to_stdout=False, full=False):
     else:
         raise StandardError("Unknown file header")
 
+    parent_element = file_element
+    depth_list = [file_element]
+    current_depth = 0
+
     # parse through until EOF
-    current_object = None
     while pos < eof:
         # we have a property
         if struct.unpack('c', fdata[pos])[0] == '!':
             # check the property type and values
             prop_name, prop_values, pos = parseProperty(fdata, pos)
-            # check which object has this property
-            parent_object = obj_list[obj_depth][-1]
+            if to_stdout:
+                print "  "*current_depth+"  ", prop_name, " (count", len(prop_values), ")"
 
             # assign property values to the parent object
-            try:
-                setattr(parent_object, prop_name, prop_values)
-            except:
-                # special case some properties, assign values to the grandparent
-                if parent_object == 'aabb':
-                    parent_mesh = obj_list[obj_depth-1][-1]
-                    setattr(parent_mesh, parent_object+prop_name, prop_values)
-
-            if to_stdout:
-                if full:
-                    print "  "*obj_depth+"  prop:", prop_name, "("+str(parent_object)+")", "\n", prop_values
-                else:
-                    print "  "*obj_depth+"  prop:", prop_name, "("+str(parent_object)+")"
+            parent_element.set(prop_name, prop_values)
 
         # we have an object
         elif struct.unpack('c', fdata[pos])[0] == '[':
             # check the object type and hierarchy depth
-            obj_name, obj_depth, pos = parseObject(fdata, pos)
-            # check which object contains this object in the hierarcy
-            parent_object = obj_list[obj_depth-1][-1]
+            obj_name, depth, pos = parseObject(fdata, pos)
+            if to_stdout:
+                print "  "*depth, obj_name, depth
 
-            # determine if this is a known object type, then instantiate it
-            if obj_name == 'mesh':
-                current_object = PDXmesh(parent_object)
-                pdxasset.meshes.append(current_object)
-            elif obj_name == 'material':
-                current_object = PDXmaterial()
-                parent_object.material = current_object
-            elif obj_name == 'skin':
-                current_object = PDXskin()
-                parent_object.skin = current_object
-            else:
-                # some obects have type defined by their parent, instantiate them
-                if parent_object == 'locator':
-                    current_object = PDXlocator(obj_name)
-                    pdxasset.locators.append(current_object)
-                elif parent_object == 'skeleton':
-                    # if not hasattr(parent_object, 'skeleton'):
-                    #     parent_object.skeleton = []
-                    current_object = PDXbone(obj_name)
-                    parent_object = obj_list[obj_depth-1][-2]       # TODO this feels sloppy, we arbitrarily traverese the list back one more item at the right depth
-                    parent_object.skeleton.append(current_object)
-                # otherwise just store the name string instead
-                else:
-                    current_object = obj_name
+            # deeper branch of the tree => current parent valid
+            # same or shallower branch of the tree => parent gets redefined back a level
+            if not depth > current_depth:
+                # remove elements from depth list, change parent
+                depth_list = depth_list[:depth]
+                parent_element = depth_list[-1]
 
-            try:
-                obj_list[obj_depth].append(current_object)
-            except:
-                obj_list.append([current_object])
+            # create a new object as a child of the current parent
+            new_element = Xml.SubElement(parent_element, obj_name)
+            # update parent
+            parent_element = new_element
+            # update depth
+            depth_list.append(parent_element)
+            current_depth = depth
 
-            if to_stdout: print "  "*obj_depth+"obj:", current_object, "("+str(parent_object)+")", obj_depth
-
+        # we have something that we can't parse
         else:
             raise NotImplementedError("Unknown object encountered.")
 
-    return pdxasset
-
-
-""" ================================================================================================
-    Classes describing PDX objects.
-====================================================================================================
-"""
-
-class PDXmodel(object):
-    """
-        mesh    (object)
-        locator    (object)
-    """
-    def __init__(self, filename):
-        self.filename = filename
-        self.meshes = []
-        self.locators = []
-
-    def __str__(self):
-        string = '{}'.format(self.filename)
-        string += '\n\tmeshes:'
-        for mesh in self.meshes:
-            string += '\n\t\t{}'.format(mesh)
-        string += '\n\tlocators:'
-        for loc in self.locators:
-            string += '\n\t\t{}'.format(loc)
-
-        return string
-
-class PDXmesh(object):
-    """
-        object    (object)
-            shape    (object)  shape name in Maya
-                mesh    (object)
-                    p    (float)  verts
-                    n    (float)  normals
-                    ta    (float)  tangents
-                    u    (float)  UVs
-                    tri    (int)  triangles
-                    aabb    (object)
-                        min    (float)  min bounding box
-                        max    (float)  max bounding box
-                    material    (object)
-                    skin    (object)
-                        bones    (int)  used bones
-                        ix    (int)  skin ids
-                        w    (float)  skin weights
-                skeleton    (object)
-    """
-    def __init__(self, name):
-        self.name = name    # shape node name
-        self.p = None
-        self.n = None
-        self.ta = None
-        self.u = None
-        self.tri = None
-        self.aabbmin = None
-        self.aabbmax = None
-        self.material = None    # a mesh only has one material
-        self.skin = None        # a mesh only has one skin
-        self.skeleton = []    # a list of bone objects
-
-    def __str__(self):
-        return 'PDXmesh-{}'.format(self.name)
-
-class PDXmaterial(object):
-    """
-        material    (object)
-            shader    (string)  shader name
-            diff    (string)  diffuse texture
-            n    (string)  normal texture
-            spec    (string)  specular texture
-    """
-    def __init__(self):
-        self.shader = None
-        self.diff = None
-        self.n = None
-        self.spec = None
-
-    def get_textures(self):
-        texture_dict = {key:val for (key,val) in (self.__dict__).items() if key != 'shader'}
-        return texture_dict
-        
-    def __str__(self):
-        return 'PDXmaterial-{}'.format(self.shader)
-
-class PDXskin(object):
-    """
-        skin    (object)
-            bones    (int)  number of influences, used to traverse other data
-            ix    (int)  bone indices per vert
-            w    (float)  skin weights per vert corresponding to the bone indices
-    """
-    def __init__(self):
-        self.bones = None
-        self.ix = None
-        self.w = None
-        
-    def __str__(self):
-        return 'PDXskin'
-
-class PDXbone(object):
-    """
-        bone    (object)
-            ix    (int)  index
-            pa    (int)  parent index, omitted for root
-            tx    (float)  transform, 3*4 matrix
-    """
-    def __init__(self, name):
-        self.name = name
-        self.ix = None
-        self.pa = None
-        self.tx = None
-        
-    def __str__(self):
-        return 'PDXbone-{}'.format(self.name)
-
-class PDXlocator(object):
-    """
-        locator    (object)
-            node    (object)
-                p    (float)  position?
-                q    (float)  quarternion?
-                pa    (string)  parent bone?
-    """
-    def __init__(self, name):
-        self.name = name
-        self.p = None
-        self.q = None
-        self.pa = None
-        
-    def __str__(self):
-        return 'PDXlocator-{}'.format(self.name)
-
+    return file_element
 
 
 """ ================================================================================================
@@ -401,23 +260,19 @@ class PDXlocator(object):
 ====================================================================================================
 """
 
+
 if __name__ == '__main__':
     """
-        When run like this we just print the contents of the mesh file to stdout
+       When called as a script we just print the structure and contents of the mesh file to stdout
     """
+    clear = lambda: os.system('cls')
     clear()
-    a_file = sys.argv[1]
-    if len(sys.argv) == 3:
-        full = sys.argv[2]
-    else:
-        full = False
-    # a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\test_object.mesh"
-    # a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\scan_detail.mesh" # SIMPLE locator, skeleton, skin
-    # a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\robot_01_portrait.mesh" # COMPLEX locators, skeletons, skins
-    # a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\combat_items\torpedo.mesh" # multiple meshes, collision shader
+    a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\archipelago_frigate.mesh"
 
-    print read_meshfile(a_file, to_stdout=True, full=full)
+    if len(sys.argv) > 1:
+        a_file = sys.argv[1]
 
+    data = read_meshfile(a_file, to_stdout=True)
 
 
 """
@@ -429,10 +284,12 @@ General binary format is:
     depth of data
     data content
 
-=======================================================================================================================
+====================================================================================================
     header    (@@b@ for binary, @@t@ for text)?
     pdxasset    (int)  number of assets?
         object    (object)  parent item for all 3D objects
+            shape    (object)
+                ...  multiple shapes, used for meshes under different node transforms
             shape    (object)
                 mesh    (object)
                     ...  multiple meshes per shape, used for different material IDs
@@ -466,5 +323,5 @@ General binary format is:
                 p    (float)  position?
                 q    (float)  quarternion?
                 pa    (string)  parent bone?
-=======================================================================================================================
+====================================================================================================
 """
