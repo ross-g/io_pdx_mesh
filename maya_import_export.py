@@ -5,11 +5,15 @@
 """
 
 import os, sys
+try:
+    import xml.etree.cElementTree as Xml
+except ImportError:
+    import xml.etree.ElementTree as Xml
+
 import maya.cmds as cmds
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
 import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
-import maya.api.OpenMaya as OpenMaya2    # Maya Python API 2.0
 
 sys.path.append(r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh")
 try:
@@ -24,7 +28,8 @@ except:
 ====================================================================================================
 """
 
-def create_FileTexture(tex_filepath):
+
+def create_filetexture(tex_filepath):
     """
         Creates & connects up a new file node and place2dTexture node, uses the supplied filepath.
     """
@@ -54,43 +59,47 @@ def create_FileTexture(tex_filepath):
     return newFile, new2dTex
 
 
-def create_Shader(shader_name, PDX_material, texture_dir):
-    """
-        
-    """
+def create_shader(shader_name, PDX_material, texture_dir):
     new_shader = pmc.shadingNode('phong', asShader=True, name=shader_name)
-    new_shadinggroup= pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{}_SG'.format(shader_name))
+    new_shadinggroup = pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{}_SG'.format(shader_name))
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
 
-    # TODO: should be an enum datatype, need to parse the possible engine/material combinations from clausewitz.txt
+    # TODO: should be an enum datatype, need to parse the possible engine/material combinations from clausewitz.json
     pmc.addAttr(longName='shader', dataType='string')
     new_shader.shader.set(PDX_material.shader)
 
-    texture_dict = PDX_material.get_textures()
-
-    if texture_dict.get('diff'):
+    if getattr(PDX_material, 'diff', None):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
-        new_file, _ = create_FileTexture(texture_path)
+        new_file, _ = create_filetexture(texture_path)
         pmc.connectAttr(new_file.outColor, new_shader.color)
 
-    if texture_dict.get('n'):
+    if getattr(PDX_material, 'n', None):
         texture_path = os.path.join(texture_dir, PDX_material.n[0])
-        new_file, _ = create_FileTexture(texture_path)
+        new_file, _ = create_filetexture(texture_path)
         bump2d = pmc.shadingNode('bump2d', asUtility=True)
         bump2d.bumpDepth.set(0.1)
         new_file.alphaIsLuminance.set(True)
         pmc.connectAttr(new_file.outAlpha, bump2d.bumpValue)
         pmc.connectAttr(bump2d.outNormal, new_shader.normalCamera)
 
-    if texture_dict.get('spec'):
+    if getattr(PDX_material, 'spec', None):
         texture_path = os.path.join(texture_dir, PDX_material.spec[0])
-        new_file, _ = create_FileTexture(texture_path)
+        new_file, _ = create_filetexture(texture_path)
         pmc.connectAttr(new_file.outColor, new_shader.specularColor)
 
     return new_shader, new_shadinggroup
 
 
-def create_Locator(PDX_locator):
+def create_material(PDX_material, mesh, texture_path):
+    shader_name = 'PDXPhong_' + mesh.name()
+    shader, s_group = create_shader(shader_name, PDX_material, texture_path)
+
+    pmc.select(mesh)
+    mesh.backfaceCulling.set(1)
+    pmc.hyperShade(assign=s_group)
+
+
+def create_locator(PDX_locator):
     # create locator
     new_loc = pmc.spaceLocator()
     pmc.select(new_loc)
@@ -109,9 +118,10 @@ def create_Locator(PDX_locator):
     m_FnXform.setTranslation(vector, space)
     # rotation
     m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
+    # TODO: parent locator to bones??
 
 
-def create_Skeleton(PDX_bone_list):
+def create_skeleton(PDX_bone_list):
     # keep track of bones as we create them
     bone_list = [None for _ in range(0, len(PDX_bone_list))]
 
@@ -137,7 +147,7 @@ def create_Skeleton(PDX_bone_list):
             transform[6], transform[7], transform[8], 0.0,
             transform[9], transform[10], transform[11], 1.0
         )
-        pmc.xform(matrix = mat.inverse())   # set transform to inverse of matrix in world-space
+        pmc.xform(matrix=mat.inverse())   # set transform to inverse of matrix in world-space
         pmc.select(clear=True)
         
         # connect to parent
@@ -148,7 +158,7 @@ def create_Skeleton(PDX_bone_list):
     return bone_list
 
 
-def create_Skin(mesh, PDX_skin, skeleton):
+def create_skin(PDX_skin, mesh, skeleton):
     # create dictionary of skinning info per vertex
     skin_dict = dict()
 
@@ -184,7 +194,7 @@ def create_Skin(mesh, PDX_skin, skeleton):
                         transformValue=joint_weights, normalize=True)
 
 
-def create_Mesh(PDX_mesh, path):
+def create_mesh(PDX_mesh):
     # name and namespace
     mesh_name = PDX_mesh.name.split(':')[-1]        # TODO: check for identical mesh names, this just means material will be different
     namespaces = PDX_mesh.name.split(':')[:-1]      # TODO: setup namespaces properly
@@ -207,19 +217,6 @@ def create_Mesh(PDX_mesh, path):
         uv_0 = PDX_mesh.u0
     if hasattr(PDX_mesh, 'u1'):
         uv_1 = PDX_mesh.u1
-
-    # material
-    mat = PDX_mesh.material
-
-    # skeleton
-    skeleton = None
-    if hasattr(PDX_mesh, 'skeleton') and PDX_mesh.skeleton:
-        skeleton = PDX_mesh.skeleton
-    # skin
-    skin = None
-    if hasattr(PDX_mesh, 'skin'):
-        skin = PDX_mesh.skin
-
 
     # create the data structures for mesh and transform
     m_FnMesh = OpenMaya.MFnMesh()
@@ -258,8 +255,8 @@ def create_Mesh(PDX_mesh, path):
             uArray.append(uv_0[i])
             vArray.append(1 - uv_0[i+1])        # flip the UV coords in V!
 
-
-    # create the new mesh
+    """ ================================================================================================================
+        create the new mesh """
     m_FnMesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
     m_FnMesh.setName(mesh_name)
     m_DagMod.doIt()     # sets up the transform parent to the mesh shape
@@ -287,43 +284,71 @@ def create_Mesh(PDX_mesh, path):
         for item in tris:
             uvIds.append(item)
         # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
-        m_FnMesh.assignUVs(uvCounts, uvIds, 'map1')     # note bulk assignment via .assignUVs only works to the default UV set!
+        m_FnMesh.assignUVs(uvCounts, uvIds, 'map1')
+        # note bulk assignment via .assignUVs only works to the default UV set!
 
-
-    # setup the material
-    shader_name = 'Phong_'+mesh_name
-    texture_dir = path
-    shader, s_group = create_Shader(shader_name, mat, texture_dir)
-
+    # assign the default material
     pmc.select(new_mesh)
-    new_mesh.backfaceCulling.set(1)
-    pmc.hyperShade(assign=s_group)
+    shd_group = pmc.PyNode('initialShadingGroup')
+    pmc.hyperShade(assign=shd_group)
+
+    return new_mesh
 
 
-    # setup skeleton and skinning
-    bone_list = []
-    if skeleton:
-        bone_list = create_Skeleton(skeleton)
-    if skin and bone_list:
-        create_Skin(new_mesh, skin, bone_list)
-
-
-""" ================================================================================================
-    Main.
-====================================================================================================
+""" ====================================================================================================================
+    Main function.
+========================================================================================================================
 """
+
+
+def import_file(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
+    # read the file into an XML structure
+    asset_elem = pdx_data.read_meshfile(meshpath)
+
+    # find shapes and locators
+    shapes = asset_elem.find('object')
+    locators = asset_elem.find('locator')
+
+    # go through shapes
+    for node in shapes:
+        print "[io_pdx_mesh] \t{}.".format(node.tag)
+
+        # create the skeleton first, so we can skin to it
+        joints = None
+        skeleton = node.find('skeleton')
+        if imp_skel and skeleton:
+            pdx_bone_list = list()
+            for b in skeleton:
+                pdx_bone = pdx_data.PDXData(b)
+                pdx_bone_list.append(pdx_bone)
+
+            joints = create_skeleton(pdx_bone_list)
+
+        # then create all the meshes
+        meshes = node.findall('mesh')
+        if imp_mesh:
+            for m in meshes:
+                pdx_mesh = pdx_data.PDXData(m)
+                pdx_material = getattr(pdx_mesh, 'material')
+                pdx_skin = getattr(pdx_mesh, 'skin')
+
+                # create the geometry
+                mesh = create_mesh(pdx_mesh)
+                # create the material
+                create_material(pdx_material, mesh, os.path.split(meshpath)[0])
+
+                # and skin it
+                if joints:
+                    getattr(pdx_mesh, 'skin')
+                    create_skin(pdx_skin, mesh, joints)
+
+    # go through locators
+    if imp_locs:
+        for loc in locators:
+            pdx_locator = pdx_data.PDXData(loc)
+            create_locator(pdx_locator)
+
 
 # read the data
 # filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\fallen_empire_large_warship.mesh"
-# filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\JAP_01.mesh"
-#
-# asset = pdx_data.read_meshfile(filepath, to_stdout=True)
-#
-# for mesh in asset.meshes:
-#     create_Skeleton(mesh.skeleton)
-#
-# for mesh in asset.meshes:
-#     create_Mesh(mesh)
-#
-# for loc in asset.locators:
-#     create_Locator(loc)
+filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\archipelago_frigate.mesh"
