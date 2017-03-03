@@ -4,8 +4,11 @@
     author : ross-g
 """
 
-import os, sys
+import os
+import sys
 import webbrowser
+import inspect
+import json
 import pymel.core as pmc
 import maya.cmds as cmds
 import maya.OpenMayaUI as omUI
@@ -26,6 +29,13 @@ def get_mayamainwindow():
     return wrapInstance(long(pointer), QtWidgets.QMainWindow)
 
 
+def h_line():        
+    line = QtWidgets.QFrame()
+    line.setFrameShape(QtWidgets.QFrame.HLine)
+    line.setFrameShadow(QtWidgets.QFrame.Sunken)
+    return line
+
+
 """ ================================================================================================
     UI class for the import/export tool.
 ====================================================================================================
@@ -41,9 +51,25 @@ class PDXmaya_ui(QtWidgets.QDialog):
             parent = get_mayamainwindow()
 
         super(PDXmaya_ui, self).__init__(parent)
+        self.popup = None                       # reference for popup widget
+        self.settings = self.load_settings()    # settings from json
         self.create_ui()
-        self.popup = None  # reference for popup widget
-
+        self.setStyleSheet(#'QWidget {font: 8pt "Sans Serif"}'
+                           'QGroupBox {'
+                           'border: 1px solid;'
+                           'border-color: rgba(0, 0, 0, 64);'
+                           'border-radius: 4px;'
+                           'margin-top: 8px;'
+                           'padding: 5px 2px 2px 2px;'
+                           'background-color: rgb(78, 80, 82);'
+                           '}'
+                           'QGroupBox::title {'
+                           'subcontrol-origin: margin;'
+                           'subcontrol-position: top left;'
+                           'left: 10px;'
+                           '}'
+                           )
+        
     def create_ui(self):
         # window properties
         self.setWindowTitle('PDX Maya Tools')
@@ -60,30 +86,45 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.create_signals()
 
     def create_menu(self):
-        self.menubar = QtGui.QMenuBar()
+        self.menubar = QtWidgets.QMenuBar()
         file_menu = self.menubar.addMenu('&File')
+        tools_menu = self.menubar.addMenu('&Tools')
         help_menu = self.menubar.addMenu('&Help')
 
-        file_import = QtGui.QAction('Import mesh ...', self)
-        # file_import.setStatusTip('')
-        file_import.triggered.connect(self.do_import)
-        file_export = QtGui.QAction('Export mesh ...', self)
+        # file menu
+        file_import_mesh = QtWidgets.QAction('Import mesh ...', self)
+        file_import_mesh.triggered.connect(self.do_import)
+        # file_import_mesh.setStatusTip('')
+        file_import_anim = QtWidgets.QAction('Import animation ...', self)
+        # file_import_anim.triggered.connect(self.do_import_anim)
+        file_import_anim.setDisabled(True)
+        file_export = QtWidgets.QAction('Export mesh ...', self)
         file_export.setDisabled(True)
-        # file_export.setStatusTip('')
-        # file_export.triggered.connect(self.do_export)
 
-        help_forum = QtGui.QAction('Paradox forums', self)
-        help_forum.triggered.connect(
-            lambda: webbrowser.open(
-                'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/')
+        # tools menu
+        tool_edit_settings = QtWidgets.QAction('Edit Clausewitz settings', self)
+        tool_edit_settings.setDisabled(True)
+        tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
+        tool_ignore_joints.setDisabled(True)
+        tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
+        tool_unignore_joints.setDisabled(True)
+
+        # help menu
+        help_forum = QtWidgets.QAction('Paradox forums', self)
+        help_forum.triggered.connect(lambda: webbrowser.open(
+            'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/')
         )
-        help_code = QtGui.QAction('Source code', self)
-        help_code.triggered.connect(
-            lambda: webbrowser.open(
-                'https://github.com/ross-g/io_pdx_mesh')
+        help_code = QtWidgets.QAction('Source code', self)
+        help_code.triggered.connect(lambda: webbrowser.open(
+            'https://github.com/ross-g/io_pdx_mesh')
         )
 
-        file_menu.addActions([file_import, file_export])
+        file_menu.addActions([file_import_mesh, file_import_anim])
+        file_menu.addSeparator()
+        file_menu.addActions([file_export])
+        tools_menu.addActions([tool_edit_settings])
+        tools_menu.addSeparator()
+        tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
         help_menu.addActions([help_forum, help_code])
 
     def create_controls(self):
@@ -91,31 +132,21 @@ class PDXmaya_ui(QtWidgets.QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(main_layout)
 
-        # Import tab
-        # self.tab1 = tab_Import(parent=self)
-
-        # Export tab
-        # self.tab2 = tab_Export(parent=self)
-        export_ctrls = tab_Export(parent=self)
-
-        # construct tabs widget
-        # self.tabWidget = QtWidgets.QTabWidget()
-        # self.tabWidget.addTab(self.tab1, self.tr("Import"))
-        # self.tabWidget.addTab(self.tab2, self.tr("Export"))
+        export_ctrls = export_controls(parent=self)
 
         # create menubar and add widgets to main layout
         main_layout.setMenuBar(self.menubar)
         main_layout.addWidget(export_ctrls)
+        print self.settings
 
     def create_signals(self):
         # connect up controls
         pass
-        # self.tab1.btn_import.clicked.connect(self.on_openfile)
-        # self.tabWidget.currentChanged.connect(self.on_tabchange)
 
     @QtCore.Slot()
     def do_import(self):
-        filename, filefilter = QtWidgets.QFileDialog.getOpenFileName(caption='Select .mesh', filter='PDX Mesh files (*.mesh)')
+        filename, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh',
+                                                                     filter='PDX Mesh files (*.mesh)')
         if filename and os.path.splitext(filename)[1] == '.mesh':
             self.import_mesh(filename)
         else:
@@ -128,20 +159,23 @@ class PDXmaya_ui(QtWidgets.QDialog):
             if reply == QtWidgets.QMessageBox.Ok:
                 print "[io_pdx_mesh] Nothing to import."
 
-    @QtCore.Slot()
     def import_mesh(self, filepath):
-        self.popup = tab_Import(filepath, parent=self)
+        self.popup = import_popup(filepath, parent=self)
         self.popup.show()
 
-    @QtCore.Slot()
-    def launch_webpage(self, address):
-        pass
+    def load_settings(self):
+        script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+
+        settings_file = os.path.join(script_dir, 'clausewitz.json')
+        with open(settings_file, 'rt') as f:
+            settings = json.load(f)
+            return settings
 
 
-class tab_Import(QtWidgets.QWidget):
+class import_popup(QtWidgets.QWidget):
 
     def __init__(self, filepath, parent=None):
-        super(tab_Import, self).__init__(parent)
+        super(import_popup, self).__init__(parent)
 
         topleft = pdx_tools.window().frameGeometry().topLeft()
         self.move(topleft + QtCore.QPoint(5, 50))
@@ -156,7 +190,6 @@ class tab_Import(QtWidgets.QWidget):
         # create controls
         lbl_filepath = QtWidgets.QLabel('Filename:  {}'.format(os.path.split(self.mesh_file)[-1]))
         self.chk_mesh = QtWidgets.QCheckBox('Mesh')
-        self.chk_material = QtWidgets.QCheckBox('Material')
         self.chk_skeleton = QtWidgets.QCheckBox('Skeleton')
         self.chk_locators = QtWidgets.QCheckBox('Locators')
         self.btn_import = QtWidgets.QPushButton('Import ...', self)
@@ -173,7 +206,7 @@ class tab_Import(QtWidgets.QWidget):
         self.setLayout(main_layout)
         main_layout.addWidget(lbl_filepath)
         main_layout.addSpacing(10)
-        for chk_box in [self.chk_mesh, self.chk_material, self.chk_skeleton, self.chk_locators]:
+        for chk_box in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
             opts_layout.addWidget(chk_box)
             chk_box.setChecked(True)
         main_layout.addLayout(opts_layout)
@@ -187,65 +220,75 @@ class tab_Import(QtWidgets.QWidget):
 
     def import_mesh(self):
         print "[io_pdx_mesh] Importing {}.".format(self.mesh_file)
-        asset = pdx_data.read_meshfile(self.mesh_file)
 
-        # create skeleton first
-        for mesh in asset.meshes:
-            if mesh.skeleton:
-                create_Skeleton(mesh.skeleton)
-        # create mesh
-        for mesh in asset.meshes:
-            create_Mesh(mesh, os.path.split(self.mesh_file)[0])
-
-        # create locators
-        if self.chk_locators.checkState():
-            for loc in asset.locators:
-                create_Locator(loc)
+        try:
+            import_file(self.mesh_file, imp_mesh=self.chk_mesh, imp_skel=self.chk_skeleton, imp_locs=self.chk_locators)
+        except Exception, err:
+            print "[io_pdx_mesh] Failed to import {}.".format(self.mesh_file)
+            print err
+            raise
 
         self.close()
 
 
-class tab_Export(QtWidgets.QWidget):
+class export_controls(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
-        super(tab_Export, self).__init__(parent)
+        super(export_controls, self).__init__(parent)
 
         self.create_controls()
         self.connect_signals()
 
     def create_controls(self):
         # create controls
+        # materials
+        self.list_materials = QtWidgets.QListWidget()
+        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
+        self.btn_mat_edit = QtWidgets.QPushButton('Edit', self)
+        self.btn_mat_create = QtWidgets.QPushButton('Create ...', self)
+        # animations
+        self.list_animations = QtWidgets.QListWidget()
+        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
+        self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
+        self.btn_anim_create = QtWidgets.QPushButton('Create ...', self)
+
+        # settings
         lbl_engine = QtWidgets.QLabel('Game engine:')
         self.setup_engine = QtWidgets.QComboBox()
-        self.setup_engine.addItems(['stellaris', 'hearts of iron 4', 'europa universalis 4', 'crusader kings 2'])
+        self.setup_engine.addItems(self.parent().settings.keys())
         lbl_fps = QtWidgets.QLabel('Animation fps:')
         self.setup_fps = QtWidgets.QDoubleSpinBox()
         self.setup_fps.setMinimum(0.0)
         self.setup_fps.setValue(15.0)
+        
+        # export options
+        self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
+        self.chk_skel = QtWidgets.QCheckBox('Export skeleton')
+        self.chk_anim = QtWidgets.QCheckBox('Export animations')
+        self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
+        self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
+        self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
+        self.chk_preview = QtWidgets.QCheckBox('Preview on export')
 
-        self.list_materials = QtWidgets.QListWidget()
-        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
-        self.btn_mat_create = QtWidgets.QPushButton('Create new ...', self)
-        
-        self.list_animations = QtWidgets.QListWidget()
-        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
-        # self.btn_anim_refresh.setToolTip('Refresh the scene material list')
-        
-        lbl_exportwip = QtWidgets.QLabel('I\'m working on it...')
-        lbl_exportwip.setToolTip('This isn\'t done yet')
+        # output settings
+        lbl_path = QtWidgets.QLabel('Output path:')
+        self.txt_path = QtWidgets.QLineEdit()
+        self.txt_path.setDisabled(True)
+        self.btn_path = QtWidgets.QPushButton('...', self)
+        self.btn_path.setMaximumWidth(20)
+        self.btn_path.setMaximumHeight(18)
+        lbl_file = QtWidgets.QLabel('Filename:')
+        self.txt_file = QtWidgets.QLineEdit()
+        self.txt_file.setPlaceholderText('placeholder_name.mesh')
+        self.btn_export = QtWidgets.QPushButton('Export ...', self)
 
         # create layouts
         main_layout = QtWidgets.QHBoxLayout()
+        main_layout.setSpacing(5)
         main_layout.setContentsMargins(5, 5, 5, 5)
 
         left_layout = QtWidgets.QVBoxLayout()
         left_layout.setSpacing(5)
-        grp_scene = QtWidgets.QGroupBox('Scene setup')
-        grp_scene_layout = QtWidgets.QGridLayout()
-        grp_scene_layout.setColumnStretch(1, 1)
-        grp_scene_layout.setColumnStretch(2, 2)
-        grp_scene_layout.setContentsMargins(5, 0, 5, 5)
-        grp_scene_layout.setVerticalSpacing(5)
         grp_mats = QtWidgets.QGroupBox('Materials')
         grp_mats_layout = QtWidgets.QVBoxLayout()
         grp_mats_layout.setContentsMargins(4, 4, 4, 4)
@@ -253,42 +296,74 @@ class tab_Export(QtWidgets.QWidget):
         grp_anims = QtWidgets.QGroupBox('Animations')
         grp_anims_layout = QtWidgets.QVBoxLayout()
         grp_anims_layout.setContentsMargins(4, 4, 4, 4)
+        grp_anims_button_layout = QtWidgets.QHBoxLayout()
 
         right_layout = QtWidgets.QVBoxLayout()
+        right_layout.setSpacing(5)
+        grp_scene = QtWidgets.QGroupBox('Scene setup')
+        grp_scene_layout = QtWidgets.QGridLayout()
+        grp_scene_layout.setColumnStretch(1, 1)
+        grp_scene_layout.setColumnStretch(2, 2)
+        grp_scene_layout.setContentsMargins(4, 4, 4, 4)
+        grp_scene_layout.setVerticalSpacing(5)
         grp_export = QtWidgets.QGroupBox('Export settings')
         grp_export_layout = QtWidgets.QVBoxLayout()
+        grp_export_layout.setContentsMargins(4, 4, 4, 4)
+        grp_export_fields_layout = QtWidgets.QGridLayout()
+        grp_export_fields_layout.setVerticalSpacing(5)
+        grp_export_fields_layout.setHorizontalSpacing(4)
 
         for grp in [grp_scene, grp_mats, grp_anims, grp_export]:
             grp.setMinimumWidth(250)
-            grp.setFont(QtGui.QFont('SansSerif', 8, QtGui.QFont.Bold))
+            # grp.setFont(QtGui.QFont('SansSerif', 8, QtGui.QFont.Bold))
 
         # add controls
         self.setLayout(main_layout)
         main_layout.addLayout(left_layout)
         main_layout.addLayout(right_layout)
 
-        left_layout.addWidget(grp_scene)
+        left_layout.addWidget(grp_mats)
+        grp_mats.setLayout(grp_mats_layout)
+        grp_mats_layout.addWidget(self.list_materials)
+        grp_mats_layout.addLayout(grp_mats_button_layout)
+        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
+        grp_mats_button_layout.addWidget(self.btn_mat_edit)
+        grp_mats_button_layout.addWidget(self.btn_mat_create)
+
+        left_layout.addWidget(grp_anims)
+        grp_anims.setLayout(grp_anims_layout)
+        grp_anims_layout.addWidget(self.list_animations)
+        grp_anims_layout.addLayout(grp_anims_button_layout)
+        grp_anims_button_layout.addWidget(self.btn_anim_refresh)
+        grp_anims_button_layout.addWidget(self.btn_anim_edit)
+        grp_anims_button_layout.addWidget(self.btn_anim_create)
+
+        right_layout.addWidget(grp_scene)
         grp_scene.setLayout(grp_scene_layout)
         grp_scene_layout.addWidget(lbl_engine, 1, 1)
         grp_scene_layout.addWidget(self.setup_engine, 1, 2)
         grp_scene_layout.addWidget(lbl_fps, 2, 1)
         grp_scene_layout.addWidget(self.setup_fps, 2, 2)
 
-        left_layout.addWidget(grp_mats)
-        grp_mats.setLayout(grp_mats_layout)
-        grp_mats_layout.addWidget(self.list_materials)
-        grp_mats_layout.addLayout(grp_mats_button_layout)
-        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
-        grp_mats_button_layout.addWidget(self.btn_mat_create)
-
-        left_layout.addWidget(grp_anims)
-        grp_anims.setLayout(grp_anims_layout)
-        grp_anims_layout.addWidget(self.list_animations)
-        grp_anims_layout.addWidget(self.btn_anim_refresh)
-
         right_layout.addWidget(grp_export)
         grp_export.setLayout(grp_export_layout)
-        grp_export_layout.addWidget(lbl_exportwip)
+        grp_export_layout.addWidget(self.chk_mesh)
+        grp_export_layout.addWidget(self.chk_skel)
+        grp_export_layout.addWidget(self.chk_anim)
+        grp_export_layout.addWidget(h_line())
+        grp_export_layout.addWidget(self.chk_merge_vtx)
+        grp_export_layout.addWidget(self.chk_merge_obj)
+        grp_export_layout.addWidget(h_line())
+        grp_export_layout.addWidget(self.chk_create)
+        grp_export_layout.addWidget(self.chk_preview)
+        grp_export_layout.addWidget(h_line())
+        grp_export_layout.addLayout(grp_export_fields_layout)
+        grp_export_fields_layout.addWidget(lbl_path, 1, 1)
+        grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
+        grp_export_fields_layout.addWidget(self.btn_path, 1, 3)
+        grp_export_fields_layout.addWidget(lbl_file, 2, 1)
+        grp_export_fields_layout.addWidget(self.txt_file, 2, 2, 1, 2)
+        grp_export_layout.addWidget(self.btn_export)
 
     def connect_signals(self):
         pass
