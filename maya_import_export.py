@@ -24,6 +24,15 @@ except:
 
 
 """ ================================================================================================
+    Variables.
+====================================================================================================
+"""
+
+PDX_SHADER = 'shader'
+PDX_IGNOREJOINT = 'pdxIgnoreJoint'
+
+
+""" ================================================================================================
     Functions.
 ====================================================================================================
 """
@@ -59,13 +68,18 @@ def create_filetexture(tex_filepath):
     return newFile, new2dTex
 
 
+def list_scene_materials():
+    # TODO:
+    pass
+
+
 def create_shader(shader_name, PDX_material, texture_dir):
     new_shader = pmc.shadingNode('phong', asShader=True, name=shader_name)
     new_shadinggroup = pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{}_SG'.format(shader_name))
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
 
     # TODO: should be an enum datatype, need to parse the possible engine/material combinations from clausewitz.json
-    pmc.addAttr(longName='shader', dataType='string')
+    pmc.addAttr(longName=PDX_SHADER, attributeType='string')
     new_shader.shader.set(PDX_material.shader)
 
     if getattr(PDX_material, 'diff', None):
@@ -119,6 +133,17 @@ def create_locator(PDX_locator):
     # rotation
     m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
     # TODO: parent locator to bones??
+
+
+def set_ignore_joints(do_ignore):
+    joint_list = pmc.selected(type='joint')
+
+    for joint in joint_list:
+        try:
+            joint.pdxIgnoreJoint.set(do_ignore)
+        except:
+            pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
+            joint.pdxIgnoreJoint.set(do_ignore)
 
 
 def create_skeleton(PDX_bone_list):
@@ -347,8 +372,3 @@ def import_file(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
             create_locator(pdx_locator)
-
-
-# read the data
-# filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\fallen_empire_large_warship.mesh"
-filepath = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\archipelago_frigate.mesh"
