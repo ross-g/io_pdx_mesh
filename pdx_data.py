@@ -4,9 +4,12 @@
     author : ross-g
 """
 
+from __future__ import print_function
+
 import os
 import sys
 import struct
+
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -37,8 +40,8 @@ class PDXData(object):
 
     def __str__(self):
         string = list()
-        for k, v in self.__dict__.iteritems():
-            string.append('{}: {}'.format(k, v))
+        for k in self.__dict__.keys():
+            string.append('{}: {}'.format(k, self.__dict__[k]))
         return '\n'.join(string)
 
 
@@ -65,7 +68,7 @@ def parseBinary(bdata):
                 objdepth = 0
             prop_name, prop_values, pos = parseProperty(bdata, pos)
             parent = obj_list[objdepth][-1]
-            print "  "*objdepth+"  property:", prop_name, "("+parent+")", "\n", prop_values
+            print("  "*objdepth+"  property:", prop_name, "("+parent+")", "\n", prop_values)
 
         elif struct.unpack('c', bdata[pos])[0] == '[':
             # we have an object
@@ -75,7 +78,7 @@ def parseBinary(bdata):
             else:
                 obj_list.append([obj_name])
             parent = obj_list[objdepth-1][-1]
-            print "  "*objdepth+"object:", obj_name, "("+parent+")"
+            print("  "*objdepth+"object:", obj_name, "("+parent+")")
 
         else:
             raise NotImplementedError("Unknown object encountered.")
@@ -208,7 +211,7 @@ def read_meshfile(filepath, to_stdout=False):
     if fdata[:4] == '@@b@':
         pos = 4
     else:
-        raise StandardError("Unknown file header")
+        raise NotImplementedError("Unknown file header")
 
     parent_element = file_element
     depth_list = [file_element]
@@ -221,7 +224,7 @@ def read_meshfile(filepath, to_stdout=False):
             # check the property type and values
             prop_name, prop_values, pos = parseProperty(fdata, pos)
             if to_stdout:
-                print "  "*current_depth+"  ", prop_name, " (count", len(prop_values), ")"
+                print("  "*current_depth+"  ", prop_name, " (count", len(prop_values), ")")
 
             # assign property values to the parent object
             parent_element.set(prop_name, prop_values)
@@ -231,7 +234,7 @@ def read_meshfile(filepath, to_stdout=False):
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
             if to_stdout:
-                print "  "*depth, obj_name, depth
+                print("  "*depth, obj_name, depth)
 
             # deeper branch of the tree => current parent valid
             # same or shallower branch of the tree => parent gets redefined back a level
