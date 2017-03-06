@@ -40,8 +40,8 @@ class PDXData(object):
 
     def __str__(self):
         string = list()
-        for k in self.__dict__.keys():
-            string.append('{}: {}'.format(k, self.__dict__[k]))
+        for k, v in self.__dict__.iteritems():
+            string.append('{}: {}'.format(k, v))
         return '\n'.join(string)
 
 
@@ -51,45 +51,12 @@ class PDXData(object):
 """
 
 
-def parseBinary(bdata):
-    # determine the file length
-    eof = len(bdata)
-
-    # set initial position in file to skip '@@b@'
-    pos = 4
-    objdepth = 0
-
-    # scan through until EOF
-    obj_list = [['file']]
-    while pos < eof:
-        if struct.unpack('c', bdata[pos])[0] == '!':
-            # we have a property
-            if objdepth is None:
-                objdepth = 0
-            prop_name, prop_values, pos = parseProperty(bdata, pos)
-            parent = obj_list[objdepth][-1]
-            print("  "*objdepth+"  property:", prop_name, "("+parent+")", "\n", prop_values)
-
-        elif struct.unpack('c', bdata[pos])[0] == '[':
-            # we have an object
-            obj_name, objdepth, pos = parseObject(bdata, pos)
-            if len(obj_list) == objdepth + 1:
-                obj_list[objdepth].append(obj_name)
-            else:
-                obj_list.append([obj_name])
-            parent = obj_list[objdepth-1][-1]
-            print("  "*objdepth+"object:", obj_name, "("+parent+")")
-
-        else:
-            raise NotImplementedError("Unknown object encountered.")
-
-
 def parseProperty(bdata, pos):
     # starting at '!'
     pos += 1
 
     # get length of property name
-    prop_name_length = struct.unpack('b', bdata[pos])[0]
+    prop_name_length = struct.unpack_from('b', bdata, offset=pos)[0]
     pos += 1
 
     # get property name as string
@@ -105,15 +72,15 @@ def parseProperty(bdata, pos):
 def parseObject(bdata, pos):
     # skip and record any repeated '[' characters
     objdepth = 0
-    while struct.unpack('c', bdata[pos])[0] == '[':
+    while struct.unpack_from('c', bdata, offset=pos)[0].decode() == '[':
         objdepth += 1
         pos += 1
 
     # get object name as string
     obj_name = ''
     # we don't know the string length, so look for an ending byte of zero
-    while struct.unpack('b', bdata[pos])[0] != 0:
-        obj_name += struct.unpack('c', bdata[pos])[0]
+    while struct.unpack_from('b', bdata, offset=pos)[0] != 0:
+        obj_name += struct.unpack_from('c', bdata, offset=pos)[0].decode()
         pos += 1
     
     # skip the ending zero byte
@@ -123,31 +90,31 @@ def parseObject(bdata, pos):
 
 
 def parseString(bdata, pos, length):
-    string = struct.unpack('c'*length, bdata[pos:pos+length])
+    string = struct.unpack_from('c'*length, bdata, offset=pos)
 
     # check if the ending byte is zero and remove if so
     if string[-1] == chr(0):
         string = string[:-1]
 
-    return ''.join(string)
+    return b''.join(string).decode()
 
 
 def parseData(bdata, pos):
     datavalues = []
     # determine the  data type
-    datatype = struct.unpack('c', bdata[pos])[0]
+    datatype = struct.unpack_from('c', bdata, offset=pos)[0].decode()
 
     if datatype == 'i':
         # handle integer data
         pos += 1
 
         # count
-        size = struct.unpack('i', bdata[pos:pos+4])[0]
+        size = struct.unpack_from('i', bdata, offset=pos)[0]
         pos += 4
 
         # values
         for i in range(0, size):
-            val = struct.unpack('i', bdata[pos:pos+4])[0]
+            val = struct.unpack_from('i', bdata, offset=pos)[0]
             datavalues.append(val)
             pos += 4
 
@@ -156,12 +123,12 @@ def parseData(bdata, pos):
         pos += 1
 
         # count
-        size = struct.unpack('i', bdata[pos:pos+4])[0]
+        size = struct.unpack_from('i', bdata, offset=pos)[0]
         pos += 4
         
         # values
         for i in range(0, size):
-            val = struct.unpack('f', bdata[pos:pos+4])[0]
+            val = struct.unpack_from('f', bdata, offset=pos)[0]
             datavalues.append(val)
             pos += 4
 
@@ -170,12 +137,12 @@ def parseData(bdata, pos):
         pos += 1
 
         # count
-        size = struct.unpack('i', bdata[pos:pos+4])[0]
+        size = struct.unpack_from('i', bdata, offset=pos)[0]
         # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
         pos += 4
 
         # string length
-        str_data_length = struct.unpack('i', bdata[pos:pos+4])[0]
+        str_data_length = struct.unpack_from('i', bdata, offset=pos)[0]
         pos += 4
 
         # value
@@ -205,10 +172,13 @@ def read_meshfile(filepath, to_stdout=False):
         path=os.path.split(filepath)[0]
     )
 
-    # determine the file length
+    # determine the file length and set initial file read position
     eof = len(fdata)
-    # set position in file to skip '@@b@'
-    if fdata[:4] == '@@b@':
+    pos = 0
+
+    # read the file header '@@b@'
+    header = struct.unpack_from('c'*4, fdata, pos)
+    if bytes(b''.join(header)) == b'@@b@':
         pos = 4
     else:
         raise NotImplementedError("Unknown file header")
@@ -220,7 +190,7 @@ def read_meshfile(filepath, to_stdout=False):
     # parse through until EOF
     while pos < eof:
         # we have a property
-        if struct.unpack('c', fdata[pos])[0] == '!':
+        if struct.unpack_from('c', fdata, offset=pos)[0].decode() == '!':
             # check the property type and values
             prop_name, prop_values, pos = parseProperty(fdata, pos)
             if to_stdout:
@@ -230,7 +200,7 @@ def read_meshfile(filepath, to_stdout=False):
             parent_element.set(prop_name, prop_values)
 
         # we have an object
-        elif struct.unpack('c', fdata[pos])[0] == '[':
+        elif struct.unpack_from('c', fdata, offset=pos)[0].decode() == '[':
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
             if to_stdout:
@@ -270,7 +240,7 @@ if __name__ == '__main__':
     """
     clear = lambda: os.system('cls')
     clear()
-    a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\archipelago_frigate.mesh"
+    a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\fallen_empire_large_warship.mesh"
 
     if len(sys.argv) > 1:
         a_file = sys.argv[1]
