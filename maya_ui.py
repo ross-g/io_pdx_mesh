@@ -41,10 +41,14 @@ def h_line():
 ====================================================================================================
 """
 
+
 class PDXmaya_ui(QtWidgets.QDialog):
     """
         Main tool window.
     """
+    _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+    _settings_file = os.path.join(_script_dir, 'clausewitz.json')
+
     def __init__(self, parent=None):
         # parent to the Maya main window.
         if not parent:
@@ -103,11 +107,11 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         # tools menu
         tool_edit_settings = QtWidgets.QAction('Edit Clausewitz settings', self)
-        tool_edit_settings.setDisabled(True)
+        tool_edit_settings.triggered.connect(lambda: os.system(self._settings_file))
         tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
-        tool_ignore_joints.setDisabled(True)
+        tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
-        tool_unignore_joints.setDisabled(True)
+        tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
 
         # help menu
         help_forum = QtWidgets.QAction('Paradox forums', self)
@@ -164,12 +168,19 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.popup.show()
 
     def load_settings(self):
-        script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-
-        settings_file = os.path.join(script_dir, 'clausewitz.json')
-        with open(settings_file, 'rt') as f:
-            settings = json.load(f)
-            return settings
+        with open(self._settings_file, 'rt') as f:
+            try:
+                settings = json.load(f)
+                return settings
+            except Exception as err:
+                QtGui.QMessageBox.critical(self, 'Warning',
+                                           'Your "clausewitz.json" settings file has errors and is unreadable.\n'
+                                           'Check the Maya script output for details.\n\n'
+                                           'Some functions of the tool will not work without these settings.',
+                                           QtGui.QMessageBox.Ok, defaultButton=QtGui.QMessageBox.Ok)
+                print "[io_pdx_mesh] Critical error."
+                print err
+                return {}
 
 
 class import_popup(QtWidgets.QWidget):
@@ -223,7 +234,7 @@ class import_popup(QtWidgets.QWidget):
 
         try:
             import_file(self.mesh_file, imp_mesh=self.chk_mesh, imp_skel=self.chk_skeleton, imp_locs=self.chk_locators)
-        except Exception, err:
+        except Exception as err:
             print "[io_pdx_mesh] Failed to import {}.".format(self.mesh_file)
             print err
             raise
@@ -366,7 +377,26 @@ class export_controls(QtWidgets.QWidget):
         grp_export_layout.addWidget(self.btn_export)
 
     def connect_signals(self):
-        pass
+        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
+        self.list_materials.itemClicked.connect(self.select_mat)
+
+    def refresh_mat_list(self):
+        self.list_materials.clearSelection()
+        self.list_materials.clear()
+        pdx_scenemats = [mat.name() for mat in list_scene_materials() if mat.hasAttr(PDX_SHADER)]
+
+        for mat in pdx_scenemats:
+            list_item = QtGui.QListWidgetItem()
+            list_item.setText(mat)
+            self.list_materials.insertItem(self.list_materials.count(), list_item)
+
+        self.list_materials.sortItems()
+
+    def select_mat(self, curr_sel):
+        try:
+            pmc.select(curr_sel.text())
+        except:
+            self.on_ListRefresh()
 
 
 """ ================================================================================================
