@@ -48,5 +48,5 @@ Temporary Items
 
 # =========================
 # Project specific ignores
-test*
-*.pyc
+test files/
+.pyc
