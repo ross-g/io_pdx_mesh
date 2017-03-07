@@ -46,7 +46,7 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# =========================
-# Project specific ignores
-test*
-*.pyc
+# ========================= 
+# Project specific ignores 
+test files/
+.pyc
