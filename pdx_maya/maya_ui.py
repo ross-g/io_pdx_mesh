@@ -47,7 +47,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         Main tool window.
     """
     _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-    _settings_file = os.path.join(_script_dir, 'clausewitz.json')
+    _settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
 
     def __init__(self, parent=None):
         # parent to the Maya main window.
@@ -404,7 +404,9 @@ class export_controls(QtWidgets.QWidget):
 ====================================================================================================
 """
 
+
 def main():
+    print "[io_pdx_mesh] Launching Maya UI."
     global pdx_tools
 
     try:

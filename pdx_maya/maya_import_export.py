@@ -4,7 +4,7 @@
     author : ross-g
 """
 
-import os, sys
+import os
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -15,12 +15,7 @@ import pymel.core as pmc
 import pymel.core.datatypes as pmdt
 import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
 
-sys.path.append(r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh")
-try:
-    import pdx_data
-    reload(pdx_data)
-except:
-    import pdx_data
+from io_pdx_mesh import pdx_data
 
 
 """ ================================================================================================
