@@ -7,6 +7,8 @@
 import os
 import sys
 import struct
+import inspect
+
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -48,39 +50,6 @@ class PDXData(object):
 """
 
 
-def parseBinary(bdata):
-    # determine the file length
-    eof = len(bdata)
-
-    # set initial position in file to skip '@@b@'
-    pos = 4
-    objdepth = 0
-
-    # scan through until EOF
-    obj_list = [['file']]
-    while pos < eof:
-        if struct.unpack('c', bdata[pos])[0] == '!':
-            # we have a property
-            if objdepth is None:
-                objdepth = 0
-            prop_name, prop_values, pos = parseProperty(bdata, pos)
-            parent = obj_list[objdepth][-1]
-            print "  "*objdepth+"  property:", prop_name, "("+parent+")", "\n", prop_values
-
-        elif struct.unpack('c', bdata[pos])[0] == '[':
-            # we have an object
-            obj_name, objdepth, pos = parseObject(bdata, pos)
-            if len(obj_list) == objdepth + 1:
-                obj_list[objdepth].append(obj_name)
-            else:
-                obj_list.append([obj_name])
-            parent = obj_list[objdepth-1][-1]
-            print "  "*objdepth+"object:", obj_name, "("+parent+")"
-
-        else:
-            raise NotImplementedError("Unknown object encountered.")
-
-
 def parseProperty(bdata, pos):
     # starting at '!'
     pos += 1
@@ -96,7 +65,7 @@ def parseProperty(bdata, pos):
     # get property data
     prop_values, pos = parseData(bdata, pos)
 
-    return (prop_name, prop_values, pos)
+    return prop_name, prop_values, pos
 
 
 def parseObject(bdata, pos):
@@ -116,7 +85,7 @@ def parseObject(bdata, pos):
     # skip the ending zero byte
     pos += 1
 
-    return (obj_name, objdepth, pos)
+    return obj_name, objdepth, pos
 
 
 def parseString(bdata, pos, length):
@@ -183,13 +152,13 @@ def parseData(bdata, pos):
     else:
         raise NotImplementedError("Unknown data type encountered.")
 
-    return (datavalues, pos)
+    return datavalues, pos
 
 
 def read_meshfile(filepath, to_stdout=False):
     """
-        Reads through a .mesh file and gathers all the data into hierarchical element structure
-        The resulting XML is not natively writable to string as it contains Python lists
+        Reads through a .mesh file and gathers all the data into hierarchical element structure.
+        The resulting XML is not natively writable to string as it contains Python data types.
     """
     # read the data
     with open(filepath, 'rb') as fp:
@@ -208,7 +177,7 @@ def read_meshfile(filepath, to_stdout=False):
     if fdata[:4] == '@@b@':
         pos = 4
     else:
-        raise StandardError("Unknown file header")
+        raise NotImplementedError("Unknown file header.")
 
     parent_element = file_element
     depth_list = [file_element]
@@ -256,6 +225,194 @@ def read_meshfile(filepath, to_stdout=False):
 
 
 """ ================================================================================================
+    Functions for writing XML tree to binary data.
+====================================================================================================
+"""
+
+
+def writeProperty(prop_name, prop_data):
+    datastring = b''
+
+    # write starting '!'
+    datastring += struct.pack('c', '!')
+
+    # write length of property name
+    prop_name_length = len(prop_name)
+    datastring += struct.pack('b', prop_name_length)
+
+    # write property name as string
+    datastring += writeString(prop_name)
+
+    # write property data
+    datastring += writeData(prop_data)
+
+    return datastring
+
+
+def writeObject(obj_xml, obj_depth):
+    datastring = b''
+
+    # write object hierarchy depth
+    datastring += struct.pack('c'*obj_depth, *'['*obj_depth)
+
+    # write object name as string
+    obj_name = obj_xml.tag
+    datastring += writeString(obj_name)
+    # write ending zero byte
+    datastring += struct.pack('b', 0)
+
+    return datastring
+
+
+def writeString(string):
+    datastring = b''
+
+    datastring += struct.pack('c'*len(string), *string)
+
+    # TODO: pad the string with zero bytes to boundary?
+    # write ending zero byte
+    # datastring += struct.pack('b', 0)
+
+    return datastring
+
+
+def writeData(data_array):
+    datastring = b''
+
+    # determine the data type in the array
+    types = set([type(d) for d in data_array])
+    if len(types) == 1:
+        datatype = types.pop()
+    else:
+        raise NotImplementedError("Mixed data type encountered.")
+
+    if datatype == int:
+        # write the data type
+        datastring += struct.pack('c', 'i')
+
+        # write the data count
+        size = len(data_array)
+        datastring += struct.pack('i', size)
+
+        # write the data values
+        datastring += struct.pack('i'*size, *data_array)
+
+    elif datatype == float:
+        datastring += struct.pack('c', 'f')
+
+        # count
+        size = len(data_array)
+        datastring += struct.pack('i', size)
+
+        # values
+        datastring += struct.pack('f'*size, *data_array)
+
+    elif datatype == str:
+        datastring += struct.pack('c', 's')
+
+        # data count
+        size = 1
+        # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
+        datastring += struct.pack('i', size)
+
+        # string length
+        str_data_length = len(data_array[0])
+        datastring += struct.pack('i', str_data_length)
+
+        # values
+        datastring += struct.pack('c'*str_data_length, *data_array[0])
+
+    else:
+        raise NotImplementedError("Unknown data type encountered.")
+
+    return datastring
+
+
+def write_meshfile(filepath, root_xml):
+    """
+        Iterates over an XML element and writes the hierarchical element structure to binary file.
+    """
+    datastring = b''
+
+    # write the file header '@@b@'
+    header = '@@b@'
+    datastring += struct.pack('c'*len(header), *header)
+
+    # write the file properties
+    if root_xml.tag == 'File':
+        datastring += writeProperty('pdxasset', root_xml.get('pdxasset'))
+    else:
+        raise NotImplementedError("Unknown XML root encountered.")
+
+    # TODO: writing properties would be easier if order was irrelevant, you should test this
+
+    # write objects root
+    object_xml = root_xml.find('object')
+    if object_xml:
+        current_depth = 1
+        datastring += writeObject(object_xml, current_depth)
+
+        # write each shape node
+        for child_xml in object_xml:
+            current_depth = 2
+            datastring += writeObject(child_xml, current_depth)
+
+            # write each mesh
+            for mesh_xml in child_xml.findall('mesh'):
+                current_depth = 3
+                datastring += writeObject(mesh_xml, current_depth)
+
+                # write mesh properties
+                for prop in ['p', 'n', 'ta', 'u0', 'tri']:
+                    if mesh_xml.get(prop) is not None:
+                        datastring += writeProperty(prop, mesh_xml.get(prop))
+
+                # write mesh sub-objects
+                aabb_xml = mesh_xml.find('aabb')
+                if aabb_xml is not None:
+                    current_depth = 4
+                    datastring += writeObject(aabb_xml, current_depth)
+                    for prop in ['min', 'max']:
+                        if aabb_xml.get(prop) is not None:
+                            datastring += writeProperty(prop, aabb_xml.get(prop))
+
+                material_xml = mesh_xml.find('material')
+                if material_xml is not None:
+                    current_depth = 4
+                    datastring += writeObject(material_xml, current_depth)
+                    for prop in ['shader', 'diff', 'n', 'spec']:
+                        if material_xml.get(prop) is not None:
+                            datastring += writeProperty(prop, material_xml.get(prop))
+
+                skin_xml = mesh_xml.find('skin')
+                if skin_xml is not None:
+                    current_depth = 4
+                    datastring += writeObject(skin_xml, current_depth)
+                    for prop in ['bones', 'ix', 'w']:
+                        if skin_xml.get(prop) is not None:
+                            datastring += writeProperty(prop, skin_xml.get(prop))
+
+    # write locators root
+    locator_xml = root_xml.find('locator')
+    if locator_xml:
+        current_depth = 1
+        datastring += writeObject(locator_xml, current_depth)
+
+        # write each locator
+        for child_xml in locator_xml:
+            current_depth = 2
+            datastring += writeObject(child_xml, current_depth)
+
+            # write locator properties
+            for prop in ['p', 'q', 'pa']:
+                datastring += writeProperty(prop, child_xml.get(prop))
+
+    # write the data
+    with open(filepath, 'wb') as fp:
+        fp.write(datastring)
+
+
+""" ================================================================================================
     Main.
 ====================================================================================================
 """
@@ -267,12 +424,21 @@ if __name__ == '__main__':
     """
     clear = lambda: os.system('cls')
     clear()
-    a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\archipelago_frigate.mesh"
+    _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+    a_file = os.path.join(_script_dir, 'test files', 'archipelago_frigate.mesh')
 
     if len(sys.argv) > 1:
         a_file = sys.argv[1]
 
-    data = read_meshfile(a_file, to_stdout=True)
+    data = read_meshfile(a_file)
+    
+    for elem in data.iter():
+        print 'object', elem.tag
+        for k, v in elem.items():
+            print '    property', k, type(v)
+
+    b_file = os.path.join(_script_dir, 'test files', 'test_write.mesh')
+    write_meshfile(b_file, data)
 
 
 """
