@@ -64,8 +64,7 @@ def create_filetexture(tex_filepath):
 
 
 def list_scene_materials():
-    # TODO:
-    pass
+    return [mat for mat in pmc.ls(materials=True)]
 
 
 def create_shader(shader_name, PDX_material, texture_dir):
@@ -73,8 +72,9 @@ def create_shader(shader_name, PDX_material, texture_dir):
     new_shadinggroup = pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{}_SG'.format(shader_name))
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
 
-    # TODO: should be an enum datatype, need to parse the possible engine/material combinations from clausewitz.json
-    pmc.addAttr(longName=PDX_SHADER, attributeType='string')
+    # TODO: should this be an enum attribute type?
+    # would need to parse the possible engine/material combinations from clausewitz.json
+    pmc.addAttr(longName=PDX_SHADER, dataType='string')
     new_shader.shader.set(PDX_material.shader)
 
     if getattr(PDX_material, 'diff', None):
@@ -100,7 +100,7 @@ def create_shader(shader_name, PDX_material, texture_dir):
 
 
 def create_material(PDX_material, mesh, texture_path):
-    shader_name = 'PDXPhong_' + mesh.name()
+    shader_name = 'PDXphong_' + mesh.name()
     shader, s_group = create_shader(shader_name, PDX_material, texture_path)
 
     pmc.select(mesh)
@@ -108,11 +108,26 @@ def create_material(PDX_material, mesh, texture_path):
     pmc.hyperShade(assign=s_group)
 
 
+def set_local_axis_display(state, object_list=None):
+    if object_list is None:
+        object_list = [pmc.listRelatives(loc, parent=True)[0] for loc in pmc.ls(type='locator')]
+
+    for obj in object_list:
+        obj.displayLocalAxis.set(state)
+
+
 def create_locator(PDX_locator):
     # create locator
     new_loc = pmc.spaceLocator()
     pmc.select(new_loc)
     pmc.rename(new_loc, PDX_locator.name)
+
+    # parent locator
+    parent = getattr(PDX_locator, 'pa', None)
+    if parent is not None:
+        parent_bone = pmc.ls(parent[0], type='joint')
+        if parent_bone:
+            pmc.parent(new_loc, parent_bone)
 
     # set attributes
     obj = OpenMaya.MObject()
@@ -130,15 +145,15 @@ def create_locator(PDX_locator):
     # TODO: parent locator to bones??
 
 
-def set_ignore_joints(do_ignore):
+def set_ignore_joints(state):
     joint_list = pmc.selected(type='joint')
 
     for joint in joint_list:
         try:
-            joint.pdxIgnoreJoint.set(do_ignore)
+            joint.pdxIgnoreJoint.set(state)
         except:
             pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
-            joint.pdxIgnoreJoint.set(do_ignore)
+            joint.pdxIgnoreJoint.set(state)
 
 
 def create_skeleton(PDX_bone_list):
@@ -151,11 +166,17 @@ def create_skeleton(PDX_bone_list):
         transform = bone.tx
         parent = getattr(bone, 'pa', None)
 
+        # determine bone name
+        valid_name = bone.name.split(':')[-1]
+        namespace = bone.name.split(':')[:-1]  # TODO: setup namespaces properly
+        if pmc.ls(valid_name, type='joint'):
+            bone_list[index] = pmc.PyNode(valid_name)
+            continue    # bone already exists, likely the skeleton is already built, so collect and return joints
+
         # create joint
         new_bone = pmc.joint()
         pmc.select(new_bone)
-        valid_name = bone.name.split(':')[-1]
-        pmc.rename(new_bone, valid_name)     # TODO: setup namespaces properly?
+        pmc.rename(new_bone, valid_name)
         pmc.parent(new_bone, world=True)
         bone_list[index] = new_bone
         new_bone.radius.set(0.5)
@@ -198,15 +219,17 @@ def create_skin(PDX_skin, mesh, skeleton):
 
     # create skin cluster
     skin_cluster = pmc.skinCluster(bindMethod=0, skinMethod=0, normalizeWeights=1, forceNormalizeWeights=True, 
-                                   maximumInfluences=num_infs, obeyMaxInfluences=True, 
-                                   name='sc_{}'.format(mesh.name()))
+                                   maximumInfluences=num_infs, obeyMaxInfluences=True)
 
     # set skin weights
     for v in xrange(len(skin_dict.keys())):
         joints = [skeleton[j] for j in skin_dict[v]['joints']]
         weights = skin_dict[v]['weights']
         # normalise joint weights
-        norm_weights = [float(w)/sum(weights) for w in weights]
+        try:
+            norm_weights = [float(w)/sum(weights) for w in weights]
+        except:
+            norm_weights = weights
         # strip zero weight entries
         joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
 
@@ -214,10 +237,9 @@ def create_skin(PDX_skin, mesh, skeleton):
                         transformValue=joint_weights, normalize=True)
 
 
-def create_mesh(PDX_mesh):
-    # name and namespace
-    mesh_name = PDX_mesh.name.split(':')[-1]        # TODO: check for identical mesh names, this just means material will be different
-    namespaces = PDX_mesh.name.split(':')[:-1]      # TODO: setup namespaces properly
+def create_mesh(PDX_mesh, name=None):
+    # temporary name used during creation
+    tmp_mesh_name = 'io_pdx_mesh'
 
     # vertices
     verts = PDX_mesh.p      # flat list of co-ordinates, verts[:2] = vtx[0]
@@ -278,10 +300,19 @@ def create_mesh(PDX_mesh):
     """ ================================================================================================================
         create the new mesh """
     m_FnMesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
-    m_FnMesh.setName(mesh_name)
+    m_FnMesh.setName(tmp_mesh_name)
     m_DagMod.doIt()     # sets up the transform parent to the mesh shape
+
     # PyNode for the mesh
-    new_mesh = pmc.PyNode(mesh_name)
+    new_mesh = pmc.PyNode(tmp_mesh_name)
+    new_transform = pmc.listRelatives(new_mesh, parent=True)
+
+    # name and namespace
+    if name is not None:
+        mesh_name = name.split(':')[-1]
+        namespace = name.split(':')[:-1]      # TODO: setup namespaces properly
+
+        pmc.rename(new_mesh, mesh_name)
 
     # apply the vertex normal data
     if norms:
@@ -331,12 +362,13 @@ def import_file(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
     # go through shapes
     for node in shapes:
-        print "[io_pdx_mesh] \t{}.".format(node.tag)
+        print "[io_pdx_mesh] creating node - {}".format(node.tag)
 
-        # create the skeleton first, so we can skin to it
+        # create the skeleton first, so we can skin the mesh to it
         joints = None
         skeleton = node.find('skeleton')
         if imp_skel and skeleton:
+            print "[io_pdx_mesh] creating skeleton -"
             pdx_bone_list = list()
             for b in skeleton:
                 pdx_bone = pdx_data.PDXData(b)
@@ -347,23 +379,31 @@ def import_file(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         # then create all the meshes
         meshes = node.findall('mesh')
         if imp_mesh:
+            pdx_mesh_list = list()
             for m in meshes:
+                print "[io_pdx_mesh] creating mesh -"
                 pdx_mesh = pdx_data.PDXData(m)
-                pdx_material = getattr(pdx_mesh, 'material')
-                pdx_skin = getattr(pdx_mesh, 'skin')
+                pdx_material = getattr(pdx_mesh, 'material', None)
+                pdx_skin = getattr(pdx_mesh, 'skin', None)
 
                 # create the geometry
-                mesh = create_mesh(pdx_mesh)
-                # create the material
-                create_material(pdx_material, mesh, os.path.split(meshpath)[0])
+                mesh = create_mesh(pdx_mesh, name=node.tag)
+                pdx_mesh_list.append(mesh)
 
-                # and skin it
-                if joints:
-                    getattr(pdx_mesh, 'skin')
+                # create the material
+                if pdx_material:
+                    create_material(pdx_material, mesh, os.path.split(meshpath)[0])
+
+                # create the skin cluster
+                if joints and pdx_skin:
                     create_skin(pdx_skin, mesh, joints)
 
     # go through locators
     if imp_locs:
+        print "[io_pdx_mesh] creating locators -"
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
             create_locator(pdx_locator)
+
+    pmc.select()
+    print "[io_pdx_mesh] finished!"

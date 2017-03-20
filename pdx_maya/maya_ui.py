@@ -21,6 +21,8 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
+import maya_import_export
+reload(maya_import_export)
 from maya_import_export import *
 
 
@@ -93,6 +95,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.menubar = QtWidgets.QMenuBar()
         file_menu = self.menubar.addMenu('&File')
         tools_menu = self.menubar.addMenu('&Tools')
+        tools_menu.setTearOffEnabled(True)
         help_menu = self.menubar.addMenu('&Help')
 
         # file menu
@@ -112,6 +115,10 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
         tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
+        tool_show_localaxes = QtWidgets.QAction('Show all locator axes', self)
+        tool_show_localaxes.triggered.connect(lambda: set_local_axis_display(True))
+        tool_hide_localaxes = QtWidgets.QAction('Hide all locator axes', self)
+        tool_hide_localaxes.triggered.connect(lambda: set_local_axis_display(False))
 
         # help menu
         help_forum = QtWidgets.QAction('Paradox forums', self)
@@ -129,6 +136,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tools_menu.addActions([tool_edit_settings])
         tools_menu.addSeparator()
         tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
+        tools_menu.addSeparator()
+        tools_menu.addActions([tool_show_localaxes, tool_hide_localaxes])
         help_menu.addActions([help_forum, help_code])
 
     def create_controls(self):
@@ -191,6 +200,7 @@ class import_popup(QtWidgets.QWidget):
         topleft = pdx_tools.window().frameGeometry().topLeft()
         self.move(topleft + QtCore.QPoint(5, 50))
         self.mesh_file = filepath
+        self.parent = parent
 
         self.create_controls()
         self.connect_signals()
@@ -206,6 +216,7 @@ class import_popup(QtWidgets.QWidget):
         self.btn_import = QtWidgets.QPushButton('Import ...', self)
         self.btn_import.setToolTip('Select a .mesh file to import.')
         self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
+        self.prog_bar = QtWidgets.QProgressBar(self)
 
         # create layouts
         main_layout = QtWidgets.QVBoxLayout()
@@ -216,11 +227,13 @@ class import_popup(QtWidgets.QWidget):
         # add controls
         self.setLayout(main_layout)
         main_layout.addWidget(lbl_filepath)
-        main_layout.addSpacing(10)
+        main_layout.addSpacing(5)
         for chk_box in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
             opts_layout.addWidget(chk_box)
             chk_box.setChecked(True)
         main_layout.addLayout(opts_layout)
+        main_layout.addSpacing(10)
+        main_layout.addWidget(self.prog_bar)
         main_layout.addLayout(btn_layout)
         btn_layout.addWidget(self.btn_import)
         btn_layout.addWidget(self.btn_cancel)
@@ -230,13 +243,20 @@ class import_popup(QtWidgets.QWidget):
         self.btn_cancel.clicked.connect(self.close)
 
     def import_mesh(self):
-        print "[io_pdx_mesh] Importing {}.".format(self.mesh_file)
+        print "[io_pdx_mesh] Importing {}".format(self.mesh_file)
 
         try:
-            import_file(self.mesh_file, imp_mesh=self.chk_mesh, imp_skel=self.chk_skeleton, imp_locs=self.chk_locators)
+            import_file(self.mesh_file,
+                        imp_mesh=self.chk_mesh,
+                        imp_skel=self.chk_skeleton,
+                        imp_locs=self.chk_locators)
+            self.prog_bar.setValue(100)
+            self.close()
+
         except Exception as err:
-            print "[io_pdx_mesh] Failed to import {}.".format(self.mesh_file)
+            print "[io_pdx_mesh] Failed to import {}".format(self.mesh_file)
             print err
+            self.close()
             raise
 
         self.close()
@@ -383,7 +403,7 @@ class export_controls(QtWidgets.QWidget):
     def refresh_mat_list(self):
         self.list_materials.clearSelection()
         self.list_materials.clear()
-        pdx_scenemats = [mat.name() for mat in list_scene_materials() if mat.hasAttr(PDX_SHADER)]
+        pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
 
         for mat in pdx_scenemats:
             list_item = QtGui.QListWidgetItem()
@@ -396,7 +416,7 @@ class export_controls(QtWidgets.QWidget):
         try:
             pmc.select(curr_sel.text())
         except:
-            self.on_ListRefresh()
+            self.refresh_mat_list()
 
 
 """ ================================================================================================
