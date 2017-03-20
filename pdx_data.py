@@ -99,9 +99,10 @@ def parseString(bdata, pos, length):
 
 
 def parseData(bdata, pos):
-    datavalues = []
     # determine the  data type
     datatype = struct.unpack('c', bdata[pos])[0]
+    # TODO: use an array here instead of list for memory efficiency?
+    datavalues = []
 
     if datatype == 'i':
         # handle integer data
@@ -258,7 +259,7 @@ def writeObject(obj_xml, obj_depth):
     # write object name as string
     obj_name = obj_xml.tag
     datastring += writeString(obj_name)
-    # write ending zero byte
+    # write zero-byte ending
     datastring += struct.pack('b', 0)
 
     return datastring
@@ -270,7 +271,7 @@ def writeString(string):
     datastring += struct.pack('c'*len(string), *string)
 
     # TODO: pad the string with zero bytes to boundary?
-    # write ending zero byte
+    # write zero-byte ending
     # datastring += struct.pack('b', 0)
 
     return datastring
@@ -317,10 +318,14 @@ def writeData(data_array):
 
         # string length
         str_data_length = len(data_array[0])
-        datastring += struct.pack('i', str_data_length)
+        # TODO: why do we do this?
+        datastring += struct.pack('i', (str_data_length + 1))   # +1 to account for zero-byte ending
 
         # values
-        datastring += struct.pack('c'*str_data_length, *data_array[0])
+        # write zero-byte ending to string      # TODO: why do we do this?
+        datastring += struct.pack('c'*str_data_length+'x', *data_array[0])
+        # OR use
+        # datastring += struct.pack('b', 0)
 
     else:
         raise NotImplementedError("Unknown data type encountered.")
@@ -332,6 +337,7 @@ def write_meshfile(filepath, root_xml):
     """
         Iterates over an XML element and writes the hierarchical element structure to binary file.
     """
+    # TODO use https://pymotw.com/2/StringIO/index.html instead?
     datastring = b''
 
     # write the file header '@@b@'
@@ -345,7 +351,6 @@ def write_meshfile(filepath, root_xml):
         raise NotImplementedError("Unknown XML root encountered.")
 
     # TODO: writing properties would be easier if order was irrelevant, you should test this
-
     # write objects root
     object_xml = root_xml.find('object')
     if object_xml:
@@ -353,44 +358,55 @@ def write_meshfile(filepath, root_xml):
         datastring += writeObject(object_xml, current_depth)
 
         # write each shape node
-        for child_xml in object_xml:
+        for shape_xml in object_xml:
             current_depth = 2
-            datastring += writeObject(child_xml, current_depth)
+            datastring += writeObject(shape_xml, current_depth)
 
             # write each mesh
-            for mesh_xml in child_xml.findall('mesh'):
+            for child_xml in shape_xml:
                 current_depth = 3
-                datastring += writeObject(mesh_xml, current_depth)
+                datastring += writeObject(child_xml, current_depth)
 
-                # write mesh properties
-                for prop in ['p', 'n', 'ta', 'u0', 'tri']:
-                    if mesh_xml.get(prop) is not None:
-                        datastring += writeProperty(prop, mesh_xml.get(prop))
+                if child_xml.tag == 'mesh':
+                    mesh_xml = child_xml
+                    # write mesh properties
+                    for prop in ['p', 'n', 'ta', 'u0', 'u1', 'tri']:
+                        if mesh_xml.get(prop) is not None:
+                            datastring += writeProperty(prop, mesh_xml.get(prop))
 
-                # write mesh sub-objects
-                aabb_xml = mesh_xml.find('aabb')
-                if aabb_xml is not None:
-                    current_depth = 4
-                    datastring += writeObject(aabb_xml, current_depth)
-                    for prop in ['min', 'max']:
-                        if aabb_xml.get(prop) is not None:
-                            datastring += writeProperty(prop, aabb_xml.get(prop))
+                    # write mesh sub-objects
+                    aabb_xml = mesh_xml.find('aabb')
+                    if aabb_xml is not None:
+                        current_depth = 4
+                        datastring += writeObject(aabb_xml, current_depth)
+                        for prop in ['min', 'max']:
+                            if aabb_xml.get(prop) is not None:
+                                datastring += writeProperty(prop, aabb_xml.get(prop))
 
-                material_xml = mesh_xml.find('material')
-                if material_xml is not None:
-                    current_depth = 4
-                    datastring += writeObject(material_xml, current_depth)
-                    for prop in ['shader', 'diff', 'n', 'spec']:
-                        if material_xml.get(prop) is not None:
-                            datastring += writeProperty(prop, material_xml.get(prop))
+                    material_xml = mesh_xml.find('material')
+                    if material_xml is not None:
+                        current_depth = 4
+                        datastring += writeObject(material_xml, current_depth)
+                        for prop in ['shader', 'diff', 'n', 'spec']:
+                            if material_xml.get(prop) is not None:
+                                datastring += writeProperty(prop, material_xml.get(prop))
 
-                skin_xml = mesh_xml.find('skin')
-                if skin_xml is not None:
-                    current_depth = 4
-                    datastring += writeObject(skin_xml, current_depth)
-                    for prop in ['bones', 'ix', 'w']:
-                        if skin_xml.get(prop) is not None:
-                            datastring += writeProperty(prop, skin_xml.get(prop))
+                    skin_xml = mesh_xml.find('skin')
+                    if skin_xml is not None:
+                        current_depth = 4
+                        datastring += writeObject(skin_xml, current_depth)
+                        for prop in ['bones', 'ix', 'w']:
+                            if skin_xml.get(prop) is not None:
+                                datastring += writeProperty(prop, skin_xml.get(prop))
+
+                elif child_xml.tag == 'skeleton':
+                    # write bone sub objects and properties
+                    for bone_xml in child_xml:
+                        current_depth = 4
+                        datastring += writeObject(bone_xml, current_depth)
+                        for prop in ['ix', 'pa', 'tx']:
+                            if bone_xml.get(prop) is not None:
+                                datastring += writeProperty(prop, bone_xml.get(prop))
 
     # write locators root
     locator_xml = root_xml.find('locator')
@@ -399,13 +415,13 @@ def write_meshfile(filepath, root_xml):
         datastring += writeObject(locator_xml, current_depth)
 
         # write each locator
-        for child_xml in locator_xml:
+        for locnode_xml in locator_xml:
             current_depth = 2
-            datastring += writeObject(child_xml, current_depth)
+            datastring += writeObject(locnode_xml, current_depth)
 
             # write locator properties
             for prop in ['p', 'q', 'pa']:
-                datastring += writeProperty(prop, child_xml.get(prop))
+                datastring += writeProperty(prop, locnode_xml.get(prop))
 
     # write the data
     with open(filepath, 'wb') as fp:
@@ -432,10 +448,10 @@ if __name__ == '__main__':
 
     data = read_meshfile(a_file)
     
-    for elem in data.iter():
-        print 'object', elem.tag
-        for k, v in elem.items():
-            print '    property', k, type(v)
+    # for elem in data.iter():
+    #     print 'object', elem.tag
+    #     for k, v in elem.items():
+    #         print '    property', k, type(v)
 
     b_file = os.path.join(_script_dir, 'test files', 'test_write.mesh')
     write_meshfile(b_file, data)
