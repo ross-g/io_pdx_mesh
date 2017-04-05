@@ -142,7 +142,6 @@ def create_locator(PDX_locator):
     m_FnXform.setTranslation(vector, space)
     # rotation
     m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
-    # TODO: parent locator to bones??
 
 
 def set_ignore_joints(state):
@@ -199,29 +198,42 @@ def create_skeleton(PDX_bone_list):
     return bone_list
 
 
-def create_skin(PDX_skin, mesh, skeleton):
+def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
+    if max_infs is None:
+        max_infs = 4
+
     # create dictionary of skinning info per vertex
     skin_dict = dict()
 
     num_infs = PDX_skin.bones[0]
-    for vtx in xrange(0, len(PDX_skin.ix)/num_infs):
+    for vtx in xrange(0, len(PDX_skin.ix)/max_infs):
         skin_dict[vtx] = dict(joints=[], weights=[])
 
-    # gather joint index that each vert is skinned to
-    for vtx, j in enumerate(xrange(0, len(PDX_skin.ix), num_infs)):
+    # gather joint index and weighting that each vertex is skinned to
+    for vtx, j in enumerate(xrange(0, len(PDX_skin.ix), max_infs)):
         skin_dict[vtx]['joints'] = PDX_skin.ix[j:j+num_infs]
-    # gather skin weight for each joint in the vertex skin
-    for vtx, w in enumerate(xrange(0, len(PDX_skin.ix), num_infs)):
-        skin_dict[vtx]['weights'] = PDX_skin.w[w:w+num_infs]
-    
+        skin_dict[vtx]['weights'] = PDX_skin.w[j:j+num_infs]
+
     # select mesh and joints
-    pmc.select(mesh, skeleton)
+    pmc.select(skeleton, mesh)
 
-    # create skin cluster
-    skin_cluster = pmc.skinCluster(bindMethod=0, skinMethod=0, normalizeWeights=1, forceNormalizeWeights=True, 
-                                   maximumInfluences=num_infs, obeyMaxInfluences=True)
+    # create skin cluster and then prune all default skin weights
+    skin_cluster = pmc.skinCluster(bindMethod=0, skinMethod=0, normalizeWeights=0,
+                                   maximumInfluences=max_infs, obeyMaxInfluences=True)
+    pmc.skinPercent(skin_cluster, mesh, normalize=False, pruneWeights=100)
 
-    # set skin weights
+    # FIXME: this works for the AI portrait with single inf skins etc, but now breaks skinning on the ship (oars etc)
+    # # set skin weights from our dict
+    # for vtx in xrange(len(skin_dict.keys())):
+    #     joints = skin_dict[vtx]['joints']
+    #     weights = skin_dict[vtx]['weights']
+    #
+    #     for jnt, wt in zip(joints, weights):
+    #         # we shouldn't get unused influences, but just in case ignore joint index -1
+    #         if jnt != -1:
+    #             pmc.setAttr('{}.weightList[{}].weights[{}]'.format(skin_cluster, vtx, jnt), wt)
+
+    # OLD set skin weights
     for v in xrange(len(skin_dict.keys())):
         joints = [skeleton[j] for j in skin_dict[v]['joints']]
         weights = skin_dict[v]['weights']
@@ -235,6 +247,9 @@ def create_skin(PDX_skin, mesh, skeleton):
 
         pmc.skinPercent(skin_cluster, '{}.vtx[{}]'.format(mesh.name(), v),
                         transformValue=joint_weights, normalize=True)
+
+    # turn on skin weights normalization again
+    pmc.setAttr('{}.normalizeWeights'.format(skin_cluster), True)
 
 
 def create_mesh(PDX_mesh, name=None):
