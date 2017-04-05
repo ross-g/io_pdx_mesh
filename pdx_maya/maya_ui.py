@@ -6,6 +6,7 @@
 
 import os
 import sys
+import time
 import webbrowser
 import inspect
 import json
@@ -246,11 +247,17 @@ class import_popup(QtWidgets.QWidget):
         print "[io_pdx_mesh] Importing {}".format(self.mesh_file)
 
         try:
+            # TODO: thread import to unblock PyQt UI?
+            self.prog_bar.setRange(0, 0)
+            self.prog_bar.setValue(0)
+            time.sleep(1)
             import_file(self.mesh_file,
-                        imp_mesh=self.chk_mesh,
-                        imp_skel=self.chk_skeleton,
-                        imp_locs=self.chk_locators)
+                        imp_mesh=self.chk_mesh.isChecked(),
+                        imp_skel=self.chk_skeleton.isChecked(),
+                        imp_locs=self.chk_locators.isChecked())
+            self.prog_bar.setMaximum(100)
             self.prog_bar.setValue(100)
+            time.sleep(1)
             self.close()
 
         except Exception as err:
