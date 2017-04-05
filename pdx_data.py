@@ -318,14 +318,12 @@ def writeData(data_array):
 
         # string length
         str_data_length = len(data_array[0])
-        # TODO: why do we do this?
+        # TODO: why do we add one?
         datastring += struct.pack('i', (str_data_length + 1))   # +1 to account for zero-byte ending
 
         # values
-        # write zero-byte ending to string      # TODO: why do we do this?
-        datastring += struct.pack('c'*str_data_length+'x', *data_array[0])
-        # OR use
-        # datastring += struct.pack('b', 0)
+        # TODO: why do we have to write an ending zero byte?
+        datastring += struct.pack('c'*str_data_length+'x', *data_array[0])  # write zero-byte ending to string
 
     else:
         raise NotImplementedError("Unknown data type encountered.")
