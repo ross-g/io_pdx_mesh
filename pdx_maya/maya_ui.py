@@ -320,6 +320,24 @@ class export_controls(QtWidgets.QWidget):
         self.txt_file.setPlaceholderText('placeholder_name.mesh')
         self.btn_export = QtWidgets.QPushButton('Export ...', self)
 
+        # TODO: re-enable these once export is working
+        self.btn_mat_refresh.setDisabled(True)
+        self.btn_mat_edit.setDisabled(True)
+        self.btn_mat_create.setDisabled(True)
+        self.btn_anim_refresh.setDisabled(True)
+        self.btn_anim_edit.setDisabled(True)
+        self.btn_anim_create.setDisabled(True)
+        self.chk_mesh.setDisabled(True)
+        self.chk_skel.setDisabled(True)
+        self.chk_anim.setDisabled(True)
+        self.chk_merge_vtx.setDisabled(True)
+        self.chk_merge_obj.setDisabled(True)
+        self.chk_create.setDisabled(True)
+        self.chk_preview.setDisabled(True)
+        self.btn_path.setDisabled(True)
+        self.txt_file.setDisabled(True)
+        self.btn_export.setDisabled(True)
+
         # create layouts
         main_layout = QtWidgets.QHBoxLayout()
         main_layout.setSpacing(5)
