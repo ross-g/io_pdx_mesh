@@ -127,7 +127,7 @@ def create_locator(PDX_locator):
     if parent is not None:
         parent_bone = pmc.ls(parent[0], type='joint')
         if parent_bone:
-            pmc.parent(new_loc, parent_bone)
+            pmc.parent(new_loc, parent_bone[0])
 
     # set attributes
     obj = OpenMaya.MObject()
@@ -166,16 +166,20 @@ def create_skeleton(PDX_bone_list):
         parent = getattr(bone, 'pa', None)
 
         # determine bone name
-        valid_name = bone.name.split(':')[-1]
+        name = bone.name.split(':')[-1]
         namespace = bone.name.split(':')[:-1]  # TODO: setup namespaces properly
-        if pmc.ls(valid_name, type='joint'):
-            bone_list[index] = pmc.PyNode(valid_name)
+
+        # ensure bone name is unique
+        # Maya allows non-unique transform names (on leaf nodes) and handles them internally with | separators
+        unique_name = name.replace('|', '_')
+        if pmc.ls(unique_name, type='joint'):
+            bone_list[index] = pmc.PyNode(unique_name)
             continue    # bone already exists, likely the skeleton is already built, so collect and return joints
 
         # create joint
         new_bone = pmc.joint()
         pmc.select(new_bone)
-        pmc.rename(new_bone, valid_name)
+        pmc.rename(new_bone, unique_name)
         pmc.parent(new_bone, world=True)
         bone_list[index] = new_bone
         new_bone.radius.set(0.5)
