@@ -91,6 +91,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.create_menu()
         self.create_controls()
         self.create_signals()
+        self.refresh_gui()
 
     def create_menu(self):
         self.menubar = QtWidgets.QMenuBar()
@@ -104,7 +105,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         file_import_mesh.triggered.connect(self.do_import)
         # file_import_mesh.setStatusTip('')
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
-        # file_import_anim.triggered.connect(self.do_import_anim)
+        file_import_anim.triggered.connect(self.do_import_anim)
         file_import_anim.setDisabled(True)
         file_export = QtWidgets.QAction('Export mesh ...', self)
         file_export.setDisabled(True)
@@ -146,36 +147,42 @@ class PDXmaya_ui(QtWidgets.QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(main_layout)
 
-        export_ctrls = export_controls(parent=self)
+        # create all of the main controls
+        self.export_ctrls = export_controls(parent=self)
 
         # create menubar and add widgets to main layout
         main_layout.setMenuBar(self.menubar)
-        main_layout.addWidget(export_ctrls)
-        print self.settings
+        main_layout.addWidget(self.export_ctrls)
 
     def create_signals(self):
         # connect up controls
         pass
 
+    def refresh_gui(self):
+        # call any gui refresh functions here
+        self.export_ctrls.refresh_mat_list()
+        self.export_ctrls.refresh_anim_list()
+
     @QtCore.Slot()
     def do_import(self):
-        filename, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh',
+        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh',
                                                                      filter='PDX Mesh files (*.mesh)')
-        if filename and os.path.splitext(filename)[1] == '.mesh':
-            self.import_mesh(filename)
-        else:
-            reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
-                                                  'Unable to read the file. The selected filepath ... '
-                                                  '\n\n\t{}'
-                                                  '\n\n ... is not a .mesh file!'.format(filename),
-                                                  QtWidgets.QMessageBox.Ok,
-                                                  defaultButton=QtWidgets.QMessageBox.Ok)
-            if reply == QtWidgets.QMessageBox.Ok:
-                print "[io_pdx_mesh] Nothing to import."
+        if filepath != '':
+            if os.path.splitext(filepath)[1] == '.mesh':
+                self.popup = import_popup(filepath, parent=self)
+                self.popup.show()
+            else:
+                reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
+                                                      'Unable to read selected file. The filepath ... '
+                                                      '\n\n\t{}'
+                                                      '\n ... is not a .mesh file!'.format(filepath),
+                                                      QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+                if reply == QtWidgets.QMessageBox.Ok:
+                    print "[io_pdx_mesh] Nothing to import."
 
-    def import_mesh(self, filepath):
-        self.popup = import_popup(filepath, parent=self)
-        self.popup.show()
+    @QtCore.Slot()
+    def do_import_anim(self):
+        pass
 
     def load_settings(self):
         with open(self._settings_file, 'rt') as f:
@@ -259,6 +266,7 @@ class import_popup(QtWidgets.QWidget):
             self.prog_bar.setValue(100)
             time.sleep(1)
             self.close()
+            self.parent.refresh_gui()
 
         except Exception as err:
             print "[io_pdx_mesh] Failed to import {}".format(self.mesh_file)
@@ -321,9 +329,9 @@ class export_controls(QtWidgets.QWidget):
         self.btn_export = QtWidgets.QPushButton('Export ...', self)
 
         # TODO: re-enable these once export is working
-        self.btn_mat_refresh.setDisabled(True)
-        self.btn_mat_edit.setDisabled(True)
-        self.btn_mat_create.setDisabled(True)
+        # self.btn_mat_refresh.setDisabled(True)
+        # self.btn_mat_edit.setDisabled(True)
+        # self.btn_mat_create.setDisabled(True)
         self.btn_anim_refresh.setDisabled(True)
         self.btn_anim_edit.setDisabled(True)
         self.btn_anim_create.setDisabled(True)
@@ -424,6 +432,7 @@ class export_controls(QtWidgets.QWidget):
     def connect_signals(self):
         self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
         self.list_materials.itemClicked.connect(self.select_mat)
+        self.btn_anim_refresh.clicked.connect(self.refresh_anim_list)
 
     def refresh_mat_list(self):
         self.list_materials.clearSelection()
@@ -431,11 +440,23 @@ class export_controls(QtWidgets.QWidget):
         pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
 
         for mat in pdx_scenemats:
-            list_item = QtGui.QListWidgetItem()
+            list_item = QtWidgets.QListWidgetItem()
             list_item.setText(mat)
             self.list_materials.insertItem(self.list_materials.count(), list_item)
 
         self.list_materials.sortItems()
+
+    def refresh_anim_list(self):
+        self.list_animations.clearSelection()
+        self.list_animations.clear()
+        # pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+
+        # for mat in pdx_scenemats:
+        #     list_item = QtWidgets.QListWidgetItem()
+        #     list_item.setText(mat)
+        #     self.list_animations.insertItem(self.list_animations.count(), list_item)
+
+        self.list_animations.sortItems()
 
     def select_mat(self, curr_sel):
         try:
