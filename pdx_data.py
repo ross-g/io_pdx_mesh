@@ -419,7 +419,8 @@ def write_meshfile(filepath, root_xml):
 
             # write locator properties
             for prop in ['p', 'q', 'pa']:
-                datastring += writeProperty(prop, locnode_xml.get(prop))
+                if locnode_xml.get(prop) is not None:
+                    datastring += writeProperty(prop, locnode_xml.get(prop))
 
     # write the data
     with open(filepath, 'wb') as fp:
