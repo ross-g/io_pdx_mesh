@@ -226,8 +226,8 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
                                    maximumInfluences=max_infs, obeyMaxInfluences=True)
     pmc.skinPercent(skin_cluster, mesh, normalize=False, pruneWeights=100)
 
-    # FIXME: this works for the AI portrait with single inf skins etc, but now breaks skinning on the ship (oars etc)
     # # set skin weights from our dict
+    # FIXME: this worked for the AI portrait with single inf skins etc, but breaks skinning on the ship (oars etc)
     # for vtx in xrange(len(skin_dict.keys())):
     #     joints = skin_dict[vtx]['joints']
     #     weights = skin_dict[vtx]['weights']
@@ -237,7 +237,7 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
     #         if jnt != -1:
     #             pmc.setAttr('{}.weightList[{}].weights[{}]'.format(skin_cluster, vtx, jnt), wt)
 
-    # OLD set skin weights
+    # then set skin weights
     for v in xrange(len(skin_dict.keys())):
         joints = [skeleton[j] for j in skin_dict[v]['joints']]
         weights = skin_dict[v]['weights']
@@ -271,13 +271,11 @@ def create_mesh(PDX_mesh, name=None):
     # triangles
     tris = PDX_mesh.tri     # flat list of connections, tris[:3] = face[0]
 
-    # UVs
-    uv_0 = None
-    uv_1 = None
-    if hasattr(PDX_mesh, 'u0'):
-        uv_0 = PDX_mesh.u0
-    if hasattr(PDX_mesh, 'u1'):
-        uv_1 = PDX_mesh.u1
+    # UVs (channels 0 to 3)
+    uv_Ch = dict()
+    for i, uv in enumerate(['u0', 'u1', 'u2', 'u3']):
+        if hasattr(PDX_mesh, uv):
+            uv_Ch[i] = getattr(PDX_mesh, uv)
 
     # create the data structures for mesh and transform
     m_FnMesh = OpenMaya.MFnMesh()
@@ -308,13 +306,14 @@ def create_mesh(PDX_mesh, name=None):
         polygonConnects.append(item)
     # OpenMaya.MScriptUtil.createIntArrayFromList(tris, polygonConnects)
 
-    # UVs
+    # default UVs
     uArray = OpenMaya.MFloatArray()
     vArray = OpenMaya.MFloatArray()
-    if uv_0:
-        for i in xrange(0, len(uv_0), 2):
-            uArray.append(uv_0[i])
-            vArray.append(1 - uv_0[i+1])        # flip the UV coords in V!
+    if uv_Ch.get(0):
+        uv_data = uv_Ch[0]
+        for i in xrange(0, len(uv_data), 2):
+            uArray.append(uv_data[i])
+            vArray.append(1 - uv_data[i+1])        # flip the UV coords in V!
 
     """ ================================================================================================================
         create the new mesh """
@@ -344,8 +343,8 @@ def create_mesh(PDX_mesh, name=None):
             vertexList.append(i)
         m_FnMesh.setVertexNormals(normalsIn, vertexList)
 
-    # apply the UV data
-    if uv_0:
+    # apply the default UV data
+    if uv_Ch.get(0):
         uvCounts = OpenMaya.MIntArray()
         for i in range(0, numPolygons):
             uvCounts.append(3)
@@ -356,6 +355,21 @@ def create_mesh(PDX_mesh, name=None):
         # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
         m_FnMesh.assignUVs(uvCounts, uvIds, 'map1')
         # note bulk assignment via .assignUVs only works to the default UV set!
+    # set other UV channels
+    for idx in uv_Ch:
+        # ignore Ch 0 as we have already set this
+        if idx != 0:
+            uv_data = uv_Ch[idx]
+            uvSetName = 'map' + str(idx+1)
+
+            uArray = OpenMaya.MFloatArray()
+            vArray = OpenMaya.MFloatArray()
+            for i in xrange(0, len(uv_data), 2):
+                uArray.append(uv_data[i])
+                vArray.append(1 - uv_data[i+1])        # flip the UV coords in V!
+
+            m_FnMesh.createUVSetWithName(uvSetName)
+            m_FnMesh.setUVs(uArray, vArray, uvSetName)
 
     # assign the default material
     pmc.select(new_mesh)
@@ -411,10 +425,12 @@ def import_file(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
                 # create the material
                 if pdx_material:
+                    print "[io_pdx_mesh] creating material -"
                     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
                 # create the skin cluster
                 if joints and pdx_skin:
+                    print "[io_pdx_mesh] creating skinning data -"
                     create_skin(pdx_skin, mesh, joints)
 
     # go through locators
