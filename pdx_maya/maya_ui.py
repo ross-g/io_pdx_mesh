@@ -258,7 +258,7 @@ class import_popup(QtWidgets.QWidget):
             self.prog_bar.setRange(0, 0)
             self.prog_bar.setValue(0)
             time.sleep(1)
-            import_file(self.mesh_file,
+            import_meshfile(self.mesh_file,
                         imp_mesh=self.chk_mesh.isChecked(),
                         imp_skel=self.chk_skeleton.isChecked(),
                         imp_locs=self.chk_locators.isChecked())

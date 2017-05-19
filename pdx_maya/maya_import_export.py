@@ -385,7 +385,7 @@ def create_mesh(PDX_mesh, name=None):
 """
 
 
-def import_file(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
+def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(meshpath)
 
@@ -442,3 +442,30 @@ def import_file(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
     pmc.select()
     print "[io_pdx_mesh] finished!"
+
+def export_meshfile(meshpath):
+    # create an XML structure to store the object hierarchy
+    root_xml = Xml.Element('File')
+    root_xml.set('pdxasset', [1, 0])
+
+    # create root elements for objects and locators
+    object_xml = Xml.SubElement(root_xml, 'object')
+    locator_xml = Xml.SubElement(root_xml, 'locator')
+
+    # populate object data
+    pdx_scenemats = [mat for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+    maya_shadingengines = [pmc.listConnections(mat, type='shadingEngine') for mat in pdx_scenemats]
+    maya_meshfaces = [sg[0].members(flatten=True) for sg in maya_shadingengines]
+
+    # populate locator data
+    maya_locators = [loc.getTransform() for loc in pmc.ls(type=pmc.nt.Locator)]
+    for loc in maya_locators:
+        locnode_xml = Xml.SubElement(locator_xml, loc.name())
+        locnode_xml.set('p', [p for p in loc.getTranslation()])
+        locnode_xml.set('q', [q for q in loc.getRotation(quaternion=True)])
+        if loc.getParent():
+            locnode_xml.set('pa', [loc.getParent().name()])
+
+    # write the binary file from our XML structure
+    #pdx_data.write_meshfile(meshpath, root_xml)
+    return root_xml
