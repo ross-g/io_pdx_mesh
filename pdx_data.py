@@ -165,7 +165,7 @@ def read_meshfile(filepath, to_stdout=False):
     with open(filepath, 'rb') as fp:
         fdata = fp.read()
 
-    # create a ordered dictionary to store the object hierarchy
+    # create an XML structure to store the object hierarchy
     file_element = Xml.Element('File')
     file_element.attrib = dict(
         name=os.path.split(filepath)[1],
