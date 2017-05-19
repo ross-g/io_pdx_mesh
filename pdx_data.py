@@ -268,6 +268,9 @@ def writeObject(obj_xml, obj_depth):
 def writeString(string):
     datastring = b''
 
+    if type(string) == unicode:    # struct.pack cannot handle unicode strings
+        string = str(string)
+    
     datastring += struct.pack('c'*len(string), *string)
 
     # TODO: pad the string with zero bytes to boundary?
@@ -308,7 +311,7 @@ def writeData(data_array):
         # values
         datastring += struct.pack('f'*size, *data_array)
 
-    elif datatype == str:
+    elif datatype == str or datatype == unicode:
         datastring += struct.pack('c', 's')
 
         # data count
@@ -318,15 +321,16 @@ def writeData(data_array):
 
         # string length
         str_data_length = len(data_array[0])
-        # TODO: why do we add one?
-        datastring += struct.pack('i', (str_data_length + 1))   # +1 to account for zero-byte ending
+        datastring += struct.pack('i', (str_data_length + 1))    # string length + 1 to account for zero-byte ending
 
         # values
-        # TODO: why do we have to write an ending zero byte?
-        datastring += struct.pack('c'*str_data_length+'x', *data_array[0])  # write zero-byte ending to string
+        if type(data_array[0]) == unicode:    # struct.pack cannot handle unicode strings
+            data_array[0] = str(data_array[0])
+        
+        datastring += struct.pack('c'*str_data_length+'x', *data_array[0])    # write zero-byte ending to string
 
     else:
-        raise NotImplementedError("Unknown data type encountered.")
+        raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
 
     return datastring
 
