@@ -18,18 +18,69 @@ import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
 from io_pdx_mesh import pdx_data
 
 
-""" ================================================================================================
+""" ====================================================================================================================
     Variables.
-====================================================================================================
+========================================================================================================================
 """
 
 PDX_SHADER = 'shader'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 
 
-""" ================================================================================================
+""" ====================================================================================================================
+    Helper functions.
+========================================================================================================================
+"""
+
+
+def list_scene_materials():
+    return [mat for mat in pmc.ls(materials=True)]
+
+
+def check_mesh_material(maya_mesh):
+    result = False
+
+    shadingengines = list(set(pmc.listConnections(maya_mesh, type='shadingEngine')))
+    for sg in shadingengines:
+        material = pmc.listConnections(sg.surfaceShader)[0]
+        result = result or hasattr(material, PDX_SHADER)    # needs at least one of it's materials to be a PDX material
+
+    return result
+
+
+def get_mesh_skin(maya_mesh):
+    skinclusters = list(set(pmc.listConnections(maya_mesh, type='skinCluster')))
+
+    return skinclusters
+
+
+def get_material_textures(maya_material):
+    texture_dict = dict()
+
+    if maya_material.color.connections():
+        texture_dict['diff'] = maya_material.color.connections()[0].fileTextureName.get()
+
+    if maya_material.color.connections():
+        bump2d = maya_material.normalCamera.connections()[0]
+        texture_dict['n'] = bump2d.bumpValue.connections()[0].fileTextureName.get()
+
+    if maya_material.color.connections():
+        texture_dict['spec'] = maya_material.specularColor.connections()[0].fileTextureName.get()
+
+    return texture_dict
+
+
+def set_local_axis_display(state, object_list=None):
+    if object_list is None:
+        object_list = [pmc.listRelatives(loc, parent=True)[0] for loc in pmc.ls(type='locator')]
+
+    for obj in object_list:
+        obj.displayLocalAxis.set(state)
+
+
+""" ====================================================================================================================
     Functions.
-====================================================================================================
+========================================================================================================================
 """
 
 
@@ -63,10 +114,6 @@ def create_filetexture(tex_filepath):
     return newFile, new2dTex
 
 
-def list_scene_materials():
-    return [mat for mat in pmc.ls(materials=True)]
-
-
 def create_shader(shader_name, PDX_material, texture_dir):
     new_shader = pmc.shadingNode('phong', asShader=True, name=shader_name)
     new_shadinggroup = pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{}_SG'.format(shader_name))
@@ -75,7 +122,7 @@ def create_shader(shader_name, PDX_material, texture_dir):
     # TODO: should this be an enum attribute type?
     # would need to parse the possible engine/material combinations from clausewitz.json
     pmc.addAttr(longName=PDX_SHADER, dataType='string')
-    new_shader.shader.set(PDX_material.shader)
+    getattr(new_shader, PDX_SHADER).set(PDX_material.shader)
 
     if getattr(PDX_material, 'diff', None):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
@@ -106,14 +153,6 @@ def create_material(PDX_material, mesh, texture_path):
     pmc.select(mesh)
     mesh.backfaceCulling.set(1)
     pmc.hyperShade(assign=s_group)
-
-
-def set_local_axis_display(state, object_list=None):
-    if object_list is None:
-        object_list = [pmc.listRelatives(loc, parent=True)[0] for loc in pmc.ls(type='locator')]
-
-    for obj in object_list:
-        obj.displayLocalAxis.set(state)
 
 
 def create_locator(PDX_locator):
@@ -380,7 +419,7 @@ def create_mesh(PDX_mesh, name=None):
 
 
 """ ====================================================================================================================
-    Main function.
+    Main IO functions.
 ========================================================================================================================
 """
 
@@ -453,9 +492,36 @@ def export_meshfile(meshpath):
     locator_xml = Xml.SubElement(root_xml, 'locator')
 
     # populate object data
-    pdx_scenemats = [mat for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
-    maya_shadingengines = [pmc.listConnections(mat, type='shadingEngine') for mat in pdx_scenemats]
-    maya_meshfaces = [sg[0].members(flatten=True) for sg in maya_shadingengines]
+    maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
+    for shape in maya_meshes:
+        shapenode_xml = Xml.SubElement(object_xml, shape.name())
+        
+        # one shape can have multiple materials on a per meshface basis
+        shading_groups = list(set(shape.connections(type='shadingEngine')))
+        mesh_materials = [sg.surfaceShader.connections()[0] for sg in shading_groups]
+
+        for group in shading_groups:     # type of object set associating shaders with geometry
+            # create parent element for this mesh
+            meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
+
+            # check which meshfaces are using this material
+            meshfaces = group.members(flatten=True)[0]
+            
+            # create parent element for bounding box data
+            aabbnode_xml = Xml.SubElement(meshnode_xml, 'aabb')
+            
+            # create parent element for material data
+            materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
+            maya_mat = group.surfaceShader.connections()[0]
+            # populate material attributes
+            materialnode_xml.set('shader', getattr(maya_mat, PDX_SHADER).get())
+            mat_textures = get_material_textures(maya_mat)
+            for slot, texture in mat_textures.iteritems():
+                materialnode_xml.set(slot, texture)
+
+            # create parent element for skin data if the mesh is skinned
+            if get_mesh_skin(shape):
+                skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
 
     # populate locator data
     maya_locators = [loc.getTransform() for loc in pmc.ls(type=pmc.nt.Locator)]
