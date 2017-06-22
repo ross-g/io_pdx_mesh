@@ -117,10 +117,14 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
         tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
-        tool_show_localaxes = QtWidgets.QAction('Show all locator axes', self)
-        tool_show_localaxes.triggered.connect(lambda: set_local_axis_display(True))
-        tool_hide_localaxes = QtWidgets.QAction('Hide all locator axes', self)
-        tool_hide_localaxes.triggered.connect(lambda: set_local_axis_display(False))
+        tool_show_jnt_localaxes = QtWidgets.QAction('Show all joint axes', self)
+        tool_show_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='joint'))
+        tool_hide_jnt_localaxes = QtWidgets.QAction('Hide all joint axes', self)
+        tool_hide_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='joint'))
+        tool_show_loc_localaxes = QtWidgets.QAction('Show all locator axes', self)
+        tool_show_loc_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='locator'))
+        tool_hide_loc_localaxes = QtWidgets.QAction('Hide all locator axes', self)
+        tool_hide_loc_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='locator'))
 
         # help menu
         help_forum = QtWidgets.QAction('Paradox forums', self)
@@ -132,15 +136,32 @@ class PDXmaya_ui(QtWidgets.QDialog):
             'https://github.com/ross-g/io_pdx_mesh')
         )
 
-        file_menu.addActions([file_import_mesh, file_import_anim])
+        file_menu.addActions([
+            file_import_mesh, 
+            file_import_anim
+            ])
         file_menu.addSeparator()
-        file_menu.addActions([file_export])
-        tools_menu.addActions([tool_edit_settings])
+        file_menu.addActions([
+            file_export
+            ])
+        tools_menu.addActions([
+            tool_edit_settings
+            ])
         tools_menu.addSeparator()
-        tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
+        tools_menu.addActions([
+            tool_ignore_joints, 
+            tool_unignore_joints
+            ])
         tools_menu.addSeparator()
-        tools_menu.addActions([tool_show_localaxes, tool_hide_localaxes])
-        help_menu.addActions([help_forum, help_code])
+        tools_menu.addActions([
+            tool_show_jnt_localaxes, 
+            tool_hide_jnt_localaxes, 
+            tool_show_loc_localaxes, 
+            tool_hide_loc_localaxes
+            ])
+        help_menu.addActions([
+            help_forum, help_code
+            ])
 
     def create_controls(self):
         main_layout = QtWidgets.QVBoxLayout()

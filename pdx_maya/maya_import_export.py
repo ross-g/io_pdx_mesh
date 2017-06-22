@@ -70,12 +70,20 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def set_local_axis_display(state, object_list=None):
+def set_local_axis_display(state, object_type=None, object_list=None):
     if object_list is None:
-        object_list = [pmc.listRelatives(loc, parent=True)[0] for loc in pmc.ls(type='locator')]
+        if object_type is None:
+            object_list = pmc.selected()
+        else:
+            object_list = pmc.ls(type=object_type)
 
-    for obj in object_list:
-        obj.displayLocalAxis.set(state)
+    for node in object_list:
+        if not hasattr(node, 'displayLocalAxis'):
+            node = pmc.listRelatives(node, parent=True)[0]
+        try:
+            node.displayLocalAxis.set(state)
+        except:
+            print "[io_pdx_mesh] node '{}' has no displayLocalAxis property".format(node)
 
 
 """ ====================================================================================================================
