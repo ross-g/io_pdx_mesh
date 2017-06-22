@@ -8,10 +8,12 @@
             "idle2"
         ],
         "material": [
+            "Collision",
+            "PdxMeshAlphaAdditive",
+            "PdxMeshAlphaBlend",
+            "PdxMeshColor",
             "PdxMeshStandard",
             "PdxMeshTextureAtlas",
-            "PdxMeshAlphaBlend",
-            "PdxMeshAlphaAdditive",
             "PdxMeshWater"
         ],
         "path": "X:/project/tools/pdx_editor/game",
@@ -25,9 +27,10 @@
             "death",
             "idle2" ],
         "material": [
-            "PdxMeshHoI4",
+            "Collision",
             "PdxMeshAdvanced",
-            "PdxMeshAdvancedSnow"
+            "PdxMeshAdvancedSnow",
+            "PdxMeshHoI4"
         ],
         "path": "X:/project/hoi4/game",
         "target_exe": "X:/project/hoi4/game/hoi4_D.exe"
@@ -43,19 +46,20 @@
             "sad2"
         ],
         "material": [
-            "PdxMeshShip",
-            "PdxMeshTerra",
-            "PdxMeshPlanet",
-            "PdxMeshStar",
+            "Collision",
+            "PdxMeshAlphaAdditive",
+            "PdxMeshAlphaBlend",
             "PdxMeshAtmosphere",
             "PdxMeshClouds",
             "PdxMeshFleetTypeIndicator",
-            "PdxMeshAlphaAdditive",
-            "PdxMeshTextureAtlas",
-            "PdxMeshAlphaBlend",
+            "PdxMeshPlanet",
             "PdxMeshPortrait",
             "PdxMeshPortraitClothes",
-            "PdxMeshPortraitHair"
+            "PdxMeshPortraitHair",
+            "PdxMeshShip",
+            "PdxMeshStar",
+            "PdxMeshTerra",
+            "PdxMeshTextureAtlas"
         ],
         "path": "X:/Steam/steamapps/common/Stellaris",
         "target_exe": "X:/Steam/steamapps/common/Stellaris/stellaris.exe"
