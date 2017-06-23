@@ -102,7 +102,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         # file menu
         file_import_mesh = QtWidgets.QAction('Import mesh ...', self)
-        file_import_mesh.triggered.connect(self.do_import)
+        file_import_mesh.triggered.connect(self.do_import_mesh)
         # file_import_mesh.setStatusTip('')
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
@@ -185,7 +185,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.export_ctrls.refresh_anim_list()
 
     @QtCore.Slot()
-    def do_import(self):
+    def do_import_mesh(self):
         filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh',
                                                                      filter='PDX Mesh files (*.mesh)')
         if filepath != '':
@@ -221,20 +221,224 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 return {}
 
 
+class export_controls(QtWidgets.QWidget):
+
+    def __init__(self, parent=None):
+        super(export_controls, self).__init__(parent)
+
+        self.parent = parent
+
+        self.create_controls()
+        self.connect_signals()
+
+    def create_controls(self):
+        # create controls
+        # materials
+        self.list_materials = QtWidgets.QListWidget()
+        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
+        self.btn_mat_create = QtWidgets.QPushButton('Create ...', self)
+        self.btn_mat_edit = QtWidgets.QPushButton('Edit', self)
+        # animations
+        self.list_animations = QtWidgets.QListWidget()
+        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
+        self.btn_anim_create = QtWidgets.QPushButton('Create ...', self)
+        self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
+
+        # settings
+        lbl_engine = QtWidgets.QLabel('Game engine:')
+        self.setup_engine = QtWidgets.QComboBox()
+        self.setup_engine.addItems(self.parent.settings.keys())
+        lbl_fps = QtWidgets.QLabel('Animation fps:')
+        self.setup_fps = QtWidgets.QDoubleSpinBox()
+        self.setup_fps.setMinimum(0.0)
+        self.setup_fps.setValue(15.0)
+        
+        # export options
+        self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
+        self.chk_skel = QtWidgets.QCheckBox('Export skeleton')
+        self.chk_anim = QtWidgets.QCheckBox('Export animations')
+        self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
+        self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
+        self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
+        self.chk_preview = QtWidgets.QCheckBox('Preview on export')
+
+        # output settings
+        lbl_path = QtWidgets.QLabel('Output path:')
+        self.txt_path = QtWidgets.QLineEdit()
+        self.txt_path.setDisabled(True)
+        self.btn_path = QtWidgets.QPushButton('...', self)
+        self.btn_path.setMaximumWidth(20)
+        self.btn_path.setMaximumHeight(18)
+        lbl_file = QtWidgets.QLabel('Filename:')
+        self.txt_file = QtWidgets.QLineEdit()
+        self.txt_file.setPlaceholderText('placeholder_name.mesh')
+        self.btn_export = QtWidgets.QPushButton('Export ...', self)
+
+        # TODO: re-enable these once export is working
+        self.btn_anim_refresh.setDisabled(True)
+        self.btn_anim_create.setDisabled(True)
+        self.btn_anim_edit.setDisabled(True)
+        self.chk_mesh.setDisabled(True)
+        self.chk_skel.setDisabled(True)
+        self.chk_anim.setDisabled(True)
+        self.chk_merge_vtx.setDisabled(True)
+        self.chk_merge_obj.setDisabled(True)
+        self.chk_create.setDisabled(True)
+        self.chk_preview.setDisabled(True)
+        self.btn_path.setDisabled(True)
+        self.txt_file.setDisabled(True)
+        self.btn_export.setDisabled(True)
+
+        # create layouts
+        main_layout = QtWidgets.QHBoxLayout()
+        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+
+        left_layout = QtWidgets.QVBoxLayout()
+        left_layout.setSpacing(5)
+        grp_mats = QtWidgets.QGroupBox('Materials')
+        grp_mats_layout = QtWidgets.QVBoxLayout()
+        grp_mats_layout.setContentsMargins(4, 4, 4, 4)
+        grp_mats_button_layout = QtWidgets.QHBoxLayout()
+        grp_anims = QtWidgets.QGroupBox('Animations')
+        grp_anims_layout = QtWidgets.QVBoxLayout()
+        grp_anims_layout.setContentsMargins(4, 4, 4, 4)
+        grp_anims_button_layout = QtWidgets.QHBoxLayout()
+
+        right_layout = QtWidgets.QVBoxLayout()
+        right_layout.setSpacing(5)
+        grp_scene = QtWidgets.QGroupBox('Scene setup')
+        grp_scene_layout = QtWidgets.QGridLayout()
+        grp_scene_layout.setColumnStretch(1, 1)
+        grp_scene_layout.setColumnStretch(2, 2)
+        grp_scene_layout.setContentsMargins(4, 4, 4, 4)
+        grp_scene_layout.setVerticalSpacing(5)
+        grp_export = QtWidgets.QGroupBox('Export settings')
+        grp_export_layout = QtWidgets.QVBoxLayout()
+        grp_export_layout.setContentsMargins(4, 4, 4, 4)
+        grp_export_fields_layout = QtWidgets.QGridLayout()
+        grp_export_fields_layout.setVerticalSpacing(5)
+        grp_export_fields_layout.setHorizontalSpacing(4)
+
+        for grp in [grp_scene, grp_mats, grp_anims, grp_export]:
+            grp.setMinimumWidth(250)
+            # grp.setFont(QtGui.QFont('SansSerif', 8, QtGui.QFont.Bold))
+
+        # add controls
+        self.setLayout(main_layout)
+        main_layout.addLayout(left_layout)
+        main_layout.addLayout(right_layout)
+
+        left_layout.addWidget(grp_mats)
+        grp_mats.setLayout(grp_mats_layout)
+        grp_mats_layout.addWidget(self.list_materials)
+        grp_mats_layout.addLayout(grp_mats_button_layout)
+        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
+        grp_mats_button_layout.addWidget(self.btn_mat_create)
+        grp_mats_button_layout.addWidget(self.btn_mat_edit)
+
+        left_layout.addWidget(grp_anims)
+        grp_anims.setLayout(grp_anims_layout)
+        grp_anims_layout.addWidget(self.list_animations)
+        grp_anims_layout.addLayout(grp_anims_button_layout)
+        grp_anims_button_layout.addWidget(self.btn_anim_refresh)
+        grp_anims_button_layout.addWidget(self.btn_anim_create)
+        grp_anims_button_layout.addWidget(self.btn_anim_edit)
+
+        right_layout.addWidget(grp_scene)
+        grp_scene.setLayout(grp_scene_layout)
+        grp_scene_layout.addWidget(lbl_engine, 1, 1)
+        grp_scene_layout.addWidget(self.setup_engine, 1, 2)
+        grp_scene_layout.addWidget(lbl_fps, 2, 1)
+        grp_scene_layout.addWidget(self.setup_fps, 2, 2)
+
+        right_layout.addWidget(grp_export)
+        grp_export.setLayout(grp_export_layout)
+        grp_export_layout.addWidget(self.chk_mesh)
+        grp_export_layout.addWidget(self.chk_skel)
+        grp_export_layout.addWidget(self.chk_anim)
+        grp_export_layout.addWidget(h_line())
+        grp_export_layout.addWidget(self.chk_merge_vtx)
+        grp_export_layout.addWidget(self.chk_merge_obj)
+        grp_export_layout.addWidget(h_line())
+        grp_export_layout.addWidget(self.chk_create)
+        grp_export_layout.addWidget(self.chk_preview)
+        grp_export_layout.addWidget(h_line())
+        grp_export_layout.addLayout(grp_export_fields_layout)
+        grp_export_fields_layout.addWidget(lbl_path, 1, 1)
+        grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
+        grp_export_fields_layout.addWidget(self.btn_path, 1, 3)
+        grp_export_fields_layout.addWidget(lbl_file, 2, 1)
+        grp_export_fields_layout.addWidget(self.txt_file, 2, 2, 1, 2)
+        grp_export_layout.addWidget(self.btn_export)
+
+    def connect_signals(self):
+        self.list_materials.itemClicked.connect(self.select_mat)
+        self.list_materials.itemDoubleClicked.connect(self.edit_selected_mat)
+        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
+        self.btn_mat_create.clicked.connect(self.create_new_mat)
+        self.btn_mat_edit.clicked.connect(self.edit_selected_mat)
+        self.btn_anim_refresh.clicked.connect(self.refresh_anim_list)
+
+    def refresh_mat_list(self):
+        self.list_materials.clearSelection()
+        self.list_materials.clear()
+        pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+
+        for mat in pdx_scenemats:
+            list_item = QtWidgets.QListWidgetItem()
+            list_item.setText(mat)
+            self.list_materials.insertItem(self.list_materials.count(), list_item)
+
+        self.list_materials.sortItems()
+
+    def edit_selected_mat(self):
+        if self.list_materials.selectedItems():
+            selected_mat = self.list_materials.selectedItems()[0]
+            self.popup = material_popup(material=selected_mat, parent=self.parent)
+            self.popup.show()
+
+    def create_new_mat(self):
+        self.popup = material_popup(parent=self.parent)
+        self.popup.show()
+
+    def refresh_anim_list(self):
+        self.list_animations.clearSelection()
+        self.list_animations.clear()
+        # pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+
+        # for mat in pdx_scenemats:
+        #     list_item = QtWidgets.QListWidgetItem()
+        #     list_item.setText(mat)
+        #     self.list_animations.insertItem(self.list_animations.count(), list_item)
+
+        self.list_animations.sortItems()
+
+    def select_mat(self, curr_sel):
+        try:
+            pmc.select(curr_sel.text())
+        except:
+            self.refresh_mat_list()
+
+
 class import_popup(QtWidgets.QWidget):
 
     def __init__(self, filepath, parent=None):
         super(import_popup, self).__init__(parent)
 
-        topleft = pdx_tools.window().frameGeometry().topLeft()
-        self.move(topleft + QtCore.QPoint(5, 50))
         self.mesh_file = filepath
         self.parent = parent
 
-        self.create_controls()
-        self.connect_signals()
         self.setWindowTitle('Import options')
         self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
+        self.setFixedSize(300, 125)
+        if self.parent:
+            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
+            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
+            self.setGeometry(center_x, center_y, self.width(), self.height())
+
+        self.create_controls()
+        self.connect_signals()
 
     def create_controls(self):
         # create controls
@@ -298,192 +502,93 @@ class import_popup(QtWidgets.QWidget):
         self.close()
 
 
-class export_controls(QtWidgets.QWidget):
+class material_popup(QtWidgets.QWidget):
 
-    def __init__(self, parent=None):
-        super(export_controls, self).__init__(parent)
+    def __init__(self, material=None, parent=None):
+        super(material_popup, self).__init__(parent)
+
+        self.parent = parent
+        self.material = material
+
+        self.setWindowTitle('PDX material')
+        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
+        self.setFixedSize(300, 100)
+        if self.parent:
+            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
+            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
+            self.setGeometry(center_x, center_y, self.width(), self.height())
 
         self.create_controls()
         self.connect_signals()
 
     def create_controls(self):
         # create controls
-        # materials
-        self.list_materials = QtWidgets.QListWidget()
-        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
-        self.btn_mat_edit = QtWidgets.QPushButton('Edit', self)
-        self.btn_mat_create = QtWidgets.QPushButton('Create ...', self)
-        # animations
-        self.list_animations = QtWidgets.QListWidget()
-        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
-        self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
-        self.btn_anim_create = QtWidgets.QPushButton('Create ...', self)
-
-        # settings
-        lbl_engine = QtWidgets.QLabel('Game engine:')
-        self.setup_engine = QtWidgets.QComboBox()
-        self.setup_engine.addItems(self.parent().settings.keys())
-        lbl_fps = QtWidgets.QLabel('Animation fps:')
-        self.setup_fps = QtWidgets.QDoubleSpinBox()
-        self.setup_fps.setMinimum(0.0)
-        self.setup_fps.setValue(15.0)
-        
-        # export options
-        self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
-        self.chk_skel = QtWidgets.QCheckBox('Export skeleton')
-        self.chk_anim = QtWidgets.QCheckBox('Export animations')
-        self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
-        self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
-        self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
-        self.chk_preview = QtWidgets.QCheckBox('Preview on export')
-
-        # output settings
-        lbl_path = QtWidgets.QLabel('Output path:')
-        self.txt_path = QtWidgets.QLineEdit()
-        self.txt_path.setDisabled(True)
-        self.btn_path = QtWidgets.QPushButton('...', self)
-        self.btn_path.setMaximumWidth(20)
-        self.btn_path.setMaximumHeight(18)
-        lbl_file = QtWidgets.QLabel('Filename:')
-        self.txt_file = QtWidgets.QLineEdit()
-        self.txt_file.setPlaceholderText('placeholder_name.mesh')
-        self.btn_export = QtWidgets.QPushButton('Export ...', self)
-
-        # TODO: re-enable these once export is working
-        # self.btn_mat_refresh.setDisabled(True)
-        # self.btn_mat_edit.setDisabled(True)
-        # self.btn_mat_create.setDisabled(True)
-        self.btn_anim_refresh.setDisabled(True)
-        self.btn_anim_edit.setDisabled(True)
-        self.btn_anim_create.setDisabled(True)
-        self.chk_mesh.setDisabled(True)
-        self.chk_skel.setDisabled(True)
-        self.chk_anim.setDisabled(True)
-        self.chk_merge_vtx.setDisabled(True)
-        self.chk_merge_obj.setDisabled(True)
-        self.chk_create.setDisabled(True)
-        self.chk_preview.setDisabled(True)
-        self.btn_path.setDisabled(True)
-        self.txt_file.setDisabled(True)
-        self.btn_export.setDisabled(True)
+        self.mat_name = QtWidgets.QLineEdit()
+        self.mat_name.setObjectName('Name')
+        self.mat_type = QtWidgets.QComboBox()
+        self.mat_type.setObjectName('Shader')
+        self.mat_type.setEditable(True)
+        self.mat_type.addItems(self.get_shader_presets())
+        self.mat_type.setCurrentIndex(-1)
+        self.btn_okay = QtWidgets.QPushButton('Okay', self)
+        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
 
         # create layouts
-        main_layout = QtWidgets.QHBoxLayout()
-        main_layout.setSpacing(5)
+        main_layout = QtWidgets.QVBoxLayout()
         main_layout.setContentsMargins(5, 5, 5, 5)
-
-        left_layout = QtWidgets.QVBoxLayout()
-        left_layout.setSpacing(5)
-        grp_mats = QtWidgets.QGroupBox('Materials')
-        grp_mats_layout = QtWidgets.QVBoxLayout()
-        grp_mats_layout.setContentsMargins(4, 4, 4, 4)
-        grp_mats_button_layout = QtWidgets.QHBoxLayout()
-        grp_anims = QtWidgets.QGroupBox('Animations')
-        grp_anims_layout = QtWidgets.QVBoxLayout()
-        grp_anims_layout.setContentsMargins(4, 4, 4, 4)
-        grp_anims_button_layout = QtWidgets.QHBoxLayout()
-
-        right_layout = QtWidgets.QVBoxLayout()
-        right_layout.setSpacing(5)
-        grp_scene = QtWidgets.QGroupBox('Scene setup')
-        grp_scene_layout = QtWidgets.QGridLayout()
-        grp_scene_layout.setColumnStretch(1, 1)
-        grp_scene_layout.setColumnStretch(2, 2)
-        grp_scene_layout.setContentsMargins(4, 4, 4, 4)
-        grp_scene_layout.setVerticalSpacing(5)
-        grp_export = QtWidgets.QGroupBox('Export settings')
-        grp_export_layout = QtWidgets.QVBoxLayout()
-        grp_export_layout.setContentsMargins(4, 4, 4, 4)
-        grp_export_fields_layout = QtWidgets.QGridLayout()
-        grp_export_fields_layout.setVerticalSpacing(5)
-        grp_export_fields_layout.setHorizontalSpacing(4)
-
-        for grp in [grp_scene, grp_mats, grp_anims, grp_export]:
-            grp.setMinimumWidth(250)
-            # grp.setFont(QtGui.QFont('SansSerif', 8, QtGui.QFont.Bold))
+        form_layout = QtWidgets.QFormLayout()
+        btn_layout = QtWidgets.QHBoxLayout()
 
         # add controls
         self.setLayout(main_layout)
-        main_layout.addLayout(left_layout)
-        main_layout.addLayout(right_layout)
+        main_layout.addLayout(form_layout)
+        for ctrl in [self.mat_name, self.mat_type]:
+            form_layout.addRow(ctrl.objectName(), ctrl)
+        main_layout.addLayout(btn_layout)
+        btn_layout.addWidget(self.btn_okay)
+        btn_layout.addWidget(self.btn_cancel)
 
-        left_layout.addWidget(grp_mats)
-        grp_mats.setLayout(grp_mats_layout)
-        grp_mats_layout.addWidget(self.list_materials)
-        grp_mats_layout.addLayout(grp_mats_button_layout)
-        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
-        grp_mats_button_layout.addWidget(self.btn_mat_edit)
-        grp_mats_button_layout.addWidget(self.btn_mat_create)
+        # material specific
+        if self.material:       # editing a selected material
+            mat_name = self.material.text()
+            mat_node = pmc.PyNode(mat_name)
+            mat_shader = getattr(mat_node, PDX_SHADER).get()
+            
+            self.mat_name.setText(mat_name)
+            if self.mat_type.findText(mat_shader) is not -1 :
+                self.mat_type.setCurrentIndex(self.mat_type.findText(mat_shader))
+            else:
+                self.mat_type.setEditText(mat_shader)
 
-        left_layout.addWidget(grp_anims)
-        grp_anims.setLayout(grp_anims_layout)
-        grp_anims_layout.addWidget(self.list_animations)
-        grp_anims_layout.addLayout(grp_anims_button_layout)
-        grp_anims_button_layout.addWidget(self.btn_anim_refresh)
-        grp_anims_button_layout.addWidget(self.btn_anim_edit)
-        grp_anims_button_layout.addWidget(self.btn_anim_create)
+            self.btn_okay.setText('Okay')
 
-        right_layout.addWidget(grp_scene)
-        grp_scene.setLayout(grp_scene_layout)
-        grp_scene_layout.addWidget(lbl_engine, 1, 1)
-        grp_scene_layout.addWidget(self.setup_engine, 1, 2)
-        grp_scene_layout.addWidget(lbl_fps, 2, 1)
-        grp_scene_layout.addWidget(self.setup_fps, 2, 2)
-
-        right_layout.addWidget(grp_export)
-        grp_export.setLayout(grp_export_layout)
-        grp_export_layout.addWidget(self.chk_mesh)
-        grp_export_layout.addWidget(self.chk_skel)
-        grp_export_layout.addWidget(self.chk_anim)
-        grp_export_layout.addWidget(h_line())
-        grp_export_layout.addWidget(self.chk_merge_vtx)
-        grp_export_layout.addWidget(self.chk_merge_obj)
-        grp_export_layout.addWidget(h_line())
-        grp_export_layout.addWidget(self.chk_create)
-        grp_export_layout.addWidget(self.chk_preview)
-        grp_export_layout.addWidget(h_line())
-        grp_export_layout.addLayout(grp_export_fields_layout)
-        grp_export_fields_layout.addWidget(lbl_path, 1, 1)
-        grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
-        grp_export_fields_layout.addWidget(self.btn_path, 1, 3)
-        grp_export_fields_layout.addWidget(lbl_file, 2, 1)
-        grp_export_fields_layout.addWidget(self.txt_file, 2, 2, 1, 2)
-        grp_export_layout.addWidget(self.btn_export)
-
+        else:                   # creating a new material
+            self.btn_okay.setText('Save')
+    
     def connect_signals(self):
-        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
-        self.list_materials.itemClicked.connect(self.select_mat)
-        self.btn_anim_refresh.clicked.connect(self.refresh_anim_list)
+        self.btn_okay.clicked.connect(self.save_mat)
+        self.btn_cancel.clicked.connect(self.close)
 
-    def refresh_mat_list(self):
-        self.list_materials.clearSelection()
-        self.list_materials.clear()
-        pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+    def get_shader_presets(self):
+        sel_engine = self.parent.export_ctrls.setup_engine.currentText()
+        return self.parent.settings[sel_engine]['material']
 
-        for mat in pdx_scenemats:
-            list_item = QtWidgets.QListWidgetItem()
-            list_item.setText(mat)
-            self.list_materials.insertItem(self.list_materials.count(), list_item)
+    def save_mat(self):
+        if self.material:       # editing a selected material
+            mat_name = self.material.text()
+            mat_node = pmc.PyNode(mat_name)
 
-        self.list_materials.sortItems()
+            pmc.rename(mat_node, self.mat_name.text())
+            getattr(mat_node, PDX_SHADER).set(self.mat_type.currentText())
 
-    def refresh_anim_list(self):
-        self.list_animations.clearSelection()
-        self.list_animations.clear()
-        # pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+        else:                   # creating a new material
+            mat_name = self.mat_name.text()
+            mat_pdx = type('Material', (object,), {'shader': self.mat_type.currentText()})
 
-        # for mat in pdx_scenemats:
-        #     list_item = QtWidgets.QListWidgetItem()
-        #     list_item.setText(mat)
-        #     self.list_animations.insertItem(self.list_animations.count(), list_item)
-
-        self.list_animations.sortItems()
-
-    def select_mat(self, curr_sel):
-        try:
-            pmc.select(curr_sel.text())
-        except:
-            self.refresh_mat_list()
+            create_shader(mat_name, mat_pdx, None)
+        
+        self.parent.export_ctrls.refresh_mat_list()
+        self.close()
 
 
 """ ================================================================================================
