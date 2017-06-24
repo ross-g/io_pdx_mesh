@@ -37,6 +37,33 @@ def list_scene_materials():
     return [mat for mat in pmc.ls(materials=True)]
 
 
+def set_local_axis_display(state, object_type=None, object_list=None):
+    if object_list is None:
+        if object_type is None:
+            object_list = pmc.selected()
+        else:
+            object_list = pmc.ls(type=object_type)
+
+    for node in object_list:
+        if not hasattr(node, 'displayLocalAxis'):
+            node = pmc.listRelatives(node, parent=True)[0]
+        try:
+            node.displayLocalAxis.set(state)
+        except:
+            print "[io_pdx_mesh] node '{}' has no displayLocalAxis property".format(node)
+
+
+def set_ignore_joints(state):
+    joint_list = pmc.selected(type='joint')
+
+    for joint in joint_list:
+        try:
+            getattr(joint, PDX_IGNOREJOINT).set(state)
+        except:
+            pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
+            getattr(joint, PDX_IGNOREJOINT).set(state)
+
+
 def check_mesh_material(maya_mesh):
     result = False
 
@@ -70,20 +97,10 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def set_local_axis_display(state, object_type=None, object_list=None):
-    if object_list is None:
-        if object_type is None:
-            object_list = pmc.selected()
-        else:
-            object_list = pmc.ls(type=object_type)
+def get_mesh_info(maya_meshface):
+    mesh_dict = dict()
 
-    for node in object_list:
-        if not hasattr(node, 'displayLocalAxis'):
-            node = pmc.listRelatives(node, parent=True)[0]
-        try:
-            node.displayLocalAxis.set(state)
-        except:
-            print "[io_pdx_mesh] node '{}' has no displayLocalAxis property".format(node)
+    return mesh_dict
 
 
 """ ====================================================================================================================
@@ -189,17 +206,6 @@ def create_locator(PDX_locator):
     m_FnXform.setTranslation(vector, space)
     # rotation
     m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
-
-
-def set_ignore_joints(state):
-    joint_list = pmc.selected(type='joint')
-
-    for joint in joint_list:
-        try:
-            joint.pdxIgnoreJoint.set(state)
-        except:
-            pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
-            joint.pdxIgnoreJoint.set(state)
 
 
 def create_skeleton(PDX_bone_list):
@@ -308,21 +314,21 @@ def create_mesh(PDX_mesh, name=None):
     tmp_mesh_name = 'io_pdx_mesh'
 
     # vertices
-    verts = PDX_mesh.p      # flat list of co-ordinates, verts[:2] = vtx[0]
+    verts = PDX_mesh.p      # flat list of 3d co-ordinates, verts[:2] = vtx[0]
 
     # normals
     norms = None
     if hasattr(PDX_mesh, 'n'):
-        norms = PDX_mesh.n      # flat list of co-ordinates, norms[:2] = nrm[0]
+        norms = PDX_mesh.n      # flat list of vectors, norms[:2] = nrm[0]
 
     # triangles
-    tris = PDX_mesh.tri     # flat list of connections, tris[:3] = face[0]
+    tris = PDX_mesh.tri     # flat list of vertex connections, tris[:3] = face[0]
 
     # UVs (channels 0 to 3)
     uv_Ch = dict()
     for i, uv in enumerate(['u0', 'u1', 'u2', 'u3']):
         if hasattr(PDX_mesh, uv):
-            uv_Ch[i] = getattr(PDX_mesh, uv)
+            uv_Ch[i] = getattr(PDX_mesh, uv)    # flat list of 2d co-ordinates, u0[:1] = vtx[0]uv0
 
     # create the data structures for mesh and transform
     m_FnMesh = OpenMaya.MFnMesh()
@@ -490,6 +496,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     pmc.select()
     print "[io_pdx_mesh] finished!"
 
+
 def export_meshfile(meshpath):
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
@@ -506,25 +513,26 @@ def export_meshfile(meshpath):
         
         # one shape can have multiple materials on a per meshface basis
         shading_groups = list(set(shape.connections(type='shadingEngine')))
-        mesh_materials = [sg.surfaceShader.connections()[0] for sg in shading_groups]
 
-        for group in shading_groups:     # type of object set associating shaders with geometry
+        for group in shading_groups:     # this type of object set associates shaders with geometry
             # create parent element for this mesh
             meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
-
             # check which meshfaces are using this material
             meshfaces = group.members(flatten=True)[0]
-            
+            mesh_info_dict = get_mesh_info(meshfaces)
+
             # create parent element for bounding box data
             aabbnode_xml = Xml.SubElement(meshnode_xml, 'aabb')
-            
+            aabbnode_xml.set('min', [])
+            aabbnode_xml.set('max', [])
+
             # create parent element for material data
             materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
             maya_mat = group.surfaceShader.connections()[0]
             # populate material attributes
             materialnode_xml.set('shader', getattr(maya_mat, PDX_SHADER).get())
-            mat_textures = get_material_textures(maya_mat)
-            for slot, texture in mat_textures.iteritems():
+            mat_texture_dict = get_material_textures(maya_mat)
+            for slot, texture in mat_texture_dict.iteritems():
                 materialnode_xml.set(slot, texture)
 
             # create parent element for skin data if the mesh is skinned
