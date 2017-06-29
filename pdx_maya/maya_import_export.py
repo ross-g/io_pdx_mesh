@@ -103,6 +103,30 @@ def get_mesh_info(maya_meshface):
     return mesh_dict
 
 
+def mirror_in_z(node):
+    """
+        Mirrors a point across the XY plane at Z = 0.
+    """
+    # get the current transform as quaternion rotation and translation
+    m_XformMat = OpenMaya.MTransformationMatrix(node.matrix.get())
+    quat = m_XformMat.rotation()
+    tran = m_XformMat.translation(OpenMaya.MSpace.kTransform)
+
+    q = [quat[0], quat[1], -quat[2], -quat[3]]      # negate Z axis and angle components of quaternion
+    t = [tran.x, tran.y, -tran.z]                   # negate Z axis component of translation
+
+    # set new transformation
+    obj = OpenMaya.MObject()
+    selList = OpenMaya.MSelectionList()
+    selList.add(node.name())
+    selList.getDependNode(0, obj)
+    m_FnXform = OpenMaya.MFnTransform(obj)
+
+    m_FnXform.setRotationQuaternion(*q)
+    vector = OpenMaya.MVector(*t)
+    m_FnXform.setTranslation(vector, OpenMaya.MSpace.kTransform)
+
+
 """ ====================================================================================================================
     Functions.
 ========================================================================================================================
@@ -200,12 +224,15 @@ def create_locator(PDX_locator):
     selList.getDependNode(0, obj)
 
     m_FnXform = OpenMaya.MFnTransform(obj)
+    # rotation
+    m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
     # translation
     vector = OpenMaya.MVector(PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
     space = OpenMaya.MSpace.kTransform
     m_FnXform.setTranslation(vector, space)
-    # rotation
-    m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
+
+    # mirror in Z
+    mirror_in_z(new_loc)
 
 
 def create_skeleton(PDX_bone_list):
@@ -235,8 +262,8 @@ def create_skeleton(PDX_bone_list):
         pmc.rename(new_bone, unique_name)
         pmc.parent(new_bone, world=True)
         bone_list[index] = new_bone
-        new_bone.radius.set(0.5)
-        
+        new_bone.radius.set(0.25)
+
         # set transform
         mat = pmdt.Matrix(
             transform[0], transform[1], transform[2], 0.0,
@@ -244,9 +271,12 @@ def create_skeleton(PDX_bone_list):
             transform[6], transform[7], transform[8], 0.0,
             transform[9], transform[10], transform[11], 1.0
         )
-        pmc.xform(matrix=mat.inverse())   # set transform to inverse of matrix in world-space
+        pmc.xform(matrix=mat.inverse())     # set transform to inverse of matrix in world-space
         pmc.select(clear=True)
-        
+
+        # mirror in Z
+        mirror_in_z(new_bone)
+
         # connect to parent
         if parent is not None:
             parent_bone = bone_list[parent[0]]
@@ -376,7 +406,7 @@ def create_mesh(PDX_mesh, name=None):
 
     # PyNode for the mesh
     new_mesh = pmc.PyNode(tmp_mesh_name)
-    new_transform = pmc.listRelatives(new_mesh, parent=True)
+    new_transform = pmc.listRelatives(new_mesh, type='transform', parent=True)[0]
 
     # name and namespace
     if name is not None:
@@ -406,8 +436,9 @@ def create_mesh(PDX_mesh, name=None):
         for item in tris:
             uvIds.append(item)
         # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
-        m_FnMesh.assignUVs(uvCounts, uvIds, 'map1')
         # note bulk assignment via .assignUVs only works to the default UV set!
+        m_FnMesh.assignUVs(uvCounts, uvIds, 'map1')
+
     # set other UV channels
     for idx in uv_Ch:
         # ignore Ch 0 as we have already set this
@@ -423,6 +454,19 @@ def create_mesh(PDX_mesh, name=None):
 
             m_FnMesh.createUVSetWithName(uvSetName)
             m_FnMesh.setUVs(uArray, vArray, uvSetName)
+
+    # mirror in Z
+    # we need to mirror the mesh components here, not just the transform
+    z_mirror = pmdt.Matrix(
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, -1, 0,
+        0, 0, 0, 1
+    )
+    pmc.select(new_transform)
+    new_transform.setMatrix(z_mirror)
+    # freeze transform once more
+    pmc.makeIdentity(apply=True, jo=False, n=0, pn=True, r=False, s=True, t=False)
 
     # assign the default material
     pmc.select(new_mesh)
