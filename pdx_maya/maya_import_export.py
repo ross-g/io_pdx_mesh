@@ -5,6 +5,7 @@
 """
 
 import os
+from collections import OrderedDict
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -24,6 +25,7 @@ from io_pdx_mesh import pdx_data
 """
 
 PDX_SHADER = 'shader'
+PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 
 
@@ -595,3 +597,71 @@ def export_meshfile(meshpath):
     # write the binary file from our XML structure
     #pdx_data.write_meshfile(meshpath, root_xml)
     return root_xml
+
+
+def import_animfile(animpath, start=None):
+    # read the file into an XML structure
+    asset_elem = pdx_data.read_meshfile(animpath)
+
+    # find animation info and samples
+    info = asset_elem.find('info')
+    samples = asset_elem.find('samples')
+
+    # find bones being animated
+    bone_errors = []
+    print "[io_pdx_mesh] finding bones -"
+    for bone in info:
+        try:
+            joint = pmc.PyNode(bone.tag)
+        except pmc.MayaObjectError:
+            bone_errors.append(bone.tag)
+            print "[io_pdx_mesh] failed to find bone {}!".format(bone.tag)
+    # break on bone errors
+    if bone_errors:
+        raise RuntimeError("Missing bones required for animation:\n{}".format(bone_errors))
+
+    # gather bones being animated into lists so we can traverse the samples correctly
+    s_bones = list()        # bones with scale keyframes
+    q_bones = list()        # bones with rotation keyframes
+    t_bones = list()        # bones with translation keyframes
+    anim_bones = dict(
+        s=s_bones,
+        q=q_bones,
+        t=t_bones
+    )
+
+    # check which transform types are animated on each bone
+    scene_bone_keyframes = OrderedDict()    # all keys for all bones
+    for bone in info:
+        bone_name = bone.tag
+        bone_keys = dict()
+        scene_bone_keyframes[bone_name] = bone_keys
+
+        for key_type in bone.attrib['sa'][0]:
+            anim_bones[key_type].append(bone_name)
+            bone_keys[key_type] = []    # empty list will be populated with keyframe data
+
+    # gather all keyframes per bone
+    pdx_q_keyframes = samples.attrib['q']
+    pdx_q_data = [pdx_q_keyframes[i:i+4] for i in range(0, len(pdx_q_keyframes), 4)]
+
+    q_counter = 4 * len(q_bones)
+    for i in range(0, len(pdx_q_keyframes), q_counter):
+        for k, bone_name in enumerate(q_bones):
+            keyframes = pdx_q_keyframes[i+k:i+k+4]
+            scene_bone_keyframes[bone_name]['q'].append(keyframes)
+
+    # set all keyframes per bone
+    for bone_name in scene_bone_keyframes:
+        bone_keys = scene_bone_keyframes[bone_name]
+        if 'q' in bone_keys:
+            for i, frame in enumerate(bone_keys['q']):
+                pmc.currentTime(i + 1, edit=True)
+                jnt = pmc.PyNode(bone_name)
+                quat = frame
+                q = [quat[0], quat[1], -quat[2], -quat[3]]
+                jnt.setRotation(q)
+                pmc.setKeyframe(jnt, attribute=['rotateX', 'rotateY', 'rotateZ'], minimizeRotation=True)
+
+    pmc.select()
+    print "[io_pdx_mesh] finished!"
