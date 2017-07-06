@@ -30,6 +30,37 @@ PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 
 
 """ ====================================================================================================================
+    API functions.
+========================================================================================================================
+"""
+
+def get_MObject(object_name):
+    m_Obj = OpenMaya.MObject()
+
+    m_SelList = OpenMaya.MSelectionList()
+    m_SelList.add(object_name)
+    m_SelList.getDependNode(0, m_Obj)
+
+    return m_Obj
+
+
+def get_plug(object, plug_name):
+    mFn_DepNode = OpenMaya.MFnDependencyNode(object)
+    plug = mFn_DepNode.findPlug(plug_name)
+
+    return plug
+
+
+def connect_nodeplugs(source_object, source_plug, dest_object, dest_plug):
+    source_plug = get_plug(source_object, source_plug)
+    dest_plug = get_plug(dest_object, dest_plug)
+
+    m_DGMod = OpenMaya.MDGModifier()
+    m_DGMod.connect(source_plug, dest_plug)
+    m_DGMod.doIt()
+
+
+""" ====================================================================================================================
     Helper functions.
 ========================================================================================================================
 """
@@ -118,15 +149,12 @@ def mirror_in_z(node):
     t = [tran.x, tran.y, -tran.z]                   # negate Z axis component of translation
 
     # set new transformation
-    obj = OpenMaya.MObject()
-    selList = OpenMaya.MSelectionList()
-    selList.add(node.name())
-    selList.getDependNode(0, obj)
-    m_FnXform = OpenMaya.MFnTransform(obj)
+    obj = get_MObject(node.name())
+    mFn_Xform = OpenMaya.MFnTransform(obj)
 
-    m_FnXform.setRotationQuaternion(*q)
+    mFn_Xform.setRotationQuaternion(*q)
     vector = OpenMaya.MVector(*t)
-    m_FnXform.setTranslation(vector, OpenMaya.MSpace.kTransform)
+    mFn_Xform.setTranslation(vector, OpenMaya.MSpace.kTransform)
 
 
 """ ====================================================================================================================
@@ -220,18 +248,15 @@ def create_locator(PDX_locator):
             pmc.parent(new_loc, parent_bone[0])
 
     # set attributes
-    obj = OpenMaya.MObject()
-    selList = OpenMaya.MSelectionList()
-    selList.add(new_loc.name())
-    selList.getDependNode(0, obj)
+    obj = get_MObject(new_loc.name())
+    mFn_Xform = OpenMaya.MFnTransform(obj)
 
-    m_FnXform = OpenMaya.MFnTransform(obj)
     # rotation
-    m_FnXform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
+    mFn_Xform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
     # translation
     vector = OpenMaya.MVector(PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
     space = OpenMaya.MSpace.kTransform
-    m_FnXform.setTranslation(vector, space)
+    mFn_Xform.setTranslation(vector, space)
 
     # mirror in Z
     mirror_in_z(new_loc)
@@ -363,7 +388,7 @@ def create_mesh(PDX_mesh, name=None):
             uv_Ch[i] = getattr(PDX_mesh, uv)    # flat list of 2d co-ordinates, u0[:1] = vtx[0]uv0
 
     # create the data structures for mesh and transform
-    m_FnMesh = OpenMaya.MFnMesh()
+    mFn_Mesh = OpenMaya.MFnMesh()
     m_DagMod = OpenMaya.MDagModifier()
     new_object = m_DagMod.createNode('transform')
 
@@ -402,8 +427,8 @@ def create_mesh(PDX_mesh, name=None):
 
     """ ================================================================================================================
         create the new mesh """
-    m_FnMesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
-    m_FnMesh.setName(tmp_mesh_name)
+    mFn_Mesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
+    mFn_Mesh.setName(tmp_mesh_name)
     m_DagMod.doIt()     # sets up the transform parent to the mesh shape
 
     # PyNode for the mesh
@@ -426,7 +451,7 @@ def create_mesh(PDX_mesh, name=None):
         vertexList = OpenMaya.MIntArray()       # matches normal to vert by index
         for i in range(0, numVertices):
             vertexList.append(i)
-        m_FnMesh.setVertexNormals(normalsIn, vertexList)
+        mFn_Mesh.setVertexNormals(normalsIn, vertexList)
 
     # apply the default UV data
     if uv_Ch.get(0):
@@ -439,7 +464,7 @@ def create_mesh(PDX_mesh, name=None):
             uvIds.append(item)
         # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
         # note bulk assignment via .assignUVs only works to the default UV set!
-        m_FnMesh.assignUVs(uvCounts, uvIds, 'map1')
+        mFn_Mesh.assignUVs(uvCounts, uvIds, 'map1')
 
     # set other UV channels
     for idx in uv_Ch:
@@ -454,8 +479,8 @@ def create_mesh(PDX_mesh, name=None):
                 uArray.append(uv_data[i])
                 vArray.append(1 - uv_data[i+1])        # flip the UV coords in V!
 
-            m_FnMesh.createUVSetWithName(uvSetName)
-            m_FnMesh.setUVs(uArray, vArray, uvSetName)
+            mFn_Mesh.createUVSetWithName(uvSetName)
+            mFn_Mesh.setUVs(uArray, vArray, uvSetName)
 
     # mirror in Z
     # we need to mirror the mesh components here, not just the transform
