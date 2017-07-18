@@ -22,9 +22,13 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-import maya_import_export
-reload(maya_import_export)
-from maya_import_export import *
+try:
+    import maya_import_export
+    reload(maya_import_export)
+    from maya_import_export import *
+except Exception as err:
+    print err
+    raise
 
 
 def get_mayamainwindow():
@@ -106,7 +110,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
         # file_import_mesh.setStatusTip('')
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
-        file_import_anim.setDisabled(True)
         file_export = QtWidgets.QAction('Export mesh ...', self)
         file_export.setDisabled(True)
 
@@ -186,7 +189,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def do_import_mesh(self):
-        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh',
+        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh file',
                                                                      filter='PDX Mesh files (*.mesh)')
         if filepath != '':
             if os.path.splitext(filepath)[1] == '.mesh':
@@ -203,7 +206,20 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def do_import_anim(self):
-        pass
+        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .anim file',
+                                                                     filter='PDX Animation files (*.anim)')
+        if filepath != '':
+            if os.path.splitext(filepath)[1] == '.anim':
+                self.popup = import_popup(filepath, parent=self)
+                self.popup.show()
+            else:
+                reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
+                                                      'Unable to read selected file. The filepath ... '
+                                                      '\n\n\t{}'
+                                                      '\n ... is not a .anim file!'.format(filepath),
+                                                      QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+                if reply == QtWidgets.QMessageBox.Ok:
+                    print "[io_pdx_mesh] Nothing to import."
 
     def load_settings(self):
         with open(self._settings_file, 'rt') as f:
@@ -426,7 +442,8 @@ class import_popup(QtWidgets.QWidget):
     def __init__(self, filepath, parent=None):
         super(import_popup, self).__init__(parent)
 
-        self.mesh_file = filepath
+        self.pdx_file = filepath
+        self.pdx_type = os.path.splitext(filepath)[1]
         self.parent = parent
 
         self.setWindowTitle('Import options')
@@ -442,14 +459,21 @@ class import_popup(QtWidgets.QWidget):
 
     def create_controls(self):
         # create controls
-        lbl_filepath = QtWidgets.QLabel('Filename:  {}'.format(os.path.split(self.mesh_file)[-1]))
+        lbl_filepath = QtWidgets.QLabel('Filename:  {}'.format(os.path.split(self.pdx_file)[-1]))
+        self.btn_import = QtWidgets.QPushButton('Import ...', self)
+        self.btn_import.setToolTip('Select a {} file to import.'.format(self.pdx_type))
+        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
+        self.prog_bar = QtWidgets.QProgressBar(self)
+        # mesh specific controls
         self.chk_mesh = QtWidgets.QCheckBox('Mesh')
         self.chk_skeleton = QtWidgets.QCheckBox('Skeleton')
         self.chk_locators = QtWidgets.QCheckBox('Locators')
-        self.btn_import = QtWidgets.QPushButton('Import ...', self)
-        self.btn_import.setToolTip('Select a .mesh file to import.')
-        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
-        self.prog_bar = QtWidgets.QProgressBar(self)
+        # anim specific controls
+        lbl_starttime = QtWidgets.QLabel('start time:')
+        lbl_starttime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.spn_start = QtWidgets.QSpinBox()
+        self.spn_start.setMaximumWidth(50)
+        self.spn_start.setValue(1)
 
         # create layouts
         main_layout = QtWidgets.QVBoxLayout()
@@ -461,9 +485,14 @@ class import_popup(QtWidgets.QWidget):
         self.setLayout(main_layout)
         main_layout.addWidget(lbl_filepath)
         main_layout.addSpacing(5)
-        for chk_box in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
-            opts_layout.addWidget(chk_box)
-            chk_box.setChecked(True)
+        # add mode specific import option controls
+        if self.pdx_type == '.mesh':
+            for chk_box in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
+                opts_layout.addWidget(chk_box)
+                chk_box.setChecked(True)
+        elif self.pdx_type == '.anim':
+            for qt_control in [lbl_starttime, self.spn_start]:
+                opts_layout.addWidget(qt_control)
         main_layout.addLayout(opts_layout)
         main_layout.addSpacing(10)
         main_layout.addWidget(self.prog_bar)
@@ -472,21 +501,26 @@ class import_popup(QtWidgets.QWidget):
         btn_layout.addWidget(self.btn_cancel)
 
     def connect_signals(self):
-        self.btn_import.clicked.connect(self.import_mesh)
+        if self.pdx_type == '.mesh':
+            self.btn_import.clicked.connect(self.import_mesh)
+        elif self.pdx_type == '.anim':
+            self.btn_import.clicked.connect(self.import_anim)
         self.btn_cancel.clicked.connect(self.close)
 
     def import_mesh(self):
-        print "[io_pdx_mesh] Importing {}".format(self.mesh_file)
+        print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
 
         try:
             # TODO: thread import to unblock PyQt UI?
             self.prog_bar.setRange(0, 0)
             self.prog_bar.setValue(0)
             time.sleep(1)
-            import_meshfile(self.mesh_file,
-                        imp_mesh=self.chk_mesh.isChecked(),
-                        imp_skel=self.chk_skeleton.isChecked(),
-                        imp_locs=self.chk_locators.isChecked())
+            import_meshfile(
+                self.pdx_file, 
+                imp_mesh=self.chk_mesh.isChecked(), 
+                imp_skel=self.chk_skeleton.isChecked(), 
+                imp_locs=self.chk_locators.isChecked()
+                )
             self.prog_bar.setMaximum(100)
             self.prog_bar.setValue(100)
             time.sleep(1)
@@ -494,7 +528,33 @@ class import_popup(QtWidgets.QWidget):
             self.parent.refresh_gui()
 
         except Exception as err:
-            print "[io_pdx_mesh] Failed to import {}".format(self.mesh_file)
+            print "[io_pdx_mesh] Failed to import {}".format(self.pdx_file)
+            print err
+            self.close()
+            raise
+
+        self.close()
+
+    def import_anim(self):
+        print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
+
+        try:
+            # TODO: thread import to unblock PyQt UI?
+            self.prog_bar.setRange(0, 0)
+            self.prog_bar.setValue(0)
+            time.sleep(1)
+            import_animfile(
+                self.pdx_file, 
+                timestart=self.spn_start.value()
+                )
+            self.prog_bar.setMaximum(100)
+            self.prog_bar.setValue(100)
+            time.sleep(1)
+            self.close()
+            self.parent.refresh_gui()
+
+        except Exception as err:
+            print "[io_pdx_mesh] Failed to import {}".format(self.pdx_file)
             print err
             self.close()
             raise
