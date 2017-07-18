@@ -15,6 +15,7 @@ import maya.cmds as cmds
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
 import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
+import maya.OpenMayaAnim as OpenMayaAnim    # Maya Python API 1.0
 
 from io_pdx_mesh import pdx_data
 
@@ -34,6 +35,7 @@ PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 ========================================================================================================================
 """
 
+
 def get_MObject(object_name):
     m_Obj = OpenMaya.MObject()
 
@@ -44,8 +46,8 @@ def get_MObject(object_name):
     return m_Obj
 
 
-def get_plug(object, plug_name):
-    mFn_DepNode = OpenMaya.MFnDependencyNode(object)
+def get_plug(mobject, plug_name):
+    mFn_DepNode = OpenMaya.MFnDependencyNode(mobject)
     plug = mFn_DepNode.findPlug(plug_name)
 
     return plug
@@ -503,6 +505,94 @@ def create_mesh(PDX_mesh, name=None):
     return new_mesh
 
 
+def create_animcurve(joint, attr):
+    # use the attribute on the joint to determine which type of anim curve to create
+    in_plug = get_plug(joint, attr)
+    mFn_AnimCurve = OpenMayaAnim.MFnAnimCurve()
+    plugtype = mFn_AnimCurve.timedAnimCurveTypeForPlug(in_plug)
+
+    # create the curve and get its output attribute
+    anim_curve = mFn_AnimCurve.create(plugtype)
+
+    # connect the animation curve to the joint
+    connect_nodeplugs(anim_curve, 'output', joint, attr)
+
+    return anim_curve, mFn_AnimCurve
+
+
+def create_anim_keys(joint, key_dict, timestart):
+    jnt_obj = get_MObject(joint.name())
+
+    # calculate start and end frames
+    timestart = int(timestart)
+    timeend = timestart + len(max(key_dict.values(), key=len))
+    # create a time array
+    time_array = OpenMaya.MTimeArray()
+    for t in xrange(timestart, timeend):
+        time_array.append(OpenMaya.MTime(t, OpenMaya.MTime.uiUnit()))
+
+    if 's' in key_dict:     # scale data
+        pass
+
+    if 'q' in key_dict:     # quaternion data
+        animated_attrs = dict(rotateX=None, rotateY=None, rotateZ=None)
+
+        for attrib in animated_attrs:
+            # create the curve and API function set
+            anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
+            animated_attrs[attrib] = [anim_curve, mFn_AnimCurve]
+        
+        # create data arrays per animating attribute
+        x_data_array = OpenMaya.MDoubleArray()
+        y_data_array = OpenMaya.MDoubleArray()
+        z_data_array = OpenMaya.MDoubleArray()
+        
+        for quat_data in key_dict['q']:
+            # mirror in Z
+            q = [quat_data[0], quat_data[1], -quat_data[2], -quat_data[3]]
+            # convert from quaternion to euler, this gives values in radians (which Maya uses internally)
+            euler_data = OpenMaya.MQuaternion(*q).asEulerRotation()
+            x_data_array.append(euler_data.x)
+            y_data_array.append(euler_data.y)
+            z_data_array.append(euler_data.z)
+            # print pmdt.Quaternion(q), "\t>>> ", "{}, {}, {}".format(euler_data.x,euler_data.y,euler_data.z)
+            # x_data_array.append(OpenMaya.MAngle(euler_data.x, OpenMaya.MAngle.kDegrees).asRadians())
+            # y_data_array.append(OpenMaya.MAngle(euler_data.y, OpenMaya.MAngle.kDegrees).asRadians())
+            # z_data_array.append(OpenMaya.MAngle(euler_data.z, OpenMaya.MAngle.kDegrees).asRadians())
+
+        k_Tangent = OpenMayaAnim.MFnAnimCurve.kTangentLinear
+        # add keys to the new curves
+        for attrib, data_array in zip(animated_attrs, [x_data_array, y_data_array, z_data_array]):
+            mFn_AnimCurve = animated_attrs[attrib][1]
+            mFn_AnimCurve.addKeys(time_array, data_array, k_Tangent, k_Tangent)
+
+    if 't' in key_dict:     # translation data
+        animated_attrs = dict(translateX=None, translateY=None, translateZ=None)
+
+        for attrib in animated_attrs:
+            # create the curve and API function set
+            anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
+            animated_attrs[attrib] = [anim_curve, mFn_AnimCurve]
+        
+        # create data arrays per animating attribute
+        x_data_array = OpenMaya.MDoubleArray()
+        y_data_array = OpenMaya.MDoubleArray()
+        z_data_array = OpenMaya.MDoubleArray()
+
+        for trans_data in key_dict['t']:
+            # mirror in Z
+            t = [trans_data[0], trans_data[1], -trans_data[2]]
+            x_data_array.append(t[0])
+            y_data_array.append(t[1])
+            z_data_array.append(t[2])
+
+        k_Tangent = OpenMayaAnim.MFnAnimCurve.kTangentLinear
+        # add keys to the new curves
+        for attrib, data_array in zip(animated_attrs, [x_data_array, y_data_array, z_data_array]):
+            mFn_AnimCurve = animated_attrs[attrib][1]
+            mFn_AnimCurve.addKeys(time_array, data_array, k_Tangent, k_Tangent)
+
+
 """ ====================================================================================================================
     Main IO functions.
 ========================================================================================================================
@@ -564,7 +654,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
             pdx_locator = pdx_data.PDXData(loc)
             create_locator(pdx_locator)
 
-    pmc.select()
+    pmc.select(None)
     print "[io_pdx_mesh] finished!"
 
 
@@ -624,13 +714,35 @@ def export_meshfile(meshpath):
     return root_xml
 
 
-def import_animfile(animpath, start=None):
+def import_animfile(animpath, timestart=0.0):
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(animpath)
 
     # find animation info and samples
     info = asset_elem.find('info')
     samples = asset_elem.find('samples')
+
+    # set scene animation and playback settings
+    fps = info.attrib['fps'][0]
+    try:
+        pmc.currentUnit(time=str(int(fps))+'fps')
+    except RuntimeError:
+        if fps == 15:
+            pmc.currentUnit(time='game')
+        elif fps == 30:
+            pmc.currentUnit(time='ntsc')
+        else:
+            raise NotImplementedError("Unsupported animation speed. {}".format(fps))
+    print "[io_pdx_mesh] setting playback speed - {}".format(fps)
+    pmc.playbackOptions(e=True, playbackSpeed=1.0)
+    pmc.playbackOptions(e=True, animationStartTime=0.0)
+    pmc.playbackOptions(e=True, minTime=timestart)
+    pmc.playbackOptions(e=True, maxTime=(timestart+info.attrib['sa'][0]))
+    pmc.currentTime(0, edit=True)
+    print "[io_pdx_mesh] setting playback range - ({},{})".format(
+        pmc.playbackOptions(q=True, minTime=True),
+        pmc.playbackOptions(q=True, maxTime=True)
+        )
 
     # find bones being animated
     bone_errors = []
@@ -640,20 +752,16 @@ def import_animfile(animpath, start=None):
             joint = pmc.PyNode(bone.tag)
         except pmc.MayaObjectError:
             bone_errors.append(bone.tag)
-            print "[io_pdx_mesh] failed to find bone {}!".format(bone.tag)
+            print "[io_pdx_mesh] failed to find bone {}".format(bone.tag)
     # break on bone errors
     if bone_errors:
         raise RuntimeError("Missing bones required for animation:\n{}".format(bone_errors))
 
-    # gather bones being animated into lists so we can traverse the samples correctly
+    # gather bones being animated into lists so we can traverse the samples data correctly
     s_bones = list()        # bones with scale keyframes
     q_bones = list()        # bones with rotation keyframes
     t_bones = list()        # bones with translation keyframes
-    anim_bones = dict(
-        s=s_bones,
-        q=q_bones,
-        t=t_bones
-    )
+    anim_bones = dict(s=s_bones, q=q_bones, t=t_bones)
 
     # check which transform types are animated on each bone
     scene_bone_keyframes = OrderedDict()    # all keys for all bones
@@ -664,29 +772,48 @@ def import_animfile(animpath, start=None):
 
         for key_type in bone.attrib['sa'][0]:
             anim_bones[key_type].append(bone_name)
-            bone_keys[key_type] = []    # empty list will be populated with keyframe data
+            bone_keys[key_type] = []    # this empty list will be populated with keyframe data
 
-    # gather all keyframes per bone
-    pdx_q_keyframes = samples.attrib['q']
-    pdx_q_data = [pdx_q_keyframes[i:i+4] for i in range(0, len(pdx_q_keyframes), 4)]
+    # store all keyframes on a per bone basis
+    for key_type in samples.attrib:
+        # flat list of keyframe data we must traverse - bone1_time1_data, bone2_time1_data ... bone1_time2_data ... etc
+        pdx_keyframes = samples.attrib[key_type]
 
-    q_counter = 4 * len(q_bones)
-    for i in range(0, len(pdx_q_keyframes), q_counter):
-        for k, bone_name in enumerate(q_bones):
-            keyframes = pdx_q_keyframes[i+k:i+k+4]
-            scene_bone_keyframes[bone_name]['q'].append(keyframes)
+        if key_type == 's':
+            data_len = 1        # uniform scale data        # TODO: this needs verification
+        elif key_type == 'q':
+            data_len = 4        # quaternion data
+        elif key_type == 't':
+            data_len = 3        # translation data
+        else:
+            raise NotImplementedError("Unsupported animation key type found. {}".format(key_type))
+
+        for i in range(0, len(pdx_keyframes), len(anim_bones[key_type]) * data_len):
+            for k, bone_name in enumerate(anim_bones[key_type]):
+                keyframes = pdx_keyframes[i + k:i + k + data_len]
+                scene_bone_keyframes[bone_name][key_type].append(keyframes)
 
     # set all keyframes per bone
     for bone_name in scene_bone_keyframes:
         bone_keys = scene_bone_keyframes[bone_name]
-        if 'q' in bone_keys:
-            for i, frame in enumerate(bone_keys['q']):
-                pmc.currentTime(i + 1, edit=True)
-                jnt = pmc.PyNode(bone_name)
-                quat = frame
-                q = [quat[0], quat[1], -quat[2], -quat[3]]
-                jnt.setRotation(q)
-                pmc.setKeyframe(jnt, attribute=['rotateX', 'rotateY', 'rotateZ'], minimizeRotation=True)
+        # check for keyframe values
+        if bone_keys.values():
+            create_anim_keys(pmc.PyNode(bone_name), bone_keys, timestart)
+        # jnt = pmc.PyNode(bone_name)
+        # if 'q' in bone_keys:
+        #     for i, frame in enumerate(bone_keys['q']):
+        #         pmc.currentTime(i+1, edit=True)
+        #         quat = frame
+        #         q = [quat[0], quat[1], -quat[2], -quat[3]]
+        #         jnt.setRotation(q)
+        #         pmc.setKeyframe(jnt, attribute=['rx', 'ry', 'rz'], minimizeRotation=True)
+        # if 't' in bone_keys:
+        #     for i, frame in enumerate(bone_keys['t']):
+        #         pmc.currentTime(i+1, edit=True)
+        #         tran = frame
+        #         t = [tran[0], tran[1], -tran[2]]
+        #         jnt.setTranslation(t)
+        #         pmc.setKeyframe(jnt, attribute=['tx', 'tx', 'tx'])
 
-    pmc.select()
+    pmc.select(None)
     print "[io_pdx_mesh] finished!"
