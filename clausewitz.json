@@ -8,14 +8,37 @@
             "idle2"
         ],
         "material": [
+            "Collision",
+            "PdxMeshAlphaAdditive",
+            "PdxMeshAlphaBlend",
             "PdxMeshStandard",
             "PdxMeshTextureAtlas",
-            "PdxMeshAlphaBlend",
-            "PdxMeshAlphaAdditive",
             "PdxMeshWater"
         ],
         "path": "X:/project/tools/pdx_editor/game",
         "target_exe": "X:/project/tools/pdx_editor/game/pdx_editor_D.exe"
+    },
+    "europa_universalis": {
+        "animation": [
+            "idle",
+            "moving",
+            "attack",
+            "death",
+            "idle2"
+        ],
+        "material": [
+            "Collision",
+            "PdxMeshAdvanced",
+            "PdxMeshAlphaBlend",
+            "PdxMeshAlphaBlendNoZWrite",
+            "PdxMeshColor",
+            "PdxMeshSnow",
+            "PdxMeshStandard",
+            "PdxMeshStandard_NoFoW_NoTI",
+            "PdxMeshTextureAtlas"
+        ],
+        "path": "X:/Steam/SteamApps/common/Europa Universalis IV",
+        "target_exe": "X:/Steam/SteamApps/common/Europa Universalis IV/eu4.exe"
     },
     "hearts_of_iron": {
         "animation": [
@@ -25,9 +48,10 @@
             "death",
             "idle2" ],
         "material": [
-            "PdxMeshHoI4",
+            "Collision",
             "PdxMeshAdvanced",
-            "PdxMeshAdvancedSnow"
+            "PdxMeshAdvancedSnow",
+            "PdxMeshHoI4"
         ],
         "path": "X:/project/hoi4/game",
         "target_exe": "X:/project/hoi4/game/hoi4_D.exe"
@@ -43,21 +67,35 @@
             "sad2"
         ],
         "material": [
-            "PdxMeshShip",
-            "PdxMeshTerra",
-            "PdxMeshPlanet",
-            "PdxMeshStar",
-            "PdxMeshAtmosphere",
-            "PdxMeshClouds",
-            "PdxMeshFleetTypeIndicator",
+            "Collision",
+            "PdxMeshAdvanced",
             "PdxMeshAlphaAdditive",
-            "PdxMeshTextureAtlas",
+            "PdxMeshAlphaAdditiveAnimateUV",
             "PdxMeshAlphaBlend",
+            "PdxMeshAsteroid",
+            "PdxMeshAtmosphere",
+            "PdxMeshAtmosphereStar",
+            "PdxMeshCircleGradient",
+            "PdxMeshClouds",
+            "PdxMeshColor",
+            "PdxMeshExtraDimensionalShip",
+            "PdxMeshNavigationButton",
+            "PdxMeshPlanet",
+            "PdxMeshPlanetEmissive",
+            "PdxMeshPlanetRings",
             "PdxMeshPortrait",
             "PdxMeshPortraitClothes",
-            "PdxMeshPortraitHair"
+            "PdxMeshPortraitHair",
+            "PdxMeshShieldFlipBook",
+            "PdxMeshShieldUVStrech",
+            "PdxMeshShip",
+            "PdxMeshStandard",
+            "PdxMeshStar",
+            "PdxMeshTerra",
+            "PdxMeshTerraAlphaBlend",
+            "PdxMeshTerraAlphaTest"
         ],
-        "path": "X:/Steam/steamapps/common/Stellaris",
-        "target_exe": "X:/Steam/steamapps/common/Stellaris/stellaris.exe"
+        "path": "X:/Steam/SteamApps/common/Stellaris",
+        "target_exe": "X:/Steam/SteamApps/common/Stellaris/stellaris.exe"
     }
 }
