@@ -6,6 +6,7 @@
 
 import os
 import sys
+import time
 import webbrowser
 import inspect
 import json
@@ -21,7 +22,13 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from maya_import_export import *
+try:
+    import maya_import_export
+    reload(maya_import_export)
+    from maya_import_export import *
+except Exception as err:
+    print err
+    raise
 
 
 def get_mayamainwindow():
@@ -88,20 +95,21 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.create_menu()
         self.create_controls()
         self.create_signals()
+        self.refresh_gui()
 
     def create_menu(self):
         self.menubar = QtWidgets.QMenuBar()
         file_menu = self.menubar.addMenu('&File')
         tools_menu = self.menubar.addMenu('&Tools')
+        tools_menu.setTearOffEnabled(True)
         help_menu = self.menubar.addMenu('&Help')
 
         # file menu
         file_import_mesh = QtWidgets.QAction('Import mesh ...', self)
-        file_import_mesh.triggered.connect(self.do_import)
+        file_import_mesh.triggered.connect(self.do_import_mesh)
         # file_import_mesh.setStatusTip('')
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
-        # file_import_anim.triggered.connect(self.do_import_anim)
-        file_import_anim.setDisabled(True)
+        file_import_anim.triggered.connect(self.do_import_anim)
         file_export = QtWidgets.QAction('Export mesh ...', self)
         file_export.setDisabled(True)
 
@@ -112,6 +120,14 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
         tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
+        tool_show_jnt_localaxes = QtWidgets.QAction('Show all joint axes', self)
+        tool_show_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='joint'))
+        tool_hide_jnt_localaxes = QtWidgets.QAction('Hide all joint axes', self)
+        tool_hide_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='joint'))
+        tool_show_loc_localaxes = QtWidgets.QAction('Show all locator axes', self)
+        tool_show_loc_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='locator'))
+        tool_hide_loc_localaxes = QtWidgets.QAction('Hide all locator axes', self)
+        tool_hide_loc_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='locator'))
 
         # help menu
         help_forum = QtWidgets.QAction('Paradox forums', self)
@@ -123,49 +139,87 @@ class PDXmaya_ui(QtWidgets.QDialog):
             'https://github.com/ross-g/io_pdx_mesh')
         )
 
-        file_menu.addActions([file_import_mesh, file_import_anim])
+        file_menu.addActions([
+            file_import_mesh, 
+            file_import_anim
+            ])
         file_menu.addSeparator()
-        file_menu.addActions([file_export])
-        tools_menu.addActions([tool_edit_settings])
+        file_menu.addActions([
+            file_export
+            ])
+        tools_menu.addActions([
+            tool_edit_settings
+            ])
         tools_menu.addSeparator()
-        tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
-        help_menu.addActions([help_forum, help_code])
+        tools_menu.addActions([
+            tool_ignore_joints, 
+            tool_unignore_joints
+            ])
+        tools_menu.addSeparator()
+        tools_menu.addActions([
+            tool_show_jnt_localaxes, 
+            tool_hide_jnt_localaxes, 
+            tool_show_loc_localaxes, 
+            tool_hide_loc_localaxes
+            ])
+        help_menu.addActions([
+            help_forum, help_code
+            ])
 
     def create_controls(self):
         main_layout = QtWidgets.QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(main_layout)
 
-        export_ctrls = export_controls(parent=self)
+        # create all of the main controls
+        self.export_ctrls = export_controls(parent=self)
 
         # create menubar and add widgets to main layout
         main_layout.setMenuBar(self.menubar)
-        main_layout.addWidget(export_ctrls)
-        print self.settings
+        main_layout.addWidget(self.export_ctrls)
 
     def create_signals(self):
         # connect up controls
         pass
 
-    @QtCore.Slot()
-    def do_import(self):
-        filename, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh',
-                                                                     filter='PDX Mesh files (*.mesh)')
-        if filename and os.path.splitext(filename)[1] == '.mesh':
-            self.import_mesh(filename)
-        else:
-            reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
-                                                  'Unable to read the file. The selected filepath ... '
-                                                  '\n\n\t{}'
-                                                  '\n\n ... is not a .mesh file!'.format(filename),
-                                                  QtWidgets.QMessageBox.Ok,
-                                                  defaultButton=QtWidgets.QMessageBox.Ok)
-            if reply == QtWidgets.QMessageBox.Ok:
-                print "[io_pdx_mesh] Nothing to import."
+    def refresh_gui(self):
+        # call any gui refresh functions here
+        self.export_ctrls.refresh_mat_list()
+        self.export_ctrls.refresh_anim_list()
 
-    def import_mesh(self, filepath):
-        self.popup = import_popup(filepath, parent=self)
-        self.popup.show()
+    @QtCore.Slot()
+    def do_import_mesh(self):
+        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh file',
+                                                                     filter='PDX Mesh files (*.mesh)')
+        if filepath != '':
+            if os.path.splitext(filepath)[1] == '.mesh':
+                self.popup = import_popup(filepath, parent=self)
+                self.popup.show()
+            else:
+                reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
+                                                      'Unable to read selected file. The filepath ... '
+                                                      '\n\n\t{}'
+                                                      '\n ... is not a .mesh file!'.format(filepath),
+                                                      QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+                if reply == QtWidgets.QMessageBox.Ok:
+                    print "[io_pdx_mesh] Nothing to import."
+
+    @QtCore.Slot()
+    def do_import_anim(self):
+        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .anim file',
+                                                                     filter='PDX Animation files (*.anim)')
+        if filepath != '':
+            if os.path.splitext(filepath)[1] == '.anim':
+                self.popup = import_popup(filepath, parent=self)
+                self.popup.show()
+            else:
+                reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
+                                                      'Unable to read selected file. The filepath ... '
+                                                      '\n\n\t{}'
+                                                      '\n ... is not a .anim file!'.format(filepath),
+                                                      QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+                if reply == QtWidgets.QMessageBox.Ok:
+                    print "[io_pdx_mesh] Nothing to import."
 
     def load_settings(self):
         with open(self._settings_file, 'rt') as f:
@@ -183,69 +237,12 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 return {}
 
 
-class import_popup(QtWidgets.QWidget):
-
-    def __init__(self, filepath, parent=None):
-        super(import_popup, self).__init__(parent)
-
-        topleft = pdx_tools.window().frameGeometry().topLeft()
-        self.move(topleft + QtCore.QPoint(5, 50))
-        self.mesh_file = filepath
-
-        self.create_controls()
-        self.connect_signals()
-        self.setWindowTitle('Import options')
-        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
-
-    def create_controls(self):
-        # create controls
-        lbl_filepath = QtWidgets.QLabel('Filename:  {}'.format(os.path.split(self.mesh_file)[-1]))
-        self.chk_mesh = QtWidgets.QCheckBox('Mesh')
-        self.chk_skeleton = QtWidgets.QCheckBox('Skeleton')
-        self.chk_locators = QtWidgets.QCheckBox('Locators')
-        self.btn_import = QtWidgets.QPushButton('Import ...', self)
-        self.btn_import.setToolTip('Select a .mesh file to import.')
-        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
-
-        # create layouts
-        main_layout = QtWidgets.QVBoxLayout()
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        opts_layout = QtWidgets.QHBoxLayout()
-        btn_layout = QtWidgets.QHBoxLayout()
-
-        # add controls
-        self.setLayout(main_layout)
-        main_layout.addWidget(lbl_filepath)
-        main_layout.addSpacing(10)
-        for chk_box in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
-            opts_layout.addWidget(chk_box)
-            chk_box.setChecked(True)
-        main_layout.addLayout(opts_layout)
-        main_layout.addLayout(btn_layout)
-        btn_layout.addWidget(self.btn_import)
-        btn_layout.addWidget(self.btn_cancel)
-
-    def connect_signals(self):
-        self.btn_import.clicked.connect(self.import_mesh)
-        self.btn_cancel.clicked.connect(self.close)
-
-    def import_mesh(self):
-        print "[io_pdx_mesh] Importing {}.".format(self.mesh_file)
-
-        try:
-            import_file(self.mesh_file, imp_mesh=self.chk_mesh, imp_skel=self.chk_skeleton, imp_locs=self.chk_locators)
-        except Exception as err:
-            print "[io_pdx_mesh] Failed to import {}.".format(self.mesh_file)
-            print err
-            raise
-
-        self.close()
-
-
 class export_controls(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(export_controls, self).__init__(parent)
+
+        self.parent = parent
 
         self.create_controls()
         self.connect_signals()
@@ -255,18 +252,18 @@ class export_controls(QtWidgets.QWidget):
         # materials
         self.list_materials = QtWidgets.QListWidget()
         self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
-        self.btn_mat_edit = QtWidgets.QPushButton('Edit', self)
         self.btn_mat_create = QtWidgets.QPushButton('Create ...', self)
+        self.btn_mat_edit = QtWidgets.QPushButton('Edit', self)
         # animations
         self.list_animations = QtWidgets.QListWidget()
         self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
-        self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
         self.btn_anim_create = QtWidgets.QPushButton('Create ...', self)
+        self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
 
         # settings
         lbl_engine = QtWidgets.QLabel('Game engine:')
         self.setup_engine = QtWidgets.QComboBox()
-        self.setup_engine.addItems(self.parent().settings.keys())
+        self.setup_engine.addItems(self.parent.settings.keys())
         lbl_fps = QtWidgets.QLabel('Animation fps:')
         self.setup_fps = QtWidgets.QDoubleSpinBox()
         self.setup_fps.setMinimum(0.0)
@@ -292,6 +289,21 @@ class export_controls(QtWidgets.QWidget):
         self.txt_file = QtWidgets.QLineEdit()
         self.txt_file.setPlaceholderText('placeholder_name.mesh')
         self.btn_export = QtWidgets.QPushButton('Export ...', self)
+
+        # TODO: re-enable these once export is working
+        self.btn_anim_refresh.setDisabled(True)
+        self.btn_anim_create.setDisabled(True)
+        self.btn_anim_edit.setDisabled(True)
+        self.chk_mesh.setDisabled(True)
+        self.chk_skel.setDisabled(True)
+        self.chk_anim.setDisabled(True)
+        self.chk_merge_vtx.setDisabled(True)
+        self.chk_merge_obj.setDisabled(True)
+        self.chk_create.setDisabled(True)
+        self.chk_preview.setDisabled(True)
+        self.btn_path.setDisabled(True)
+        self.txt_file.setDisabled(True)
+        self.btn_export.setDisabled(True)
 
         # create layouts
         main_layout = QtWidgets.QHBoxLayout()
@@ -338,16 +350,16 @@ class export_controls(QtWidgets.QWidget):
         grp_mats_layout.addWidget(self.list_materials)
         grp_mats_layout.addLayout(grp_mats_button_layout)
         grp_mats_button_layout.addWidget(self.btn_mat_refresh)
-        grp_mats_button_layout.addWidget(self.btn_mat_edit)
         grp_mats_button_layout.addWidget(self.btn_mat_create)
+        grp_mats_button_layout.addWidget(self.btn_mat_edit)
 
         left_layout.addWidget(grp_anims)
         grp_anims.setLayout(grp_anims_layout)
         grp_anims_layout.addWidget(self.list_animations)
         grp_anims_layout.addLayout(grp_anims_button_layout)
         grp_anims_button_layout.addWidget(self.btn_anim_refresh)
-        grp_anims_button_layout.addWidget(self.btn_anim_edit)
         grp_anims_button_layout.addWidget(self.btn_anim_create)
+        grp_anims_button_layout.addWidget(self.btn_anim_edit)
 
         right_layout.addWidget(grp_scene)
         grp_scene.setLayout(grp_scene_layout)
@@ -377,26 +389,266 @@ class export_controls(QtWidgets.QWidget):
         grp_export_layout.addWidget(self.btn_export)
 
     def connect_signals(self):
-        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
         self.list_materials.itemClicked.connect(self.select_mat)
+        self.list_materials.itemDoubleClicked.connect(self.edit_selected_mat)
+        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
+        self.btn_mat_create.clicked.connect(self.create_new_mat)
+        self.btn_mat_edit.clicked.connect(self.edit_selected_mat)
+        self.btn_anim_refresh.clicked.connect(self.refresh_anim_list)
 
     def refresh_mat_list(self):
         self.list_materials.clearSelection()
         self.list_materials.clear()
-        pdx_scenemats = [mat.name() for mat in list_scene_materials() if mat.hasAttr(PDX_SHADER)]
+        pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
 
         for mat in pdx_scenemats:
-            list_item = QtGui.QListWidgetItem()
+            list_item = QtWidgets.QListWidgetItem()
             list_item.setText(mat)
             self.list_materials.insertItem(self.list_materials.count(), list_item)
 
         self.list_materials.sortItems()
 
+    def edit_selected_mat(self):
+        if self.list_materials.selectedItems():
+            selected_mat = self.list_materials.selectedItems()[0]
+            self.popup = material_popup(material=selected_mat, parent=self.parent)
+            self.popup.show()
+
+    def create_new_mat(self):
+        self.popup = material_popup(parent=self.parent)
+        self.popup.show()
+
+    def refresh_anim_list(self):
+        self.list_animations.clearSelection()
+        self.list_animations.clear()
+        # pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+
+        # for mat in pdx_scenemats:
+        #     list_item = QtWidgets.QListWidgetItem()
+        #     list_item.setText(mat)
+        #     self.list_animations.insertItem(self.list_animations.count(), list_item)
+
+        self.list_animations.sortItems()
+
     def select_mat(self, curr_sel):
         try:
             pmc.select(curr_sel.text())
         except:
-            self.on_ListRefresh()
+            self.refresh_mat_list()
+
+
+class import_popup(QtWidgets.QWidget):
+
+    def __init__(self, filepath, parent=None):
+        super(import_popup, self).__init__(parent)
+
+        self.pdx_file = filepath
+        self.pdx_type = os.path.splitext(filepath)[1]
+        self.parent = parent
+
+        self.setWindowTitle('Import options')
+        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
+        self.setFixedSize(300, 125)
+        if self.parent:
+            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
+            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
+            self.setGeometry(center_x, center_y, self.width(), self.height())
+
+        self.create_controls()
+        self.connect_signals()
+
+    def create_controls(self):
+        # create controls
+        lbl_filepath = QtWidgets.QLabel('Filename:  {}'.format(os.path.split(self.pdx_file)[-1]))
+        self.btn_import = QtWidgets.QPushButton('Import ...', self)
+        self.btn_import.setToolTip('Select a {} file to import.'.format(self.pdx_type))
+        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
+        self.prog_bar = QtWidgets.QProgressBar(self)
+        # mesh specific controls
+        self.chk_mesh = QtWidgets.QCheckBox('Mesh')
+        self.chk_skeleton = QtWidgets.QCheckBox('Skeleton')
+        self.chk_locators = QtWidgets.QCheckBox('Locators')
+        # anim specific controls
+        lbl_starttime = QtWidgets.QLabel('start time:')
+        lbl_starttime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.spn_start = QtWidgets.QSpinBox()
+        self.spn_start.setMaximumWidth(50)
+        self.spn_start.setValue(1)
+
+        # create layouts
+        main_layout = QtWidgets.QVBoxLayout()
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        opts_layout = QtWidgets.QHBoxLayout()
+        btn_layout = QtWidgets.QHBoxLayout()
+
+        # add controls
+        self.setLayout(main_layout)
+        main_layout.addWidget(lbl_filepath)
+        main_layout.addSpacing(5)
+        # add mode specific import option controls
+        if self.pdx_type == '.mesh':
+            for chk_box in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
+                opts_layout.addWidget(chk_box)
+                chk_box.setChecked(True)
+        elif self.pdx_type == '.anim':
+            for qt_control in [lbl_starttime, self.spn_start]:
+                opts_layout.addWidget(qt_control)
+        main_layout.addLayout(opts_layout)
+        main_layout.addSpacing(10)
+        main_layout.addWidget(self.prog_bar)
+        main_layout.addLayout(btn_layout)
+        btn_layout.addWidget(self.btn_import)
+        btn_layout.addWidget(self.btn_cancel)
+
+    def connect_signals(self):
+        if self.pdx_type == '.mesh':
+            self.btn_import.clicked.connect(self.import_mesh)
+        elif self.pdx_type == '.anim':
+            self.btn_import.clicked.connect(self.import_anim)
+        self.btn_cancel.clicked.connect(self.close)
+
+    def import_mesh(self):
+        print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
+
+        try:
+            # TODO: thread import to unblock PyQt UI?
+            self.prog_bar.setRange(0, 0)
+            self.prog_bar.setValue(0)
+            time.sleep(1)
+            import_meshfile(
+                self.pdx_file, 
+                imp_mesh=self.chk_mesh.isChecked(), 
+                imp_skel=self.chk_skeleton.isChecked(), 
+                imp_locs=self.chk_locators.isChecked()
+                )
+            self.prog_bar.setMaximum(100)
+            self.prog_bar.setValue(100)
+            time.sleep(1)
+            self.close()
+            self.parent.refresh_gui()
+
+        except Exception as err:
+            print "[io_pdx_mesh] Failed to import {}".format(self.pdx_file)
+            print err
+            self.close()
+            raise
+
+        self.close()
+
+    def import_anim(self):
+        print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
+
+        try:
+            # TODO: thread import to unblock PyQt UI?
+            self.prog_bar.setRange(0, 0)
+            self.prog_bar.setValue(0)
+            time.sleep(1)
+            import_animfile(
+                self.pdx_file, 
+                timestart=self.spn_start.value()
+                )
+            self.prog_bar.setMaximum(100)
+            self.prog_bar.setValue(100)
+            time.sleep(1)
+            self.close()
+            self.parent.refresh_gui()
+
+        except Exception as err:
+            print "[io_pdx_mesh] Failed to import {}".format(self.pdx_file)
+            print err
+            self.close()
+            raise
+
+        self.close()
+
+
+class material_popup(QtWidgets.QWidget):
+
+    def __init__(self, material=None, parent=None):
+        super(material_popup, self).__init__(parent)
+
+        self.parent = parent
+        self.material = material
+
+        self.setWindowTitle('PDX material')
+        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
+        self.setFixedSize(300, 100)
+        if self.parent:
+            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
+            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
+            self.setGeometry(center_x, center_y, self.width(), self.height())
+
+        self.create_controls()
+        self.connect_signals()
+
+    def create_controls(self):
+        # create controls
+        self.mat_name = QtWidgets.QLineEdit()
+        self.mat_name.setObjectName('Name')
+        self.mat_type = QtWidgets.QComboBox()
+        self.mat_type.setObjectName('Shader')
+        self.mat_type.setEditable(True)
+        self.mat_type.addItems(self.get_shader_presets())
+        self.mat_type.setCurrentIndex(-1)
+        self.btn_okay = QtWidgets.QPushButton('Okay', self)
+        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
+
+        # create layouts
+        main_layout = QtWidgets.QVBoxLayout()
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        form_layout = QtWidgets.QFormLayout()
+        btn_layout = QtWidgets.QHBoxLayout()
+
+        # add controls
+        self.setLayout(main_layout)
+        main_layout.addLayout(form_layout)
+        for ctrl in [self.mat_name, self.mat_type]:
+            form_layout.addRow(ctrl.objectName(), ctrl)
+        main_layout.addLayout(btn_layout)
+        btn_layout.addWidget(self.btn_okay)
+        btn_layout.addWidget(self.btn_cancel)
+
+        # material specific
+        if self.material:       # editing a selected material
+            mat_name = self.material.text()
+            mat_node = pmc.PyNode(mat_name)
+            mat_shader = getattr(mat_node, PDX_SHADER).get()
+            
+            self.mat_name.setText(mat_name)
+            if self.mat_type.findText(mat_shader) is not -1 :
+                self.mat_type.setCurrentIndex(self.mat_type.findText(mat_shader))
+            else:
+                self.mat_type.setEditText(mat_shader)
+
+            self.btn_okay.setText('Okay')
+
+        else:                   # creating a new material
+            self.btn_okay.setText('Save')
+    
+    def connect_signals(self):
+        self.btn_okay.clicked.connect(self.save_mat)
+        self.btn_cancel.clicked.connect(self.close)
+
+    def get_shader_presets(self):
+        sel_engine = self.parent.export_ctrls.setup_engine.currentText()
+        return self.parent.settings[sel_engine]['material']
+
+    def save_mat(self):
+        if self.material:       # editing a selected material
+            mat_name = self.material.text()
+            mat_node = pmc.PyNode(mat_name)
+
+            pmc.rename(mat_node, self.mat_name.text())
+            getattr(mat_node, PDX_SHADER).set(self.mat_type.currentText())
+
+        else:                   # creating a new material
+            mat_name = self.mat_name.text()
+            mat_pdx = type('Material', (object,), {'shader': self.mat_type.currentText()})
+
+            create_shader(mat_name, mat_pdx, None)
+        
+        self.parent.export_ctrls.refresh_mat_list()
+        self.close()
 
 
 """ ================================================================================================

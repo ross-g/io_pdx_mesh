@@ -9,6 +9,8 @@ from __future__ import print_function
 import os
 import sys
 import struct
+import inspect
+from collections import OrderedDict
 
 try:
     import xml.etree.cElementTree as Xml
@@ -27,21 +29,36 @@ class PDXData(object):
         Simple class to turn an XML element with attributes into a object for more convenient
         access to attributes.
     """
-    def __init__(self, element):
+    def __init__(self, element, depth=None):
         # use element tag as object name
         setattr(self, 'name', element.tag)
+
+        # object depth in hierarchy
+        self.depth = 0
+        if depth is not None:
+            self.depth = depth
+        # object attribute collection
+        self.attrdict = OrderedDict()
+
         # set element attributes as object attributes
         for attr in element.attrib:
             setattr(self, attr, element.attrib[attr])
+            self.attrdict[attr] = element.attrib[attr]
+
         # iterate over element children, set these as attributes which nest further PDXData objects
         for child in list(element):
-            child_data = type(self)(child)
+            child_data = type(self)(child, self.depth+1)
             setattr(self, child.tag, child_data)
+            self.attrdict[child.tag] = child_data
 
     def __str__(self):
         string = list()
-        for k, v in self.__dict__.iteritems():
-            string.append('{}: {}'.format(k, v))
+        for k, v in self.attrdict.iteritems():
+            if type(v) == type(self):
+                string.append('{}{}:'.format(self.depth*'    ', k))
+                string.append('{}'.format(v))
+            else:
+                string.append('{}{}:  {}'.format(self.depth*'    ', k, len(v)))
         return '\n'.join(string)
 
 
@@ -66,7 +83,7 @@ def parseProperty(bdata, pos):
     # get property data
     prop_values, pos = parseData(bdata, pos)
 
-    return (prop_name, prop_values, pos)
+    return prop_name, prop_values, pos
 
 
 def parseObject(bdata, pos):
@@ -86,7 +103,7 @@ def parseObject(bdata, pos):
     # skip the ending zero byte
     pos += 1
 
-    return (obj_name, objdepth, pos)
+    return obj_name, objdepth, pos
 
 
 def parseString(bdata, pos, length):
@@ -100,9 +117,10 @@ def parseString(bdata, pos, length):
 
 
 def parseData(bdata, pos):
-    datavalues = []
     # determine the  data type
     datatype = struct.unpack_from('c', bdata, offset=pos)[0].decode()
+    # TODO: use an array here instead of list for memory efficiency?
+    datavalues = []
 
     if datatype == 'i':
         # handle integer data
@@ -153,19 +171,19 @@ def parseData(bdata, pos):
     else:
         raise NotImplementedError("Unknown data type encountered.")
 
-    return (datavalues, pos)
+    return datavalues, pos
 
 
 def read_meshfile(filepath, to_stdout=False):
     """
-        Reads through a .mesh file and gathers all the data into hierarchical element structure
-        The resulting XML is not natively writable to string as it contains Python lists
+        Reads through a .mesh file and gathers all the data into hierarchical element structure.
+        The resulting XML is not natively writable to string as it contains Python data types.
     """
     # read the data
     with open(filepath, 'rb') as fp:
         fdata = fp.read()
 
-    # create a ordered dictionary to store the object hierarchy
+    # create an XML structure to store the object hierarchy
     file_element = Xml.Element('File')
     file_element.attrib = dict(
         name=os.path.split(filepath)[1],
@@ -181,7 +199,7 @@ def read_meshfile(filepath, to_stdout=False):
     if bytes(b''.join(header)) == b'@@b@':
         pos = 4
     else:
-        raise NotImplementedError("Unknown file header")
+        raise NotImplementedError("Unknown file header.")
 
     parent_element = file_element
     depth_list = [file_element]
@@ -240,25 +258,37 @@ if __name__ == '__main__':
     """
     clear = lambda: os.system('cls')
     clear()
-    a_file = r"C:\Users\Ross\Documents\GitHub\io_pdx_mesh\test files\fallen_empire_large_warship.mesh"
+    _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+    # a_file = os.path.join(_script_dir, 'test files', 'archipelago_frigate.mesh')
+    a_file = os.path.join(_script_dir, 'test files', 'bison_idle.anim')
 
     if len(sys.argv) > 1:
         a_file = sys.argv[1]
 
-    data = read_meshfile(a_file, to_stdout=True)
+    data = read_meshfile(a_file)
+
+    for elem in data.iter():
+        print 'object', elem.tag
+        for k, v in elem.items():
+            print '    property', k, '({})'.format(len(v))
+            print v
+        print
+
+    # b_file = os.path.join(_script_dir, 'test files', 'test_write.mesh')
+    # write_meshfile(b_file, data)
 
 
 """
-.mesh file format
-
 General binary format is:
     data description
     data type
     depth of data
     data content
 
-====================================================================================================
-    header    (@@b@ for binary, @@t@ for text)?
+
+.mesh file format
+========================================================================================================================
+    header    (@@b@ for binary, @@t@ for text)
     pdxasset    (int)  number of assets?
         object    (object)  parent item for all 3D objects
             shape    (object)
@@ -279,12 +309,12 @@ General binary format is:
                         max    (float)  max bounding box
                     material    (object)
                         shader    (string)  shader name
-                        diff    (string)  texture_diffuse
-                        n    (string)  texture_normal
-                        spec    (string)  texture_spec
+                        diff    (string)  diffuse texture
+                        n    (string)  normal texture
+                        spec    (string)  specular texture
                     skin    (object)
-                        bones    (int)  used bones?
-                        ix    (int)  skin ids
+                        bones    (int)  num skin influences
+                        ix    (int)  skin bone ids
                         w    (float)  skin weights
                 skeleton    (object)
                     bone    (object)
@@ -293,8 +323,32 @@ General binary format is:
                         tx    (float)  transform, 3*4 matrix
         locator    (object)  parent item for all locators
             node    (object)
-                p    (float)  position?
-                q    (float)  quarternion?
-                pa    (string)  parent bone?
-====================================================================================================
+                p    (float)  position
+                q    (float)  quarternion
+                pa    (string)  parent
+
+
+.anim file format
+========================================================================================================================
+    header    (@@b@ for binary, @@t@ for text)
+    pdxasset    (int)  number of assets?
+        info    (object)
+            sa    (int)  num keyframes
+            j    (int)  num bones 
+            fps    (float)  anim speed
+            bone    (object)
+                ...  multiple bones, not all may be animated based on 'sa' attribute
+            bone    (object)
+                ...
+            bone    (object)
+                q    (float)  initial rotation as quaternion
+                s    (float)  initial scale as single float
+                sa    (string)  animation curve types, combination of 's', 't', 'q'
+                t    (float)  initial translation as vector
+        samples    (object)
+            s    
+            q    
+            t    
+
+
 """
