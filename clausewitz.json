@@ -11,13 +11,34 @@
             "Collision",
             "PdxMeshAlphaAdditive",
             "PdxMeshAlphaBlend",
-            "PdxMeshColor",
             "PdxMeshStandard",
             "PdxMeshTextureAtlas",
             "PdxMeshWater"
         ],
         "path": "X:/project/tools/pdx_editor/game",
         "target_exe": "X:/project/tools/pdx_editor/game/pdx_editor_D.exe"
+    },
+    "europa_universalis": {
+        "animation": [
+            "idle",
+            "moving",
+            "attack",
+            "death",
+            "idle2"
+        ],
+        "material": [
+            "Collision",
+            "PdxMeshAdvanced",
+            "PdxMeshAlphaBlend",
+            "PdxMeshAlphaBlendNoZWrite",
+            "PdxMeshColor",
+            "PdxMeshSnow",
+            "PdxMeshStandard",
+            "PdxMeshStandard_NoFoW_NoTI",
+            "PdxMeshTextureAtlas"
+        ],
+        "path": "X:/Steam/SteamApps/common/Europa Universalis IV",
+        "target_exe": "X:/Steam/SteamApps/common/Europa Universalis IV/eu4.exe"
     },
     "hearts_of_iron": {
         "animation": [
@@ -47,21 +68,34 @@
         ],
         "material": [
             "Collision",
+            "PdxMeshAdvanced",
             "PdxMeshAlphaAdditive",
+            "PdxMeshAlphaAdditiveAnimateUV",
             "PdxMeshAlphaBlend",
+            "PdxMeshAsteroid",
             "PdxMeshAtmosphere",
+            "PdxMeshAtmosphereStar",
+            "PdxMeshCircleGradient",
             "PdxMeshClouds",
-            "PdxMeshFleetTypeIndicator",
+            "PdxMeshColor",
+            "PdxMeshExtraDimensionalShip",
+            "PdxMeshNavigationButton",
             "PdxMeshPlanet",
+            "PdxMeshPlanetEmissive",
+            "PdxMeshPlanetRings",
             "PdxMeshPortrait",
             "PdxMeshPortraitClothes",
             "PdxMeshPortraitHair",
+            "PdxMeshShieldFlipBook",
+            "PdxMeshShieldUVStrech",
             "PdxMeshShip",
+            "PdxMeshStandard",
             "PdxMeshStar",
             "PdxMeshTerra",
-            "PdxMeshTextureAtlas"
+            "PdxMeshTerraAlphaBlend",
+            "PdxMeshTerraAlphaTest"
         ],
-        "path": "X:/Steam/steamapps/common/Stellaris",
-        "target_exe": "X:/Steam/steamapps/common/Stellaris/stellaris.exe"
+        "path": "X:/Steam/SteamApps/common/Stellaris",
+        "target_exe": "X:/Steam/SteamApps/common/Stellaris/stellaris.exe"
     }
 }
