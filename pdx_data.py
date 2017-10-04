@@ -108,13 +108,16 @@ def parseObject(bdata, pos):
 
 
 def parseString(bdata, pos, length):
-    string = struct.unpack_from('c'*length, bdata, offset=pos)
+    val_tuple = struct.unpack_from('c'*length, bdata, offset=pos)
+
+    # turn the resulting tuple into a string of bytes
+    string = b''.join(val_tuple).decode()
 
     # check if the ending byte is zero and remove if so
     if string[-1] == chr(0):
         string = string[:-1]
 
-    return b''.join(string).decode()
+    return string
 
 
 def parseData(bdata, pos):
@@ -340,25 +343,14 @@ def writeData(data_array):
         # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
         datastring += struct.pack('i', size)
 
-        # Py2 : string length + 1 and must write zero-byte ending
-        if int(sys.version[0]) == 2:
-            # string length
-            str_data_length = len(data_array[0])
-            datastring += struct.pack('i', (str_data_length+1))    # string length + 1 to account for zero-byte ending
-    
-            # values
-            datastring += writeString(data_array[0])    # Py2 struct.pack cannot handle unicode strings
-            # write zero-byte ending
-            datastring += struct.pack('x')
-            
-        # Py3 : string length and no explicit zero-byte ending
-        else:
-            # string length
-            str_data_length = len(data_array[0])
-            datastring += struct.pack('i', (str_data_length))
-    
-            # values
-            datastring += writeString(data_array[0])
+        # string length
+        str_data_length = len(data_array[0])
+        datastring += struct.pack('i', (str_data_length+1))    # string length + 1 to account for zero-byte ending
+
+        # values
+        datastring += writeString(data_array[0])    # Py2 struct.pack cannot handle unicode strings
+        # write zero-byte ending
+        datastring += struct.pack('x')
 
     else:
         raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
