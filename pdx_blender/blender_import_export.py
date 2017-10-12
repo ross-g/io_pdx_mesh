@@ -15,6 +15,7 @@ except ImportError:
 
 import bpy
 import math
+from mathutils import Vector, Matrix, Quaternion
 
 import site
 site.addsitedir(os.path.join('J:\\', 'Github', 'io_pdx_mesh'))
@@ -32,9 +33,58 @@ PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 
 
 """ ====================================================================================================================
+    Helper functions.
+========================================================================================================================
+"""
+
+
+def into_Blender_Coords(transform_matrix):
+    """
+        Rotates 90 degrees about the X axis at the origin.
+        Then mirrors across the XZ plane at Y = 0.
+    """
+    rotation = Matrix.Rotation(math.radians(90.0), 4, 'X')
+    scale = Matrix.Scale(-1, 4, [0, 1, 0])
+
+    xform_mat = scale * rotation
+    new_xform = xform_mat * transform_matrix
+
+    return new_xform
+
+
+""" ====================================================================================================================
     Functions.
 ========================================================================================================================
 """
+
+
+def create_locator(PDX_locator):
+    # create locator and link to the scene
+    new_loc = bpy.data.objects.new(PDX_locator.name, None)
+    new_loc.empty_draw_type = 'ARROWS'
+
+    bpy.context.scene.objects.link(new_loc)
+
+    # parent locator
+    parent = getattr(PDX_locator, 'pa', None)
+    # if parent is not None:
+    #     parent_bone = pmc.ls(parent[0], type='joint')
+    #     if parent_bone:
+    #         pmc.parent(new_loc, parent_bone[0])
+
+    # set attributes
+    new_loc.rotation_mode = 'XYZ'
+    # rotation
+    quat = Quaternion([PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2]])
+    new_loc.rotation_euler = quat.to_euler()
+    # translation
+    new_loc.location = (PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
+
+    bpy.context.scene.update()
+    
+    # convert to Blender coordinate space
+    xform = into_Blender_Coords(new_loc.matrix_world)
+    new_loc.matrix_world = xform
 
 
 def create_mesh(PDX_mesh, name=None):
@@ -76,7 +126,7 @@ def create_mesh(PDX_mesh, name=None):
     # add mesh data
     new_mesh.from_pydata(vertexArray, [], faceArray)
 
-    # create the object and link it to the scene
+    # create the object and link to the scene
     if name is None:
         name = tmp_mesh_name
     new_obj = bpy.data.objects.new(name, new_mesh)
@@ -86,13 +136,22 @@ def create_mesh(PDX_mesh, name=None):
     
     # apply the default UV data
     
-    # set other UV channels
+    # set other UV channelsx
     
-    # mirror in X and rotate by 90 about X
-
     # select the object
+    # bpy.context.space_data.show_backface_culling = True
     bpy.context.scene.objects.active = new_obj
     new_obj.select = True
+
+    # convert to Blender coordinate space
+    xform = into_Blender_Coords(new_obj.matrix_world)
+    new_obj.matrix_world = xform
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    
+    bpy.ops.object.shade_smooth()
+    bpy.ops.object.editmode_toggle()
+    bpy.ops.mesh.flip_normals()
+    bpy.ops.object.editmode_toggle()
 
 
 """ ====================================================================================================================
@@ -128,7 +187,6 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         # then create all the meshes
         meshes = node.findall('mesh')
         if imp_mesh:
-            pdx_mesh_list = list()
             for m in meshes:
                 print("[io_pdx_mesh] creating mesh -")
                 pdx_mesh = pdx_data.PDXData(m)
@@ -137,7 +195,6 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
                 # create the geometry
                 mesh = create_mesh(pdx_mesh, name=node.tag)
-                pdx_mesh_list.append(mesh)
 
                 # # create the material
                 # if pdx_material:
@@ -150,11 +207,11 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
                 #     create_skin(pdx_skin, mesh, joints)
 
     # go through locators
-    # if imp_locs:
-    #     print("[io_pdx_mesh] creating locators -")
-    #     for loc in locators:
-    #         pdx_locator = pdx_data.PDXData(loc)
-    #         create_locator(pdx_locator)
+    if imp_locs:
+        print("[io_pdx_mesh] creating locators -")
+        for loc in locators:
+            pdx_locator = pdx_data.PDXData(loc)
+            create_locator(pdx_locator)
 
     print("[io_pdx_mesh] finished!")
 
@@ -166,5 +223,5 @@ def export_meshfile(meshpath):
 def import_animfile(animpath, timestart=1.0):
     pass
 
-a_file = os.path.join('J:\\', 'Github', 'io_pdx_mesh', 'test files', 'archipelago_frigate.mesh')
+a_file = os.path.join('J:\\', 'Github', 'io_pdx_mesh', 'test files', 'fallen_empire_large_warship.mesh')
 import_meshfile(a_file, imp_mesh=True, imp_skel=True, imp_locs=True)
