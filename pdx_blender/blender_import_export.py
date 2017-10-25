@@ -17,9 +17,7 @@ import bpy
 import math
 from mathutils import Vector, Matrix, Quaternion
 
-import site
-site.addsitedir(os.path.join('J:\\', 'Github', 'io_pdx_mesh'))
-import pdx_data
+from .. import pdx_data
 
 
 """ ====================================================================================================================
@@ -125,6 +123,7 @@ def create_mesh(PDX_mesh, name=None):
 
     # add mesh data
     new_mesh.from_pydata(vertexArray, [], faceArray)
+    new_mesh.update()
 
     # create the object and link to the scene
     if name is None:
@@ -140,8 +139,9 @@ def create_mesh(PDX_mesh, name=None):
     
     # select the object
     # bpy.context.space_data.show_backface_culling = True
-    bpy.context.scene.objects.active = new_obj
+    bpy.ops.object.select_all(action='DESELECT')
     new_obj.select = True
+    bpy.context.scene.objects.active = new_obj
 
     # convert to Blender coordinate space
     xform = into_Blender_Coords(new_obj.matrix_world)
@@ -223,5 +223,5 @@ def export_meshfile(meshpath):
 def import_animfile(animpath, timestart=1.0):
     pass
 
-a_file = os.path.join('J:\\', 'Github', 'io_pdx_mesh', 'test files', 'fallen_empire_large_warship.mesh')
-import_meshfile(a_file, imp_mesh=True, imp_skel=True, imp_locs=True)
+# a_file = os.path.join('J:\\', 'Github', 'io_pdx_mesh', 'test files', 'fallen_empire_large_warship.mesh')
+# import_meshfile(a_file, imp_mesh=True, imp_skel=True, imp_locs=True)

@@ -4,65 +4,43 @@
     author : ross-g
 """
 
-bl_info = {
-    "name": "IO PDX mesh",
-    "author": "ross-g",
-    "version": (0, 1),
-    "blender": (2, 6, 2),
-    "location": "3D View > Toolbox",
-    "description": "Import/Export Paradox asset files for the Clausewitz game engine.",
-    "warning": "this add-on is beta",
-    "wiki_url": "https://github.com/ross-g/io_pdx_mesh",
-    "support": "COMMUNITY",
-    "category": "Import-Export"
-}
-
 if "bpy" in locals():
     import importlib
+    importlib.reload(blender_import_export)
     importlib.reload(blender_ui)
 else:
     import bpy
-    from bpy.props import (
-            StringProperty,
-            BoolProperty,
-            IntProperty,
-            FloatProperty,
-            FloatVectorProperty,
-            EnumProperty,
-            PointerProperty,
-            )
-    from bpy.types import (
-            Operator,
-            AddonPreferences,
-            PropertyGroup,
-            )
-    from . import blender_ui
+    from . import blender_import_export, blender_ui
 
 
-""" ================================================================================================
-    UI class for the import/export tool.
-====================================================================================================
+""" ====================================================================================================================
+    Registered classes for the import/export tool.
+========================================================================================================================
 """
 
 
-class PDXblender_ui(Operator):
-    bl_idname = "object.open_pdx_blender_tools"
-    bl_label = "Open "
+classes = [
+    blender_ui.PDXblender_import_ui,
+    blender_ui.PDXblender_export_ui,
+    blender_ui.importmesh
+]
 
 
-""" ================================================================================================
+""" ====================================================================================================================
     Main entry point.
-====================================================================================================
+========================================================================================================================
 """
 
 
 def register():
-    pass
+    import importlib
+    importlib.reload(blender_import_export)
+    importlib.reload(blender_ui)
+
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
 
 def unregister():
-    pass
-
-
-if __name__ == "__main__":
-    register()
+    for cls in classes:
+        bpy.utils.unregister_class(cls)

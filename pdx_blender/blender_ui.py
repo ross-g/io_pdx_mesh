@@ -4,126 +4,64 @@
     author : ross-g
 """
 
-import bmesh
-from bpy.types import Panel
-from . import report
+import bpy
+from .blender_import_export import *
 
 
-class Print3DToolBar:
-    bl_label = "Print3D"
+""" ====================================================================================================================
+    Operator classes called by the tool UI.
+========================================================================================================================
+"""
+
+
+class importmesh(bpy.types.Operator):
+    bl_idname = 'mesh.import_pdx_mesh'
+    bl_label = 'Import PDX mesh'
+    bl_options = {'REGISTER', 'UNDO'}
+ 
+    def execute(self, context):
+        # bpy.ops.mesh.primitive_cube_add()
+        import os
+        a_file = os.path.join('J:\\', 'Github', 'io_pdx_mesh', 'test files', 'fallen_empire_large_warship.mesh')
+        import_meshfile(a_file, imp_mesh=True, imp_skel=True, imp_locs=True)
+
+        return {'FINISHED'}
+
+
+""" ====================================================================================================================
+    UI classes for the import/export tool.
+========================================================================================================================
+"""
+
+
+class PDXblender_import_ui(bpy.types.Panel):
+    bl_idname = 'panel.io_pdx_mesh_import'
+    bl_label = 'Import'
+    bl_category = 'PDX Blender Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
-    _type_to_icon = {
-        bmesh.types.BMVert: 'VERTEXSEL',
-        bmesh.types.BMEdge: 'EDGESEL',
-        bmesh.types.BMFace: 'FACESEL',
-        }
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return (obj and obj.type == 'MESH')
-
-    @staticmethod
-    def draw_report(layout, context):
-        """Display Reports"""
-        info = report.info()
-        if info:
-            obj = context.edit_object
-
-            layout.label("Output:")
-            box = layout.box()
-            col = box.column(align=False)
-            # box.alert = True
-            for i, (text, data) in enumerate(info):
-                if obj and data and data[1]:
-                    bm_type, bm_array = data
-                    col.operator("mesh.print3d_select_report",
-                                 text=text,
-                                 icon=Print3DToolBar._type_to_icon[bm_type]).index = i
-                else:
-                    col.label(text)
+    # @classmethod
+    # def poll(cls, context):
+    #     obj = context.active_object
+    #     return (obj and obj.type == 'MESH')
 
     def draw(self, context):
-        layout = self.layout
-
-        scene = context.scene
-        print_3d = scene.print_3d
-        obj = context.object
-
-        # TODO, presets
-
-        row = layout.row()
-        row.label("Statistics:")
-        rowsub = layout.row(align=True)
-        rowsub.operator("mesh.print3d_info_volume", text="Volume")
-        rowsub.operator("mesh.print3d_info_area", text="Area")
-
-        row = layout.row()
-        row.label("Checks:")
-        col = layout.column(align=True)
-        col.operator("mesh.print3d_check_solid", text="Solid")
-        col.operator("mesh.print3d_check_intersect", text="Intersections")
-        rowsub = col.row(align=True)
-        rowsub.operator("mesh.print3d_check_degenerate", text="Degenerate")
-        rowsub.prop(print_3d, "threshold_zero", text="")
-        rowsub = col.row(align=True)
-        rowsub.operator("mesh.print3d_check_distort", text="Distorted")
-        rowsub.prop(print_3d, "angle_distort", text="")
-        rowsub = col.row(align=True)
-        rowsub.operator("mesh.print3d_check_thick", text="Thickness")
-        rowsub.prop(print_3d, "thickness_min", text="")
-        rowsub = col.row(align=True)
-        rowsub.operator("mesh.print3d_check_sharp", text="Edge Sharp")
-        rowsub.prop(print_3d, "angle_sharp", text="")
-        rowsub = col.row(align=True)
-        rowsub.operator("mesh.print3d_check_overhang", text="Overhang")
-        rowsub.prop(print_3d, "angle_overhang", text="")
-        col = layout.column()
-        col.operator("mesh.print3d_check_all", text="Check All")
-
-        row = layout.row()
-        row.label("Cleanup:")
-        col = layout.column(align=True)
-        col.operator("mesh.print3d_clean_isolated", text="Isolated")
-        rowsub = col.row(align=True)
-        rowsub.operator("mesh.print3d_clean_distorted", text="Distorted")
-        rowsub.prop(print_3d, "angle_distort", text="")
-        col = layout.column()
-        col.operator("mesh.print3d_clean_non_manifold", text="Make Manifold")
-        # XXX TODO
-        # col.operator("mesh.print3d_clean_thin", text="Wall Thickness")
-
-        row = layout.row()
-        row.label("Scale To:")
-        rowsub = layout.row(align=True)
-        rowsub.operator("mesh.print3d_scale_to_volume", text="Volume")
-        rowsub.operator("mesh.print3d_scale_to_bounds", text="Bounds")
-
-        col = layout.column()
-        rowsub = col.row(align=True)
-        rowsub.label("Export Path:")
-        rowsub.prop(print_3d, "use_apply_scale", text="", icon='MAN_SCALE')
-        rowsub.prop(print_3d, "use_export_texture", text="", icon='FILE_IMAGE')
-        rowsub = col.row()
-        rowsub.prop(print_3d, "export_path", text="")
-
-        rowsub = col.row(align=True)
-        rowsub.prop(print_3d, "export_format", text="")
-        rowsub.operator("mesh.print3d_export", text="Export", icon='EXPORT')
-
-        Print3DToolBar.draw_report(layout, context)
+        self.layout.operator('mesh.import_pdx_mesh', icon='MESH_CUBE', text='Import mesh ...')
+        self.layout.operator('mesh.import_pdx_mesh', icon='RENDER_ANIMATION', text='Import anim ...')
 
 
-# So we can have a panel in both object mode and editmode
-class Print3DToolBarObject(Panel, Print3DToolBar):
-    bl_category = "3D Printing"
-    bl_idname = "MESH_PT_print3d_object"
-    bl_context = "objectmode"
+class PDXblender_export_ui(bpy.types.Panel):
+    bl_idname = 'panel.io_pdx_mesh_export'
+    bl_label = 'Export'
+    bl_category = 'PDX Blender Tools'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
 
+    # @classmethod
+    # def poll(cls, context):
+    #     obj = context.active_object
+    #     return (obj and obj.type == 'MESH')
 
-class Print3DToolBarMesh(Panel, Print3DToolBar):
-    bl_category = "3D Printing"
-    bl_idname = "MESH_PT_print3d_mesh"
-    bl_context = "mesh_edit"
+    def draw(self, context):
+        self.layout.operator('mesh.import_pdx_mesh', icon='MESH_CUBE', text='Export mesh ...')
