@@ -1,11 +1,14 @@
 """
     Paradox asset files, read/write binary data.
+
+    This is designed to be compatible with both Python 2 and Python 3 (so code can be shared across Maya and Blender)
+    Critically, the way strings and binary data are handled must now be done with care, see...
+        http://python-future.org/compatible_idioms.html#byte-string-literals
     
     author : ross-g
 """
 
 from __future__ import print_function
-# from __future__ import unicode_literals
 
 import os
 import sys
