@@ -14,7 +14,9 @@ except ImportError:
     import xml.etree.ElementTree as Xml
 
 import bpy
+import bmesh
 import math
+from bpy_extras.io_utils import axis_conversion as axis_conversion
 from mathutils import Vector, Matrix, Quaternion
 
 from .. import pdx_data
@@ -36,18 +38,24 @@ PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 """
 
 
-def into_Blender_Coords(transform_matrix):
+def to_Blender_Coords():
     """
-        Rotates 90 degrees about the X axis at the origin.
-        Then mirrors across the XZ plane at Y = 0.
+        Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
     """
-    rotation = Matrix.Rotation(math.radians(90.0), 4, 'X')
-    scale = Matrix.Scale(-1, 4, [0, 1, 0])
+    global_matrix = axis_conversion(from_forward='-Z', from_up='Y', to_forward="Y", to_up="Z").to_4x4()
+    global_matrix *= Matrix.Scale(-1, 4, [0, 0, 1])
 
-    xform_mat = scale * rotation
-    new_xform = xform_mat * transform_matrix
+    return global_matrix
 
-    return new_xform
+
+def get_BMesh(mesh_data):
+    """
+        Returns a BMesh from existing mesh data
+    """
+    bm = bmesh.new()
+    bm.from_mesh(mesh_data)
+
+    return bm
 
 
 """ ====================================================================================================================
@@ -81,7 +89,7 @@ def create_locator(PDX_locator):
     bpy.context.scene.update()
     
     # convert to Blender coordinate space
-    xform = into_Blender_Coords(new_loc.matrix_world)
+    xform = to_Blender_Coords() * new_loc.matrix_world * to_Blender_Coords().inverted()
     new_loc.matrix_world = xform
 
 
@@ -115,7 +123,8 @@ def create_mesh(PDX_mesh, name=None):
     # faces
     faceArray = []
     for i in range(0, len(tris), 3):
-        f = [tris[i], tris[i+1], tris[i+2]]
+        f = [tris[i], tris[i+1], tris[i+2]]     # will need to flip normals with this vert ordering?
+        # f = [tris[i+2], tris[i+1], tris[i]]
         faceArray.append(f)
 
     # create the mesh datablock
@@ -130,28 +139,61 @@ def create_mesh(PDX_mesh, name=None):
         name = tmp_mesh_name
     new_obj = bpy.data.objects.new(name, new_mesh)
     bpy.context.scene.objects.link(new_obj)
+    new_mesh.name = name
 
     # apply the vertex normal data
+    if norms:
+        normals = []
+        for i in range(0, len(norms), 3):
+            n = [norms[i], norms[i+1], norms[i+2]]
+            normals.append(n)
+
+        new_mesh.polygons.foreach_set('use_smooth', [True] * len(new_mesh.polygons))
+        new_mesh.normals_split_custom_set_from_vertices(normals)
+        new_mesh.use_auto_smooth = True
+        new_mesh.show_edge_sharp = True
+        new_mesh.free_normals_split()
     
-    # apply the default UV data
-    
-    # set other UV channelsx
+    # apply the UV data channels
+    for idx in uv_Ch:
+        uv_data = uv_Ch[idx]
+        uvSetName = 'map' + str(idx+1)
+        
+        uvArray = []
+        for i in range(0, len(uv_data), 2):
+            uv = [uv_data[i], 1 - uv_data[i+1]]     # flip the UV coords in V!
+            uvArray.append(uv)
+
+        new_mesh.uv_textures.new(uvSetName)
+        bm = get_BMesh(new_mesh)
+        bm.faces.ensure_lookup_table()
+        uv_layer = bm.loops.layers.uv[uvSetName]
+        bm.faces.layers.tex.verify()
+
+        for face in bm.faces:
+            for loop in face.loops:
+                i = loop.vert.index
+                loop[uv_layer].uv = uvArray[i]
+
+        bm.to_mesh(new_mesh)    # write the bmesh back to the mesh
+        bm.free()
     
     # select the object
     # bpy.context.space_data.show_backface_culling = True
     bpy.ops.object.select_all(action='DESELECT')
-    new_obj.select = True
     bpy.context.scene.objects.active = new_obj
+    new_obj.select = True
 
     # convert to Blender coordinate space
-    xform = into_Blender_Coords(new_obj.matrix_world)
-    new_obj.matrix_world = xform
-    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    xform = to_Blender_Coords()
+    # new_mesh.transform(xform)
+    # new_obj.matrix_world = xform
+    # bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
     
-    bpy.ops.object.shade_smooth()
-    bpy.ops.object.editmode_toggle()
-    bpy.ops.mesh.flip_normals()
-    bpy.ops.object.editmode_toggle()
+    # bpy.ops.object.shade_smooth()
+    # bpy.ops.object.editmode_toggle()
+    # bpy.ops.mesh.flip_normals()
+    # bpy.ops.object.editmode_toggle()
 
 
 """ ====================================================================================================================
