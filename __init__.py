@@ -20,18 +20,19 @@ bl_info = {
     'category': 'Import-Export'
 }
 
-print('[io_pdx_mesh] __init__ (running from {})'.format(os.path.split(sys.executable)[1]))
+app = os.path.splitext(os.path.split(sys.executable)[1])[0]
+print('[io_pdx_mesh] __init__ (running from {})'.format(app))
 
 
 # check if running in Blender
-try:
+if app == 'blender':
     import bpy
     
     # register the Blender addon
     from .pdx_blender import register, unregister
 
 # otherwise running in Maya
-except ImportError:
+if app == 'maya':
     import maya.cmds
 
     # launch the Maya UI
