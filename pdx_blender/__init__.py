@@ -4,13 +4,15 @@
     author : ross-g
 """
 
-if "bpy" in locals():
+if 'bpy' in locals():
     import importlib
-    importlib.reload(blender_import_export)
-    importlib.reload(blender_ui)
-else:
-    import bpy
-    from . import blender_import_export, blender_ui
+    if 'blender_import_export' in locals():
+        importlib.reload(blender_import_export)
+    if 'blender_ui' in locals():
+        importlib.reload(blender_ui)
+
+import bpy
+from . import blender_import_export, blender_ui
 
 
 """ ====================================================================================================================
@@ -20,9 +22,11 @@ else:
 
 
 classes = [
+    blender_ui.import_mesh,
+    blender_ui.edit_settings,
     blender_ui.PDXblender_import_ui,
     blender_ui.PDXblender_export_ui,
-    blender_ui.importmesh
+    blender_ui.PDXblender_setup_ui
 ]
 
 
@@ -33,6 +37,7 @@ classes = [
 
 
 def register():
+    print("[io_pdx_mesh] Loading Blender UI.")
     import importlib
     importlib.reload(blender_import_export)
     importlib.reload(blender_ui)

@@ -4,6 +4,7 @@
     author : ross-g
 """
 
+import os
 import importlib
 import bpy
 from bpy.types import Operator, Panel
@@ -20,13 +21,23 @@ except Exception as err:
 
 
 """ ====================================================================================================================
+    Variables and Helper functions.
+========================================================================================================================
+"""
+
+
+_script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+_settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
+
+
+""" ====================================================================================================================
     Operator classes called by the tool UI.
 ========================================================================================================================
 """
 
 
-class importmesh(Operator, ImportHelper):
-    bl_idname = 'io_pdx_mesh.importmesh'
+class import_mesh(Operator, ImportHelper):
+    bl_idname = 'io_pdx_mesh.import_mesh'
     bl_label = 'Import PDX mesh'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -56,7 +67,20 @@ class importmesh(Operator, ImportHelper):
             )
  
     def execute(self, context):
+        print("[io_pdx_mesh] Importing {}".format(self.filepath))
         import_meshfile(self.filepath, imp_mesh=self.chk_mesh, imp_skel=self.chk_skel, imp_locs=self.chk_locs)
+
+        return {'FINISHED'}
+
+
+class edit_settings(Operator):
+    bl_idname = 'io_pdx_mesh.edit_settings'
+    bl_label = 'Edit Clausewitz settings'
+    bl_options = {'REGISTER'}
+ 
+    def execute(self, context):
+        global _settings_file
+        os.startfile(_settings_file)
 
         return {'FINISHED'}
 
@@ -80,8 +104,8 @@ class PDXblender_import_ui(Panel):
     #     return (obj and obj.type == 'MESH')
 
     def draw(self, context):
-        self.layout.operator('io_pdx_mesh.importmesh', icon='MESH_CUBE', text='Import mesh ...')
-        self.layout.operator('io_pdx_mesh.importmesh', icon='RENDER_ANIMATION', text='Import anim ...')
+        self.layout.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Import mesh ...')
+        self.layout.operator('io_pdx_mesh.import_mesh', icon='RENDER_ANIMATION', text='Import anim ...')
 
 
 class PDXblender_export_ui(Panel):
@@ -97,8 +121,8 @@ class PDXblender_export_ui(Panel):
     #     return (obj and obj.type == 'MESH')
 
     def draw(self, context):
-        self.layout.operator('io_pdx_mesh.importmesh', icon='MESH_CUBE', text='Export mesh ...')
-        self.layout.operator('io_pdx_mesh.importmesh', icon='RENDER_ANIMATION', text='Export anim ...')
+        self.layout.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Export mesh ...')
+        self.layout.operator('io_pdx_mesh.import_mesh', icon='RENDER_ANIMATION', text='Export anim ...')
 
 
 class PDXblender_setup_ui(Panel):
@@ -114,4 +138,4 @@ class PDXblender_setup_ui(Panel):
     #     return (obj and obj.type == 'MESH')
 
     def draw(self, context):
-        pass
+        self.layout.operator('io_pdx_mesh.edit_settings', icon='FILE_TEXT', text='Edit Clausewitz settings')

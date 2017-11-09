@@ -38,16 +38,6 @@ PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 """
 
 
-def to_Blender_Coords():
-    """
-        Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
-    """
-    global_matrix = axis_conversion(from_forward='-Z', from_up='Y', to_forward="Y", to_up="Z").to_4x4()
-    global_matrix *= Matrix.Scale(-1, 4, [0, 0, 1])
-
-    return global_matrix
-
-
 def get_BMesh(mesh_data):
     """
         Returns a BMesh from existing mesh data
@@ -58,10 +48,94 @@ def get_BMesh(mesh_data):
     return bm
 
 
+def to_Blender_Coords():
+    """
+        Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
+    """
+    global_matrix = axis_conversion(from_forward='-Z', from_up='Y', to_forward="Y", to_up="Z").to_4x4()
+    # global_matrix *= Matrix.Scale(-1, 4, [0, 0, 1])
+
+    return global_matrix
+
+
+def mirror_in_y(node):
+    """
+        Mirrors a point across the XZ plane at Y = 0.
+    """
+    # get the current transform as quaternion rotation and translation
+    XformMat = node.matrix_world
+    quat = XformMat.to_quaternion()
+    tran = XformMat.to_translation()
+
+    q = [-quat.w, quat.x, -quat.y, quat.z]      # negate Y axis and angle components of quaternion
+    t = [tran.x, -tran.y, tran.z]                   # negate Y axis component of translation
+
+    # set new transformation
+    node.rotation_euler = Quaternion(q).to_euler()
+    node.location = Vector(t)
+
+
 """ ====================================================================================================================
     Functions.
 ========================================================================================================================
 """
+
+
+def create_datatexture(tex_filepath):
+    """
+        Creates & connects up a new file node and place2dTexture node, uses the supplied filepath.
+    """
+    texture_name = os.path.splitext(os.path.split(tex_filepath)[1])[0]
+
+    newImage = bpy.data.images.load(tex_filepath)
+    newBlendDataTexture = bpy.data.textures.new(texture_name, type='IMAGE')
+    newBlendDataTexture.image = newImage
+
+    return newBlendDataTexture
+
+
+def create_material(PDX_material, mesh, texture_dir):
+    mat_name = 'PDXphong_' + mesh.name
+    new_material = bpy.data.materials.new(mat_name)
+    new_material.diffuse_intensity = 1
+    new_material.specular_shader = 'PHONG'
+
+    # TODO: should this be an enum attribute type?
+    # would need to parse the possible engine/material combinations from clausewitz.json
+    # pmc.addAttr(longName=PDX_SHADER, dataType='string')
+    # getattr(new_shader, PDX_SHADER).set(PDX_material.shader)
+
+    if getattr(PDX_material, 'diff', None):
+        texture_path = os.path.join(texture_dir, PDX_material.diff[0])
+        if os.path.exists(texture_path):
+            new_file = create_datatexture(texture_path)
+            diff_tex = new_material.texture_slots.add()
+            diff_tex.texture = new_file
+            diff_tex.texture_coords = 'UV'
+            diff_tex.use_map_color_diffuse = True
+
+    if getattr(PDX_material, 'n', None):
+        texture_path = os.path.join(texture_dir, PDX_material.n[0])
+        if os.path.exists(texture_path):
+            new_file = create_datatexture(texture_path)
+            norm_tex = new_material.texture_slots.add()
+            norm_tex.texture = new_file
+            norm_tex.texture_coords = 'UV'
+            norm_tex.use_map_color_diffuse = False
+            norm_tex.use_map_normal = True
+            norm_tex.normal_map_space = 'TANGENT'
+         
+    if getattr(PDX_material, 'spec', None):
+        texture_path = os.path.join(texture_dir, PDX_material.spec[0])
+        if os.path.exists(texture_path):
+            new_file = create_datatexture(texture_path)
+            spec_tex = new_material.texture_slots.add()
+            spec_tex.texture = new_file
+            spec_tex.texture_coords = 'UV'
+            spec_tex.use_map_color_diffuse = False
+            spec_tex.use_map_color_spec = True
+
+    mesh.materials.append(new_material)
 
 
 def create_locator(PDX_locator):
@@ -89,8 +163,9 @@ def create_locator(PDX_locator):
     bpy.context.scene.update()
     
     # convert to Blender coordinate space
-    xform = to_Blender_Coords() * new_loc.matrix_world * to_Blender_Coords().inverted()
-    new_loc.matrix_world = xform
+    # xform = to_Blender_Coords() * new_loc.matrix_world * to_Blender_Coords().inverted()
+    # new_loc.matrix_world = xform
+    # mirror_in_y(new_loc)
 
 
 def create_mesh(PDX_mesh, name=None):
@@ -195,6 +270,8 @@ def create_mesh(PDX_mesh, name=None):
     # bpy.ops.mesh.flip_normals()
     # bpy.ops.object.editmode_toggle()
 
+    return new_mesh
+
 
 """ ====================================================================================================================
     Main IO functions.
@@ -238,10 +315,10 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
                 # create the geometry
                 mesh = create_mesh(pdx_mesh, name=node.tag)
 
-                # # create the material
-                # if pdx_material:
-                #     print("[io_pdx_mesh] creating material -")
-                #     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
+                # create the material
+                if pdx_material:
+                    print("[io_pdx_mesh] creating material -")
+                    create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
                 # # create the skin cluster
                 # if joints and pdx_skin:
@@ -264,6 +341,3 @@ def export_meshfile(meshpath):
 
 def import_animfile(animpath, timestart=1.0):
     pass
-
-# a_file = os.path.join('J:\\', 'Github', 'io_pdx_mesh', 'test files', 'fallen_empire_large_warship.mesh')
-# import_meshfile(a_file, imp_mesh=True, imp_skel=True, imp_locs=True)
