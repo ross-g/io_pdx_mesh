@@ -1,5 +1,8 @@
 """
     Paradox asset files, Maya import/export.
+
+    As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
+    mirror all positions, normals etc along the Z axis and flip texture coordinates in V.
     
     author : ross-g
 """
@@ -28,6 +31,8 @@ from io_pdx_mesh import pdx_data
 PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
+
+PDX_DECIMALPTS = 2
 
 
 """ ====================================================================================================================
@@ -122,18 +127,105 @@ def get_material_textures(maya_material):
     if maya_material.color.connections():
         texture_dict['diff'] = maya_material.color.connections()[0].fileTextureName.get()
 
-    if maya_material.color.connections():
+    if maya_material.normalCamera.connections():
         bump2d = maya_material.normalCamera.connections()[0]
         texture_dict['n'] = bump2d.bumpValue.connections()[0].fileTextureName.get()
 
-    if maya_material.color.connections():
+    if maya_material.specularColor.connections():
         texture_dict['spec'] = maya_material.specularColor.connections()[0].fileTextureName.get()
 
     return texture_dict
 
 
-def get_mesh_info(maya_meshface):
-    mesh_dict = dict()
+def get_mesh_info(maya_mesh, merge_vertices=False):
+    """
+        Returns a dictionary of mesh information neccessary to export.
+        By default this does NOT merge vertices across triangles, so each tri-vert is exported separately!
+    """
+    # ensure we're using MeshFace type
+    if type(maya_mesh) == pmc.general.MeshFace:
+        meshfaces = maya_mesh
+        mesh = meshfaces.node()
+    elif type(maya_mesh) == pmc.nt.Mesh:
+        meshfaces = maya_mesh.faces
+        mesh = maya_mesh
+    else:
+        raise NotImplementedError("Unsupported mesh type encountered. {}".format(type(maya_mesh)))
+
+    # build a dictionary of mesh information for the exporter
+    mesh_dict = dict(
+        p=[],
+        n=[],
+        ta=[],
+        u0=[],      # TODO: multiple UV set support
+        tri=[]
+    )
+    # track processed verts, key: mesh_dict array index, value: mesh vert id
+    vert_dict = {}
+
+    # cache some mesh info
+    vertices = mesh.getPoints(space='world')        # list of vertices positions
+    normals = mesh.getNormals(space='world')        # list of vectors for each vertex per face
+    normalIds = mesh.getNormalIds()
+    triangles = mesh.getTriangles()
+    uv_SetNames = mesh.getUVSetNames()
+    _u, _v = mesh.getUVs(uvSet=uv_SetNames[0])
+    uv_Coords = zip(_u, _v)
+    trangents = mesh.getTangents(space='world', uvSet=uv_SetNames[0])
+
+    for face in meshfaces:
+        # vertices making this face
+        face_vert_ids = face.getVertices()
+
+        # number of triangles making this face
+        num_triangles = triangles[0][face.index()]
+
+        # store data for each tri of each face
+        for i in xrange(0, num_triangles):
+            # vertices making this triangle
+            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), i)
+
+            # loop over tri verts
+            for vert_id in tri_vert_ids:
+                # local vertex index
+                _local_id = face_vert_ids.index(vert_id)
+
+                # normal
+                vert_norm_ids = set(mesh.vtx[vert_id].getNormalIndices())
+                vert_norm_id = face.normalIndex(_local_id)
+                _normal = pmc.util.round(normals[vert_norm_id], PDX_DECIMALPTS)
+                # FIXME: normal vector here must be mirrored in Z to go back to game space
+                mesh_dict['n'].extend([_normal[0], _normal[1], -_normal[2]])
+
+                # uv
+                vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())
+                vert_uv_id = face.getUVIndex(_local_id, uv_SetNames[0])
+                _uvcoords = pmc.util.round(uv_Coords[vert_uv_id], PDX_DECIMALPTS)
+                # FIXME: UV v-coord here must be flipped in V
+                mesh_dict['u0'].extend([_uvcoords[0], 1 - _uvcoords[1]])
+
+                # tangent
+                vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
+                _tangent = pmc.util.round(trangents[vert_tangent_id], PDX_DECIMALPTS)
+                # FIXME: tangent basis here must be mirrored in Z
+                mesh_dict['ta'].extend([_tangent[0], _tangent[1], -_tangent[2], 1.0])
+
+                # position
+                _position = pmc.util.round(vertices[vert_id], PDX_DECIMALPTS)   # round position info
+                # FIXME: vertex position here must be mirrored in Z
+                mesh_dict['p'].extend([_position[0], _position[1], -_position[2]])
+
+                # flag this vert as processed
+                vert_dict[str(len(mesh_dict['p']) / 3 - 1)] = vert_id
+
+            # faces
+            face_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]    # re-order face for left handedness here
+            mesh_dict['tri'].extend([vert_dict[v] for v in face_verts])
+
+            print face.index(), i
+            print vert_dict
+            print face_verts
+            print mesh_dict['tri']
 
     return mesh_dict
 
@@ -706,9 +798,15 @@ def export_meshfile(meshpath):
         for group in shading_groups:     # this type of object set associates shaders with geometry
             # create parent element for this mesh
             meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
-            # check which meshfaces are using this material
-            meshfaces = group.members(flatten=True)[0]
-            mesh_info_dict = get_mesh_info(meshfaces)
+
+            # check which faces are using this material
+            mesh = group.members(flatten=True)[0]
+            mesh_info_dict = get_mesh_info(mesh)
+
+            # populate mesh attributes
+            for key in ['p', 'n', 'ta', 'u0', 'tri']:
+                if key in mesh_info_dict and len(mesh_info_dict[key]) != 0:
+                    meshnode_xml.set(key, mesh_info_dict[key])
 
             # create parent element for bounding box data
             aabbnode_xml = Xml.SubElement(meshnode_xml, 'aabb')
@@ -719,27 +817,27 @@ def export_meshfile(meshpath):
             materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
             maya_mat = group.surfaceShader.connections()[0]
             # populate material attributes
-            materialnode_xml.set('shader', getattr(maya_mat, PDX_SHADER).get())
+            materialnode_xml.set('shader', [getattr(maya_mat, PDX_SHADER).get()])
             mat_texture_dict = get_material_textures(maya_mat)
             for slot, texture in mat_texture_dict.iteritems():
-                materialnode_xml.set(slot, texture)
+                materialnode_xml.set(slot, [os.path.split(texture)[1]])
 
             # create parent element for skin data if the mesh is skinned
             if get_mesh_skin(shape):
                 skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
 
     # populate locator data
-    maya_locators = [loc.getTransform() for loc in pmc.ls(type=pmc.nt.Locator)]
+    maya_locators = [pmc.listRelatives(loc, type='transform', parent=True)[0] for loc in pmc.ls(type=pmc.nt.Locator)]
     for loc in maya_locators:
         locnode_xml = Xml.SubElement(locator_xml, loc.name())
+        # FIXME: the transform here must be mirrored in Z to go back to game space
         locnode_xml.set('p', [p for p in loc.getTranslation()])
         locnode_xml.set('q', [q for q in loc.getRotation(quaternion=True)])
         if loc.getParent():
             locnode_xml.set('pa', [loc.getParent().name()])
 
     # write the binary file from our XML structure
-    #pdx_data.write_meshfile(meshpath, root_xml)
-    return root_xml
+    pdx_data.write_meshfile(meshpath, root_xml)
 
 
 def import_animfile(animpath, timestart=1.0):
