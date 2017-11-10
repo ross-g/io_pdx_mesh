@@ -100,10 +100,7 @@ def create_material(PDX_material, mesh, texture_dir):
     new_material.diffuse_intensity = 1
     new_material.specular_shader = 'PHONG'
 
-    # TODO: should this be an enum attribute type?
-    # would need to parse the possible engine/material combinations from clausewitz.json
-    # pmc.addAttr(longName=PDX_SHADER, dataType='string')
-    # getattr(new_shader, PDX_SHADER).set(PDX_material.shader)
+    new_material[PDX_SHADER] =  PDX_material.shader[0]
 
     if getattr(PDX_material, 'diff', None):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
