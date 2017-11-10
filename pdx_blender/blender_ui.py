@@ -6,15 +6,17 @@
 
 import os
 import importlib
+import webbrowser
 import bpy
 from bpy.types import Operator, Panel
-from bpy.props import StringProperty, BoolProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty
 from bpy_extras.io_utils import ImportHelper
 
 try:
     from . import blender_import_export
     importlib.reload(blender_import_export)
     from .blender_import_export import *
+
 except Exception as err:
     print(err)
     raise
@@ -27,7 +29,11 @@ except Exception as err:
 
 
 _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-_settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
+settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
+
+# setup scene properties
+# bpy.context.scene.render.fps = 15
+# bpy.context.scene.world.light_settings.use_environment_light = True
 
 
 """ ====================================================================================================================
@@ -47,24 +53,24 @@ class import_mesh(Operator, ImportHelper):
             default='*.mesh',
             options={'HIDDEN'},
             maxlen=255,
-            )
+        )
 
-    # list of operator properties    
+    # list of operator properties
     chk_mesh = BoolProperty(
             name='Import mesh',
             description='Import mesh',
             default=True,
-            )
+        )
     chk_skel = BoolProperty(
             name='Import skeleton',
             description='Import skeleton',
             default=True,
-            )
+        )
     chk_locs = BoolProperty(
             name='Import locators',
             description='Import locators',
             default=True,
-            )
+        )
  
     def execute(self, context):
         print("[io_pdx_mesh] Importing {}".format(self.filepath))
@@ -79,8 +85,7 @@ class edit_settings(Operator):
     bl_options = {'REGISTER'}
  
     def execute(self, context):
-        global _settings_file
-        os.startfile(_settings_file)
+        os.startfile(settings_file)
 
         return {'FINISHED'}
 
@@ -91,9 +96,9 @@ class edit_settings(Operator):
 """
 
 
-class PDXblender_import_ui(Panel):
-    bl_idname = 'panel.io_pdx_mesh.import'
-    bl_label = 'Import'
+class PDXblender_file_ui(Panel):
+    bl_idname = 'panel.io_pdx_mesh.file'
+    bl_label = 'File'
     bl_category = 'PDX Blender Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -104,25 +109,15 @@ class PDXblender_import_ui(Panel):
     #     return (obj and obj.type == 'MESH')
 
     def draw(self, context):
-        self.layout.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Import mesh ...')
-        self.layout.operator('io_pdx_mesh.import_mesh', icon='RENDER_ANIMATION', text='Import anim ...')
+        self.layout.label('Import:', icon='IMPORT')
+        row = self.layout.row()
+        row.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Load mesh ...')
+        row.operator('io_pdx_mesh.import_mesh', icon='RENDER_ANIMATION', text='Load anim ...')
 
-
-class PDXblender_export_ui(Panel):
-    bl_idname = 'panel.io_pdx_mesh.export'
-    bl_label = 'Export'
-    bl_category = 'PDX Blender Tools'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
-
-    # @classmethod
-    # def poll(cls, context):
-    #     obj = context.active_object
-    #     return (obj and obj.type == 'MESH')
-
-    def draw(self, context):
-        self.layout.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Export mesh ...')
-        self.layout.operator('io_pdx_mesh.import_mesh', icon='RENDER_ANIMATION', text='Export anim ...')
+        self.layout.label('Export:', icon='EXPORT')
+        row = self.layout.row()
+        row.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Save mesh ...')
+        row.operator('io_pdx_mesh.import_mesh', icon='RENDER_ANIMATION', text='Save anim ...')
 
 
 class PDXblender_setup_ui(Panel):
@@ -132,10 +127,35 @@ class PDXblender_setup_ui(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
-    # @classmethod
-    # def poll(cls, context):
-    #     obj = context.active_object
-    #     return (obj and obj.type == 'MESH')
+    def draw(self, context):
+        settings = context.scene.io_pdx_mesh_settings
+
+        box = self.layout.box()
+        box.label('Scene setup:')
+        box.prop(settings, 'setup_engine')
+        row = box.row()
+        row.label('Animation')
+        row.prop(context.scene.render, 'fps', text='fps')
+        
+        box = self.layout.box()
+        box.label('Export settings:')
+        box.prop(settings, 'chk_merge_vtx')
+        box.prop(settings, 'chk_merge_obj')
+        box.prop(settings, 'chk_create')
+        box.prop(settings, 'chk_preview')
+        
+        box = self.layout.box()
+        box.label('Tools:')
+        box.operator('io_pdx_mesh.edit_settings', icon='FILE_TEXT', text='Edit Clausewitz settings')
+
+
+class PDXblender_help_ui(Panel):
+    bl_idname = 'panel.io_pdx_mesh.help'
+    bl_label = 'Help'
+    bl_category = 'PDX Blender Tools'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
 
     def draw(self, context):
-        self.layout.operator('io_pdx_mesh.edit_settings', icon='FILE_TEXT', text='Edit Clausewitz settings')
+        self.layout.operator('wm.url_open', icon='QUESTION', text='Paradox forums').url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
+        self.layout.operator('wm.url_open', icon='QUESTION', text='Source code').url = 'https://github.com/ross-g/io_pdx_mesh'
