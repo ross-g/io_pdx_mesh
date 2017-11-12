@@ -14,7 +14,6 @@ try:
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-import maya.cmds as cmds
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
 import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
@@ -121,6 +120,20 @@ def get_mesh_skin(maya_mesh):
     return skinclusters
 
 
+def get_material_shader(maya_material):
+    shader_attr = getattr(maya_material, PDX_SHADER)
+    shader_val = shader_attr.get()
+
+    # PDX source assets use an enum attr
+    if shader_attr.type() == 'enum':
+        _enum_dict = shader_attr.getEnums()
+        return _enum_dict[shader_val]
+
+    # imported assets will get a string attr
+    elif shader_attr.type() == 'string':
+        return shader_val
+
+
 def get_material_textures(maya_material):
     texture_dict = dict()
 
@@ -158,20 +171,23 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
         n=[],
         ta=[],
         u0=[],      # TODO: multiple UV set support
-        tri=[]
+        tri=[],
+        min=[],
+        max=[]
     )
     # track processed verts, key: mesh_dict array index, value: mesh vert id
-    vert_dict = {}
+    vtx_dict = {}
+    _vtx = 0
 
     # cache some mesh info
     vertices = mesh.getPoints(space='world')        # list of vertices positions
     normals = mesh.getNormals(space='world')        # list of vectors for each vertex per face
-    normalIds = mesh.getNormalIds()
     triangles = mesh.getTriangles()
-    uv_SetNames = mesh.getUVSetNames()
-    _u, _v = mesh.getUVs(uvSet=uv_SetNames[0])
-    uv_Coords = zip(_u, _v)
-    trangents = mesh.getTangents(space='world', uvSet=uv_SetNames[0])
+    # TODO: multiple UV set support
+    uv_setnames = mesh.getUVSetNames()
+    _u, _v = mesh.getUVs(uvSet=uv_setnames[0])
+    uv_coords = zip(_u, _v)
+    tangents = mesh.getTangents(space='world', uvSet=uv_setnames[0])
 
     for face in meshfaces:
         # vertices making this face
@@ -185,47 +201,56 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
             # vertices making this triangle
             tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), i)
 
+            debug_var = []
+
             # loop over tri verts
             for vert_id in tri_vert_ids:
-                # local vertex index
+                # face relative vertex index
                 _local_id = face_vert_ids.index(vert_id)
 
                 # normal
-                vert_norm_ids = set(mesh.vtx[vert_id].getNormalIndices())
+                # vert_norm_ids = set(mesh.vtx[vert_id].getNormalIndices())     # FIXME:
                 vert_norm_id = face.normalIndex(_local_id)
-                _normal = pmc.util.round(normals[vert_norm_id], PDX_DECIMALPTS)
-                # FIXME: normal vector here must be mirrored in Z to go back to game space
-                mesh_dict['n'].extend([_normal[0], _normal[1], -_normal[2]])
+                _normal = pmc.util.round(list(normals[vert_norm_id]), PDX_DECIMALPTS)
+                mesh_dict['n'].extend([_normal[0], _normal[1], -_normal[2]])        # TODO: convert vec to game space
 
                 # uv
-                vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())
-                vert_uv_id = face.getUVIndex(_local_id, uv_SetNames[0])
-                _uvcoords = pmc.util.round(uv_Coords[vert_uv_id], PDX_DECIMALPTS)
-                # FIXME: UV v-coord here must be flipped in V
-                mesh_dict['u0'].extend([_uvcoords[0], 1 - _uvcoords[1]])
+                # vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())           # FIXME:
+                vert_uv_id = face.getUVIndex(_local_id, uv_setnames[0])
+                _uvcoords = pmc.util.round(uv_coords[vert_uv_id], PDX_DECIMALPTS)
+                mesh_dict['u0'].extend([_uvcoords[0], 1 - _uvcoords[1]])            # TODO: convert uv to game space
 
                 # tangent
                 vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
-                _tangent = pmc.util.round(trangents[vert_tangent_id], PDX_DECIMALPTS)
-                # FIXME: tangent basis here must be mirrored in Z
-                mesh_dict['ta'].extend([_tangent[0], _tangent[1], -_tangent[2], 1.0])
+                _tangent = pmc.util.round(list(tangents[vert_tangent_id]), PDX_DECIMALPTS)
+                mesh_dict['ta'].extend([_tangent[0], _tangent[1], -_tangent[2], 1.0])  # TODO: convert vec to game space
 
                 # position
                 _position = pmc.util.round(vertices[vert_id], PDX_DECIMALPTS)   # round position info
-                # FIXME: vertex position here must be mirrored in Z
-                mesh_dict['p'].extend([_position[0], _position[1], -_position[2]])
+                mesh_dict['p'].extend([_position[0], _position[1], -_position[2]])     # TODO: convert pos to game space
 
-                # flag this vert as processed
-                vert_dict[str(len(mesh_dict['p']) / 3 - 1)] = vert_id
+                # count this vert as processed
+                vtx_dict[_vtx] = vert_id    # store mapping by counter to mesh relative vertex index
+                debug_var.append(_vtx)
+                _vtx += 1                   # update the counter
 
-            # faces
-            face_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]    # re-order face for left handedness here
-            mesh_dict['tri'].extend([vert_dict[v] for v in face_verts])
+            # tri-faces
+            triface_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]    # re-order face for left handedness here
+            # count_verts = [vtx_dict.keys()[-3], vtx_dict.keys()[-1], vtx_dict.keys()[-2]]
+            # mesh_dict['tri'].extend(count_verts)
+            mesh_dict['tri'].extend([debug_var[0], debug_var[2], debug_var[1]])
 
-            print face.index(), i
-            print vert_dict
-            print face_verts
+            print "face {} - tri {}".format(face.index(), i)
+            print vtx_dict
+            print triface_verts
             print mesh_dict['tri']
+
+    # calculate min and max bounds of mesh
+    x_VtxPos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
+    y_VtxPos = set([mesh_dict['p'][i+1] for i in xrange(0, len(mesh_dict['p']), 3)])
+    z_VtxPos = set([mesh_dict['p'][i+2] for i in xrange(0, len(mesh_dict['p']), 3)])
+    mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
+    mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
 
     return mesh_dict
 
@@ -295,7 +320,7 @@ def create_shader(shader_name, PDX_material, texture_dir):
     # TODO: should this be an enum attribute type?
     # would need to parse the possible engine/material combinations from clausewitz.json
     pmc.addAttr(longName=PDX_SHADER, dataType='string')
-    getattr(new_shader, PDX_SHADER).set(PDX_material.shader)
+    getattr(new_shader, PDX_SHADER).set(PDX_material.shader[0])
 
     if getattr(PDX_material, 'diff', None):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
@@ -805,19 +830,20 @@ def export_meshfile(meshpath):
 
             # populate mesh attributes
             for key in ['p', 'n', 'ta', 'u0', 'tri']:
-                if key in mesh_info_dict and len(mesh_info_dict[key]) != 0:
+                if key in mesh_info_dict and mesh_info_dict[key]:
                     meshnode_xml.set(key, mesh_info_dict[key])
 
             # create parent element for bounding box data
             aabbnode_xml = Xml.SubElement(meshnode_xml, 'aabb')
-            aabbnode_xml.set('min', [])
-            aabbnode_xml.set('max', [])
+            for key in ['min', 'max']:
+                if key in mesh_info_dict and mesh_info_dict[key]:
+                    aabbnode_xml.set(key, mesh_info_dict[key])
 
             # create parent element for material data
             materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
             maya_mat = group.surfaceShader.connections()[0]
             # populate material attributes
-            materialnode_xml.set('shader', [getattr(maya_mat, PDX_SHADER).get()])
+            materialnode_xml.set('shader', [get_material_shader(maya_mat)])
             mat_texture_dict = get_material_textures(maya_mat)
             for slot, texture in mat_texture_dict.iteritems():
                 materialnode_xml.set(slot, [os.path.split(texture)[1]])
@@ -830,9 +856,8 @@ def export_meshfile(meshpath):
     maya_locators = [pmc.listRelatives(loc, type='transform', parent=True)[0] for loc in pmc.ls(type=pmc.nt.Locator)]
     for loc in maya_locators:
         locnode_xml = Xml.SubElement(locator_xml, loc.name())
-        # FIXME: the transform here must be mirrored in Z to go back to game space
-        locnode_xml.set('p', [p for p in loc.getTranslation()])
-        locnode_xml.set('q', [q for q in loc.getRotation(quaternion=True)])
+        locnode_xml.set('p', [p for p in loc.getTranslation()])                 # TODO: convert pos to game space
+        locnode_xml.set('q', [q for q in loc.getRotation(quaternion=True)])     # TODO: convert quat to game space
         if loc.getParent():
             locnode_xml.set('pa', [loc.getParent().name()])
 
