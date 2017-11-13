@@ -5,6 +5,8 @@
 """
 
 import os
+import inspect
+import json
 import importlib
 import webbrowser
 import bpy
@@ -31,9 +33,32 @@ except Exception as err:
 _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
 settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
 
-# setup scene properties
-# bpy.context.scene.render.fps = 15
-# bpy.context.scene.world.light_settings.use_environment_light = True
+engine_list = ()
+
+
+def load_settings():
+    global settings_file
+    with open(settings_file, 'rt') as f:
+        try:
+            settings = json.load(f)
+            return settings
+        except Exception as err:
+            print("[io_pdx_mesh] Critical error.")
+            print(err)
+            return {}
+
+
+def get_engine_list(self, context):
+    global engine_list
+
+    settings = load_settings()     # settings from json
+    engine_list = ((engine, engine, '') for engine in sorted(settings.keys()))
+
+    return engine_list
+
+
+def set_animation_fps(self, context):
+    context.scene.render.fps = context.scene.io_pdx_settings.setup_fps
 
 
 """ ====================================================================================================================
@@ -128,21 +153,21 @@ class PDXblender_setup_ui(Panel):
     bl_region_type = 'TOOLS'
 
     def draw(self, context):
-        settings = context.scene.io_pdx_mesh_settings
+        settings = context.scene.io_pdx_settings
 
         box = self.layout.box()
         box.label('Scene setup:')
         box.prop(settings, 'setup_engine')
         row = box.row()
         row.label('Animation')
-        row.prop(context.scene.render, 'fps', text='fps')
+        row.prop(settings, 'setup_fps', text='fps')
         
         box = self.layout.box()
         box.label('Export settings:')
         box.prop(settings, 'chk_merge_vtx')
         box.prop(settings, 'chk_merge_obj')
-        box.prop(settings, 'chk_create')
-        box.prop(settings, 'chk_preview')
+        # box.prop(settings, 'chk_create')
+        # box.prop(settings, 'chk_preview')
         
         box = self.layout.box()
         box.label('Tools:')

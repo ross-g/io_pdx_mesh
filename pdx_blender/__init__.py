@@ -12,8 +12,6 @@ if 'bpy' in locals():
         importlib.reload(blender_ui)
 
 import os
-import inspect
-import json
 import bpy
 from bpy.types import PropertyGroup
 from bpy.props import PointerProperty, StringProperty, BoolProperty, EnumProperty, IntProperty
@@ -22,41 +20,23 @@ from . import blender_import_export, blender_ui
 
 
 """ ====================================================================================================================
-    Variables and Helper functions.
+    Tool properties, stored at scene level.
 ========================================================================================================================
 """
 
 
-_script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
-
-
-def load_settings():
-    global settings_file
-    with open(settings_file, 'rt') as f:
-        try:
-            settings = json.load(f)
-            return settings
-        except Exception as err:
-            print("[io_pdx_mesh] Critical error.")
-            print(err)
-            return {}
-
-
 class PDXBlender_settings(PropertyGroup):
-    settings = load_settings()     # settings from json
-
     setup_engine = EnumProperty(
             name='Engine',
             description='Engine',
-            items=((engine, engine, '') for engine in sorted(settings.keys())),
-            default=sorted(settings.keys())[-1]
+            items=blender_ui.get_engine_list
         )
     setup_fps = IntProperty(
             name='Animation fps',
             description='Animation fps',
-            min=0,
-            default=15
+            min=1,
+            default=15,
+            update=blender_ui.set_animation_fps
         )
     chk_merge_vtx = BoolProperty(
             name='Merge vertices',
@@ -68,16 +48,16 @@ class PDXBlender_settings(PropertyGroup):
             description='Merge objects',
             default=True,
         )
-    chk_create = BoolProperty(
-            name='Create .gfx and .asset',
-            description='Create .gfx and .asset',
-            default=False,
-        )
-    chk_preview = BoolProperty(
-            name='Preview on export',
-            description='Preview on export',
-            default=False,
-        )
+    # chk_create = BoolProperty(
+    #         name='Create .gfx and .asset',
+    #         description='Create .gfx and .asset',
+    #         default=False,
+    #     )
+    # chk_preview = BoolProperty(
+    #         name='Preview on export',
+    #         description='Preview on export',
+    #         default=False,
+    #     )
 
 
 
@@ -117,10 +97,13 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    # initialise tool properties
-    bpy.types.Scene.io_pdx_mesh_settings = PointerProperty(type=PDXBlender_settings)
+    # initialise tool properties to scene
+    bpy.types.Scene.io_pdx_settings = PointerProperty(type=PDXBlender_settings)
 
 
 def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
+
+    # remove tool properties from scene
+    del bpy.types.Scene.io_pdx_settings
