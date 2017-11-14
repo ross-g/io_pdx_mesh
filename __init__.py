@@ -5,12 +5,23 @@
     author : ross-g
 """
 
-try:
-    # if running from Maya, launch the Maya UI
+import os
+import sys
+
+
+app = os.path.splitext(os.path.split(sys.executable)[1])[0]
+print('[io_pdx_mesh] __init__ (running from {})'.format(app))
+
+
+# running in Maya
+if app == 'maya':
     import maya.cmds
-    print("[io_pdx_mesh] __init__")
-    import pdx_maya.maya_ui
-    reload(pdx_maya.maya_ui)
-    pdx_maya.maya_ui.main()
-except:
-    raise
+
+    try:
+        # launch the Maya UI
+        import pdx_maya.maya_ui
+        reload(pdx_maya.maya_ui)
+        pdx_maya.maya_ui.main()
+    except Exception as e:
+        print sys.exc_info()
+        raise e
