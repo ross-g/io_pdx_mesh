@@ -85,7 +85,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
         # window properties
         self.setWindowTitle('PDX Maya Tools')
         self.setWindowFlags(QtCore.Qt.Window)
-        self.setFixedSize(550, 400)
         if self.parent():
             parent_x = self.parent().x()
             parent_y = self.parent().y()
@@ -110,8 +109,10 @@ class PDXmaya_ui(QtWidgets.QDialog):
         # file_import_mesh.setStatusTip('')
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
-        file_export = QtWidgets.QAction('Export mesh ...', self)
-        file_export.setDisabled(True)
+        file_export_mesh = QtWidgets.QAction('Export mesh ...', self)
+        file_export_mesh.setDisabled(True)
+        file_export_anim = QtWidgets.QAction('Export anim ...', self)
+        file_export_anim.setDisabled(True)
 
         # tools menu
         tool_edit_settings = QtWidgets.QAction('Edit Clausewitz settings', self)
@@ -145,7 +146,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
             ])
         file_menu.addSeparator()
         file_menu.addActions([
-            file_export
+            file_export_mesh, 
+            file_export_anim
             ])
         tools_menu.addActions([
             tool_edit_settings
@@ -275,8 +277,8 @@ class export_controls(QtWidgets.QWidget):
         self.chk_anim = QtWidgets.QCheckBox('Export animations')
         self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
         self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
-        self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
-        self.chk_preview = QtWidgets.QCheckBox('Preview on export')
+        # self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
+        # self.chk_preview = QtWidgets.QCheckBox('Preview on export')
 
         # output settings
         lbl_path = QtWidgets.QLabel('Output path:')
@@ -299,8 +301,6 @@ class export_controls(QtWidgets.QWidget):
         self.chk_anim.setDisabled(True)
         self.chk_merge_vtx.setDisabled(True)
         self.chk_merge_obj.setDisabled(True)
-        self.chk_create.setDisabled(True)
-        self.chk_preview.setDisabled(True)
         self.btn_path.setDisabled(True)
         self.txt_file.setDisabled(True)
         self.btn_export.setDisabled(True)
@@ -336,7 +336,7 @@ class export_controls(QtWidgets.QWidget):
         grp_export_fields_layout.setVerticalSpacing(5)
         grp_export_fields_layout.setHorizontalSpacing(4)
 
-        for grp in [grp_scene, grp_mats, grp_anims, grp_export]:
+        for grp in [grp_mats, grp_anims, grp_scene, grp_export]:
             grp.setMinimumWidth(250)
             # grp.setFont(QtGui.QFont('SansSerif', 8, QtGui.QFont.Bold))
 
@@ -377,9 +377,9 @@ class export_controls(QtWidgets.QWidget):
         grp_export_layout.addWidget(self.chk_merge_vtx)
         grp_export_layout.addWidget(self.chk_merge_obj)
         grp_export_layout.addWidget(h_line())
-        grp_export_layout.addWidget(self.chk_create)
-        grp_export_layout.addWidget(self.chk_preview)
-        grp_export_layout.addWidget(h_line())
+        # grp_export_layout.addWidget(self.chk_create)
+        # grp_export_layout.addWidget(self.chk_preview)
+        # grp_export_layout.addWidget(h_line())
         grp_export_layout.addLayout(grp_export_fields_layout)
         grp_export_fields_layout.addWidget(lbl_path, 1, 1)
         grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
