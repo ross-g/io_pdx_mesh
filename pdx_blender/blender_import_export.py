@@ -48,31 +48,23 @@ def get_BMesh(mesh_data):
     return bm
 
 
-def to_Blender_Coords():
+def swap_coord_space(data):
     """
         Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
     """
-    global_matrix = axis_conversion(from_forward='-Z', from_up='Y', to_forward="Y", to_up="Z").to_4x4()
-    # global_matrix *= Matrix.Scale(-1, 4, [0, 0, 1])
+    space_matrix = Matrix((
+        (1, 0, 0, 0),
+        (0, 0, 1, 0),
+        (0, 1, 0, 0),
+        (0, 0, 0, 1)
+    ))
 
-    return global_matrix
+    if type(data) == Vector or len(data) == 3:
+        vec = Vector(data)
+        return (vec * space_matrix)
 
-
-def mirror_in_y(node):
-    """
-        Mirrors a point across the XZ plane at Y = 0.
-    """
-    # get the current transform as quaternion rotation and translation
-    XformMat = node.matrix_world
-    quat = XformMat.to_quaternion()
-    tran = XformMat.to_translation()
-
-    q = [-quat.w, quat.x, -quat.y, quat.z]      # negate Y axis and angle components of quaternion
-    t = [tran.x, -tran.y, tran.z]                   # negate Y axis component of translation
-
-    # set new transformation
-    node.rotation_euler = Quaternion(q).to_euler()
-    node.location = Vector(t)
+    if type(data) == Matrix:
+        return (space_matrix * data * space_matrix.inverted())
 
 
 """ ====================================================================================================================
@@ -138,7 +130,8 @@ def create_material(PDX_material, mesh, texture_dir):
 def create_locator(PDX_locator):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
-    new_loc.empty_draw_type = 'ARROWS'
+    new_loc.empty_draw_type = 'PLAIN_AXES'
+    new_loc.show_axis = True
 
     bpy.context.scene.objects.link(new_loc)
 
@@ -158,11 +151,72 @@ def create_locator(PDX_locator):
     new_loc.location = (PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
 
     bpy.context.scene.update()
-    
-    # convert to Blender coordinate space
-    # xform = to_Blender_Coords() * new_loc.matrix_world * to_Blender_Coords().inverted()
-    # new_loc.matrix_world = xform
-    # mirror_in_y(new_loc)
+
+    # convert to Blender space
+    xForm = swap_coord_space(new_loc.matrix_world)
+    new_loc.matrix_world = xForm
+
+
+def create_skeleton(PDX_bone_list):
+    # keep track of bones as we create them
+    bone_list = [None for _ in range(0, len(PDX_bone_list))]
+
+    # bpy.ops.object.select_all(action='DESELECT')
+    # temporary name used during creation
+    tmp_rig_name = 'io_pdx_rig'
+
+    # create the armature datablock
+    armt = bpy.data.armatures.new('armature')
+
+    # create the object and link to the scene
+    new_rig = bpy.data.objects.new(tmp_rig_name, armt)
+    bpy.context.scene.objects.link(new_rig)
+    bpy.context.scene.objects.active = new_rig
+    new_rig.select = True
+
+    bpy.ops.object.mode_set(mode='EDIT')
+    for bone in PDX_bone_list:
+        index = bone.ix[0]
+        transform = bone.tx
+        parent = getattr(bone, 'pa', None)
+
+        # determine bone name
+        name = bone.name.split(':')[-1]
+        namespace = bone.name.split(':')[:-1]  # TODO: setup namespaces properly
+
+        # ensure bone name is unique
+        # Maya allows non-unique transform names (on leaf nodes) and handles them internally with | separators
+        unique_name = name.replace('|', '_')
+        # if pmc.ls(unique_name, type='joint'):
+        #     bone_list[index] = pmc.PyNode(unique_name)
+        #     continue    # bone already exists, likely the skeleton is already built, so collect and return joints
+
+        # create joint
+        new_bone = armt.edit_bones.new(name=unique_name)
+        new_bone.select = True
+        bone_list[index] = new_bone
+
+        # set transform
+        mat = Matrix((
+            (transform[0], transform[3], transform[6], transform[9]),
+            (transform[1], transform[4], transform[7], transform[10]),
+            (transform[2], transform[5], transform[8], transform[11]),
+            (0.0, 0.0, 0.0, 1.0)
+        ))
+        new_bone.head = swap_coord_space(mat.inverted_safe().to_translation())      # convert coords to Blender space
+        new_bone.tail = new_bone.head + Vector((0,-1,0))
+
+        # connect to parent
+        if parent is not None:
+            parent_bone = bone_list[parent[0]]
+            new_bone.parent = parent_bone
+            new_bone.use_connect = True
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.scene.update()
+    new_rig.show_x_ray = True
+
+    return bone_list
 
 
 def create_mesh(PDX_mesh, name=None):
@@ -189,14 +243,15 @@ def create_mesh(PDX_mesh, name=None):
     # vertices
     vertexArray = []   # array of points
     for i in range(0, len(verts), 3):
-        v = [verts[i], verts[i+1], verts[i+2]]
+        # v = [verts[i], verts[i+1], verts[i+2]]
+        v = swap_coord_space([verts[i], verts[i+1], verts[i+2]])      # convert coords to Blender space
         vertexArray.append(v)
 
     # faces
     faceArray = []
     for i in range(0, len(tris), 3):
-        f = [tris[i], tris[i+1], tris[i+2]]     # will need to flip normals with this vert ordering?
-        # f = [tris[i+2], tris[i+1], tris[i]]
+        # f = [tris[i], tris[i+1], tris[i+2]]
+        f = [tris[i+2], tris[i+1], tris[i]]         # convert handedness to Blender space
         faceArray.append(f)
 
     # create the mesh datablock
@@ -217,7 +272,8 @@ def create_mesh(PDX_mesh, name=None):
     if norms:
         normals = []
         for i in range(0, len(norms), 3):
-            n = [norms[i], norms[i+1], norms[i+2]]
+            # n = [norms[i], norms[i+1], norms[i+2]]
+            n = swap_coord_space([norms[i], norms[i+1], norms[i+2]])      # convert vector to Blender space
             normals.append(n)
 
         new_mesh.polygons.foreach_set('use_smooth', [True] * len(new_mesh.polygons))
@@ -251,21 +307,9 @@ def create_mesh(PDX_mesh, name=None):
         bm.free()
     
     # select the object
-    # bpy.context.space_data.show_backface_culling = True
     bpy.ops.object.select_all(action='DESELECT')
     bpy.context.scene.objects.active = new_obj
     new_obj.select = True
-
-    # convert to Blender coordinate space
-    xform = to_Blender_Coords()
-    # new_mesh.transform(xform)
-    # new_obj.matrix_world = xform
-    # bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
-    
-    # bpy.ops.object.shade_smooth()
-    # bpy.ops.object.editmode_toggle()
-    # bpy.ops.mesh.flip_normals()
-    # bpy.ops.object.editmode_toggle()
 
     return new_mesh
 
@@ -288,17 +332,17 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     for node in shapes:
         print("[io_pdx_mesh] creating node - {}".format(node.tag))
 
-        # # create the skeleton first, so we can skin the mesh to it
-        # joints = None
-        # skeleton = node.find('skeleton')
-        # if imp_skel and skeleton:
-        #     print("[io_pdx_mesh] creating skeleton -")
-        #     pdx_bone_list = list()
-        #     for b in skeleton:
-        #         pdx_bone = pdx_data.PDXData(b)
-        #         pdx_bone_list.append(pdx_bone)
+        # create the skeleton first, so we can skin the mesh to it
+        joints = None
+        skeleton = node.find('skeleton')
+        if imp_skel and skeleton:
+            print("[io_pdx_mesh] creating skeleton -")
+            pdx_bone_list = list()
+            for b in skeleton:
+                pdx_bone = pdx_data.PDXData(b)
+                pdx_bone_list.append(pdx_bone)
 
-        #     joints = create_skeleton(pdx_bone_list)
+            joints = create_skeleton(pdx_bone_list)
 
         # then create all the meshes
         meshes = node.findall('mesh')
