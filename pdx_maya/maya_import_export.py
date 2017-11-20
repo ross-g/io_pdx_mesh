@@ -260,37 +260,20 @@ def swap_coord_space(data):
     """
         Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up)
     """
-    space_matrix = pmdt.Matrix(
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, -1, 0,
-        0, 0, 0, 1
-    )
+    space_matrix = MMatrix((
+        (1.0, 0.0, 0.0, 0),
+        (0, 1, 0, 0),
+        (0, 0, -1, 0),
+        (0, 0, 0, 1)
+    ))
 
-    if type(data) == pmdt.Vector or len(data) == 3:
-        vec = pmdt.Vector(data)
-        return (vec * space_matrix)
+    if type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
+        vec = MVector(data)
+        return vec * space_matrix
 
-    if type(data) == pmdt.Matrix:
-        return (space_matrix * data * space_matrix.inverse())
-    
-    # space_matrix = MMatrix((
-    #     (1.0, 0.0, 0.0, 0),
-    #     (0, 1, 0, 0),
-    #     (0, 0, -1, 0),
-    #     (0, 0, 0, 1)
-    # ))
-
-    # if type(data) == MVector or len(data) == 3:
-    #     vec = MVector(data)
-    #     return (vec * space_matrix)
-
-    # if type(data) == MMatrix:
-    #     return (space_matrix * data * space_matrix.inverse())
-
-    # if type(data) == pmdt.Matrix:
-    #     mat = MMatrix(data)
-    #     return (space_matrix * data * space_matrix.inverse())
+    if type(data) == MMatrix or type(data) == pmdt.Matrix:
+        mat = MMatrix(data)
+        return space_matrix * mat * space_matrix.inverse()
 
 
 """ ====================================================================================================================
@@ -782,20 +765,19 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         # create the skeleton first, so we can skin the mesh to it
         joints = None
         skeleton = node.find('skeleton')
-        if skeleton:
+        if imp_skel and skeleton:
             pdx_bone_list = list()
             for b in skeleton:
                 pdx_bone = pdx_data.PDXData(b)
                 pdx_bone_list.append(pdx_bone)
                 scene_bone_dict[pdx_bone.name] = pdx_bone.tx
 
-            if imp_skel:
-                print "[io_pdx_mesh] creating skeleton -"
-                joints = create_skeleton(pdx_bone_list)
+            print "[io_pdx_mesh] creating skeleton -"
+            joints = create_skeleton(pdx_bone_list)
 
         # then create all the meshes
         meshes = node.findall('mesh')
-        if imp_mesh:
+        if imp_mesh and meshes:
             pdx_mesh_list = list()
             for m in meshes:
                 print "[io_pdx_mesh] creating mesh -"
@@ -818,7 +800,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
                     create_skin(pdx_skin, mesh, joints)
 
     # go through locators
-    if imp_locs:
+    if imp_locs and locators:
         print "[io_pdx_mesh] creating locators -"
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
