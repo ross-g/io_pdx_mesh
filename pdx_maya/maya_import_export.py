@@ -18,6 +18,7 @@ import pymel.core as pmc
 import pymel.core.datatypes as pmdt
 import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
 import maya.OpenMayaAnim as OpenMayaAnim    # Maya Python API 1.0
+from maya.api.OpenMaya import MVector, MMatrix    # Maya Python API 2.0
 
 from io_pdx_mesh import pdx_data
 
@@ -255,25 +256,41 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
     return mesh_dict
 
 
-def mirror_in_z(node):
+def swap_coord_space(data):
     """
-        Mirrors a point across the XY plane at Z = 0.
+        Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up)
     """
-    # get the current transform as quaternion rotation and translation
-    m_XformMat = OpenMaya.MTransformationMatrix(node.matrix.get())
-    quat = m_XformMat.rotation()
-    tran = m_XformMat.translation(OpenMaya.MSpace.kTransform)
+    space_matrix = pmdt.Matrix(
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, -1, 0,
+        0, 0, 0, 1
+    )
 
-    q = [quat[0], quat[1], -quat[2], -quat[3]]      # negate Z axis and angle components of quaternion
-    t = [tran.x, tran.y, -tran.z]                   # negate Z axis component of translation
+    if type(data) == pmdt.Vector or len(data) == 3:
+        vec = pmdt.Vector(data)
+        return (vec * space_matrix)
 
-    # set new transformation
-    obj = get_MObject(node.name())
-    mFn_Xform = OpenMaya.MFnTransform(obj)
+    if type(data) == pmdt.Matrix:
+        return (space_matrix * data * space_matrix.inverse())
+    
+    # space_matrix = MMatrix((
+    #     (1.0, 0.0, 0.0, 0),
+    #     (0, 1, 0, 0),
+    #     (0, 0, -1, 0),
+    #     (0, 0, 0, 1)
+    # ))
 
-    mFn_Xform.setRotationQuaternion(*q)
-    vector = OpenMaya.MVector(*t)
-    mFn_Xform.setTranslation(vector, OpenMaya.MSpace.kTransform)
+    # if type(data) == MVector or len(data) == 3:
+    #     vec = MVector(data)
+    #     return (vec * space_matrix)
+
+    # if type(data) == MMatrix:
+    #     return (space_matrix * data * space_matrix.inverse())
+
+    # if type(data) == pmdt.Matrix:
+    #     mat = MMatrix(data)
+    #     return (space_matrix * data * space_matrix.inverse())
 
 
 """ ====================================================================================================================
@@ -353,18 +370,29 @@ def create_material(PDX_material, mesh, texture_path):
     pmc.hyperShade(assign=s_group)
 
 
-def create_locator(PDX_locator):
+def create_locator(PDX_locator, PDX_bone_dict):
     # create locator
     new_loc = pmc.spaceLocator()
     pmc.select(new_loc)
     pmc.rename(new_loc, PDX_locator.name)
 
-    # parent locator
+    # parent locator or check for parent transform
     parent = getattr(PDX_locator, 'pa', None)
+    parent_Xform = pmdt.Matrix()
     if parent is not None:
         parent_bone = pmc.ls(parent[0], type='joint')
+
         if parent_bone:
             pmc.parent(new_loc, parent_bone[0])
+        else:
+            # parent bone doesn't exist in scene
+            transform = PDX_bone_dict[parent[0]]
+            parent_Xform = pmdt.Matrix(
+                transform[0], transform[1], transform[2], 0.0,
+                transform[3], transform[4], transform[5], 0.0,
+                transform[6], transform[7], transform[8], 0.0,
+                transform[9], transform[10], transform[11], 1.0
+            )
 
     # set attributes
     obj = get_MObject(new_loc.name())
@@ -377,8 +405,11 @@ def create_locator(PDX_locator):
     space = OpenMaya.MSpace.kTransform
     mFn_Xform.setTranslation(vector, space)
 
-    # mirror in Z
-    mirror_in_z(new_loc)
+    # apply parent transform
+    new_loc.setMatrix(new_loc.getMatrix() * parent_Xform.inverse())
+
+    # convert to Maya space
+    new_loc.setMatrix(swap_coord_space(new_loc.getMatrix()))
 
 
 def create_skeleton(PDX_bone_list):
@@ -417,11 +448,9 @@ def create_skeleton(PDX_bone_list):
             transform[6], transform[7], transform[8], 0.0,
             transform[9], transform[10], transform[11], 1.0
         )
-        pmc.xform(matrix=mat.inverse())     # set transform to inverse of matrix in world-space
+        # convert to Maya space
+        pmc.xform(matrix=swap_coord_space(mat.inverse()))     # set transform to inverse of matrix in world-space
         pmc.select(clear=True)
-
-        # mirror in Z
-        mirror_in_z(new_bone)
 
         # connect to parent
         if parent is not None:
@@ -518,7 +547,8 @@ def create_mesh(PDX_mesh, name=None):
     numVertices = 0
     vertexArray = OpenMaya.MFloatPointArray()   # array of points
     for i in xrange(0, len(verts), 3):
-        v = OpenMaya.MFloatPoint(verts[i], verts[i+1], verts[i+2])
+        _verts = swap_coord_space([verts[i], verts[i+1], verts[i+2]])       # convert coords to Maya space
+        v = OpenMaya.MFloatPoint(_verts[0], _verts[1], _verts[2])
         vertexArray.append(v)
         numVertices += 1
 
@@ -531,8 +561,10 @@ def create_mesh(PDX_mesh, name=None):
 
     # vert connections
     polygonConnects = OpenMaya.MIntArray()
-    for item in tris:
-        polygonConnects.append(item)
+    for i in range(0, len(tris), 3):
+        polygonConnects.append(tris[i+2])       # convert handedness to Maya space
+        polygonConnects.append(tris[i+1])
+        polygonConnects.append(tris[i])
     # OpenMaya.MScriptUtil.createIntArrayFromList(tris, polygonConnects)
 
     # default UVs
@@ -548,7 +580,7 @@ def create_mesh(PDX_mesh, name=None):
         create the new mesh """
     mFn_Mesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
     mFn_Mesh.setName(tmp_mesh_name)
-    m_DagMod.doIt()     # sets up the transform parent to the mesh shape
+    m_DagMod.doIt()         # sets up the transform parent to the mesh shape
 
     # PyNode for the mesh
     new_mesh = pmc.PyNode(tmp_mesh_name)
@@ -565,7 +597,8 @@ def create_mesh(PDX_mesh, name=None):
     if norms:
         normalsIn = OpenMaya.MVectorArray()     # array of vectors
         for i in xrange(0, len(norms), 3):
-            n = OpenMaya.MVector(norms[i], norms[i+1], norms[i+2])
+            _norms = swap_coord_space([norms[i], norms[i+1], norms[i+2]])       # convert vector to Maya space
+            n = OpenMaya.MVector(_norms[0], _norms[1], _norms[2])
             normalsIn.append(n)
         vertexList = OpenMaya.MIntArray()       # matches normal to vert by index
         for i in range(0, numVertices):
@@ -596,23 +629,10 @@ def create_mesh(PDX_mesh, name=None):
             vArray = OpenMaya.MFloatArray()
             for i in xrange(0, len(uv_data), 2):
                 uArray.append(uv_data[i])
-                vArray.append(1 - uv_data[i+1])        # flip the UV coords in V!
+                vArray.append(1 - uv_data[i+1])         # flip the UV coords in V!
 
             mFn_Mesh.createUVSetWithName(uvSetName)
             mFn_Mesh.setUVs(uArray, vArray, uvSetName)
-
-    # mirror in Z
-    # we need to mirror the mesh components here, not just the transform
-    z_mirror = pmdt.Matrix(
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, -1, 0,
-        0, 0, 0, 1
-    )
-    pmc.select(new_transform)
-    new_transform.setMatrix(z_mirror)
-    # freeze transform
-    pmc.makeIdentity(apply=True, jo=False, n=0, pn=True, r=False, s=True, t=False)
 
     # assign the default material
     pmc.select(new_mesh)
@@ -752,6 +772,9 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     shapes = asset_elem.find('object')
     locators = asset_elem.find('locator')
 
+    # store all bone transforms, regardless of mesh skinning
+    scene_bone_dict = dict()
+
     # go through shapes
     for node in shapes:
         print "[io_pdx_mesh] creating node - {}".format(node.tag)
@@ -759,14 +782,16 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         # create the skeleton first, so we can skin the mesh to it
         joints = None
         skeleton = node.find('skeleton')
-        if imp_skel and skeleton:
-            print "[io_pdx_mesh] creating skeleton -"
+        if skeleton:
             pdx_bone_list = list()
             for b in skeleton:
                 pdx_bone = pdx_data.PDXData(b)
                 pdx_bone_list.append(pdx_bone)
+                scene_bone_dict[pdx_bone.name] = pdx_bone.tx
 
-            joints = create_skeleton(pdx_bone_list)
+            if imp_skel:
+                print "[io_pdx_mesh] creating skeleton -"
+                joints = create_skeleton(pdx_bone_list)
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -797,7 +822,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         print "[io_pdx_mesh] creating locators -"
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
-            create_locator(pdx_locator)
+            create_locator(pdx_locator, scene_bone_dict)
 
     pmc.select(None)
     print "[io_pdx_mesh] finished!"
