@@ -595,8 +595,10 @@ def create_mesh(PDX_mesh, name=None):
             uvCounts.append(3)
         # OpenMaya.MScriptUtil.createIntArrayFromList(verts_per_poly, uvCounts)
         uvIds = OpenMaya.MIntArray()
-        for item in tris:
-            uvIds.append(item)
+        for i in range(0, len(tris), 3):
+            uvIds.append(tris[i+2])       # convert handedness to Maya space
+            uvIds.append(tris[i+1])
+            uvIds.append(tris[i])
         # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
         # note bulk assignment via .assignUVs only works to the default UV set!
         mFn_Mesh.assignUVs(uvCounts, uvIds, 'map1')
