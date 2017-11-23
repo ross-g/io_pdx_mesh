@@ -153,8 +153,8 @@ def create_locator(PDX_locator):
     bpy.context.scene.update()
 
     # convert to Blender space
-    xForm = swap_coord_space(new_loc.matrix_world)
-    new_loc.matrix_world = xForm
+    Xform = swap_coord_space(new_loc.matrix_world)
+    new_loc.matrix_world = Xform
 
 
 def create_skeleton(PDX_bone_list):
@@ -196,27 +196,87 @@ def create_skeleton(PDX_bone_list):
         new_bone.select = True
         bone_list[index] = new_bone
 
-        # set transform
+        # connect to parent
+        if parent is not None:
+            parent_bone = bone_list[parent[0]]
+            new_bone.parent = parent_bone
+            new_bone.use_connect = False
+
+        # set head transform
         mat = Matrix((
             (transform[0], transform[3], transform[6], transform[9]),
             (transform[1], transform[4], transform[7], transform[10]),
             (transform[2], transform[5], transform[8], transform[11]),
             (0.0, 0.0, 0.0, 1.0)
         ))
-        new_bone.head = swap_coord_space(mat.inverted_safe().to_translation())      # convert coords to Blender space
-        new_bone.tail = new_bone.head + Vector((0,-1,0))
+        # new_bone.head = swap_coord_space(mat.inverted_safe().to_translation())      # convert coords to Blender space
+        new_bone.transform(swap_coord_space(mat.inverted_safe()))      # convert coords to Blender space
 
-        # connect to parent
-        if parent is not None:
-            parent_bone = bone_list[parent[0]]
-            new_bone.parent = parent_bone
-            new_bone.use_connect = True
+        # set tail transform (based on possible children)
+        bone_children = [b for b in PDX_bone_list if getattr(b, 'pa', [None]) == bone.ix]
+        if bone_children:
+            # use the average of all children as the tail
+            child_Xform = bone_children[0].tx
+            c_mat = Matrix((
+                (child_Xform[0], child_Xform[3], child_Xform[6], child_Xform[9]),
+                (child_Xform[1], child_Xform[4], child_Xform[7], child_Xform[10]),
+                (child_Xform[2], child_Xform[5], child_Xform[8], child_Xform[11]),
+                (0.0, 0.0, 0.0, 1.0)
+            ))
+            new_bone.tail = swap_coord_space(c_mat.inverted_safe().to_translation())      # convert coords to Blender space
+        else:
+            # leaf node bone, use an extension of the parent vector as the tail
+            new_bone.tail = new_bone.head + (new_bone.parent.vector / new_bone.parent.length) * 0.1
+
+    # set "use_connect" for bones whos parent has exactly 1 child bone
+    for bone in bone_list:
+        bone_parent = bone.parent
+        if bone_parent and len(bone_parent.children) == 1:
+            bone.use_connect = True
 
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.scene.update()
     new_rig.show_x_ray = True
 
-    return bone_list
+    return bone_list, new_rig
+
+
+def create_skin(PDX_skin, obj, armature, max_infs=None):
+    if max_infs is None:
+        max_infs = 4
+
+    # create dictionary of skinning info per vertex
+    skin_dict = dict()
+
+    num_infs = PDX_skin.bones[0]
+    for vtx in xrange(0, len(PDX_skin.ix)/max_infs):
+        skin_dict[vtx] = dict(joints=[], weights=[])
+
+    # gather joint index and weighting that each vertex is skinned to
+    for vtx, j in enumerate(xrange(0, len(PDX_skin.ix), max_infs)):
+        skin_dict[vtx]['joints'] = PDX_skin.ix[j:j+num_infs]
+        skin_dict[vtx]['weights'] = PDX_skin.w[j:j+num_infs]
+
+    # then set skin weights
+    for v in xrange(len(skin_dict.keys())):
+        joints = [skeleton[j] for j in skin_dict[v]['joints']]
+        weights = skin_dict[v]['weights']
+        # normalise joint weights
+        try:
+            norm_weights = [float(w)/sum(weights) for w in weights]
+        except:
+            norm_weights = weights
+        # strip zero weight entries
+        joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
+
+        # pmc.skinPercent(skin_cluster, '{}.vtx[{}]'.format(mesh.name(), v),
+        #                 transformValue=joint_weights, normalize=True)
+
+    # create an armature modifier for the mesh object
+    skin_mod = obj.modifiers.new(armature.name + '_skin', 'ARMATURE')
+    skin_mod.object = armature
+    skin_mod.use_bone_envelopes = False
+    skin_mod.use_vertex_groups = True
 
 
 def create_mesh(PDX_mesh, name=None):
@@ -311,7 +371,7 @@ def create_mesh(PDX_mesh, name=None):
     bpy.context.scene.objects.active = new_obj
     new_obj.select = True
 
-    return new_mesh
+    return new_mesh, new_obj
 
 
 """ ====================================================================================================================
@@ -334,19 +394,20 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
         # create the skeleton first, so we can skin the mesh to it
         joints = None
+        rig = None
         skeleton = node.find('skeleton')
         if imp_skel and skeleton:
-            print("[io_pdx_mesh] creating skeleton -")
             pdx_bone_list = list()
             for b in skeleton:
                 pdx_bone = pdx_data.PDXData(b)
                 pdx_bone_list.append(pdx_bone)
 
-            joints = create_skeleton(pdx_bone_list)
+            print("[io_pdx_mesh] creating skeleton -")
+            joints, rig = create_skeleton(pdx_bone_list)
 
         # then create all the meshes
         meshes = node.findall('mesh')
-        if imp_mesh:
+        if imp_mesh and meshes:
             for m in meshes:
                 print("[io_pdx_mesh] creating mesh -")
                 pdx_mesh = pdx_data.PDXData(m)
@@ -354,20 +415,20 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
                 pdx_skin = getattr(pdx_mesh, 'skin', None)
 
                 # create the geometry
-                mesh = create_mesh(pdx_mesh, name=node.tag)
+                mesh, obj = create_mesh(pdx_mesh, name=node.tag)
 
                 # create the material
                 if pdx_material:
                     print("[io_pdx_mesh] creating material -")
                     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
-                # # create the skin cluster
-                # if joints and pdx_skin:
-                #     print("[io_pdx_mesh] creating skinning data -")
-                #     create_skin(pdx_skin, mesh, joints)
+                # create the vertex group skin
+                if rig and pdx_skin:
+                    print("[io_pdx_mesh] creating skinning data -")
+                    create_skin(pdx_skin, obj, rig)
 
     # go through locators
-    if imp_locs:
+    if imp_locs and locators:
         print("[io_pdx_mesh] creating locators -")
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
