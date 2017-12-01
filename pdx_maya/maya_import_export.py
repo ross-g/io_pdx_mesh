@@ -18,7 +18,7 @@ import pymel.core as pmc
 import pymel.core.datatypes as pmdt
 import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
 import maya.OpenMayaAnim as OpenMayaAnim    # Maya Python API 1.0
-from maya.api.OpenMaya import MVector, MMatrix    # Maya Python API 2.0
+from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion    # Maya Python API 2.0
 
 from io_pdx_mesh import pdx_data
 
@@ -32,7 +32,7 @@ PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 
-PDX_DECIMALPTS = 2
+PDX_DECIMALPTS = 5
 
 
 """ ====================================================================================================================
@@ -115,12 +115,6 @@ def check_mesh_material(maya_mesh):
     return result
 
 
-def get_mesh_skin(maya_mesh):
-    skinclusters = list(set(pmc.listConnections(maya_mesh, type='skinCluster')))
-
-    return skinclusters
-
-
 def get_material_shader(maya_material):
     shader_attr = getattr(maya_material, PDX_SHADER)
     shader_val = shader_attr.get()
@@ -151,7 +145,7 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def get_mesh_info(maya_mesh, merge_vertices=False):
+def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
     """
         Returns a dictionary of mesh information neccessary to export.
         By default this does NOT merge vertices across triangles, so each tri-vert is exported separately!
@@ -167,16 +161,9 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
         raise NotImplementedError("Unsupported mesh type encountered. {}".format(type(maya_mesh)))
 
     # build a dictionary of mesh information for the exporter
-    mesh_dict = dict(
-        p=[],
-        n=[],
-        ta=[],
-        u0=[],      # TODO: multiple UV set support
-        tri=[],
-        min=[],
-        max=[]
-    )
-    # track processed verts, key: mesh_dict array index, value: mesh vert id
+    mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
+
+    # track processed verts in a dictionary, key: mesh_dict array index, value: mesh vertex id
     vtx_dict = {}
     _vtx = 0
 
@@ -184,10 +171,11 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
     vertices = mesh.getPoints(space='world')        # list of vertices positions
     normals = mesh.getNormals(space='world')        # list of vectors for each vertex per face
     triangles = mesh.getTriangles()
-    # TODO: multiple UV set support
     uv_setnames = mesh.getUVSetNames()
-    _u, _v = mesh.getUVs(uvSet=uv_setnames[0])
-    uv_coords = zip(_u, _v)
+    uv_coords = {}
+    for i, uv_set in enumerate(uv_setnames):
+        _u, _v = mesh.getUVs(uvSet=uv_set)
+        uv_coords[i] = zip(_u, _v)
     tangents = mesh.getTangents(space='world', uvSet=uv_setnames[0])
 
     for face in meshfaces:
@@ -198,9 +186,9 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
         num_triangles = triangles[0][face.index()]
 
         # store data for each tri of each face
-        for i in xrange(0, num_triangles):
+        for t in xrange(0, num_triangles):
             # vertices making this triangle
-            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), i)
+            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), t)
 
             debug_var = []
 
@@ -212,23 +200,37 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
                 # normal
                 # vert_norm_ids = set(mesh.vtx[vert_id].getNormalIndices())     # FIXME:
                 vert_norm_id = face.normalIndex(_local_id)
-                _normal = pmc.util.round(list(normals[vert_norm_id]), PDX_DECIMALPTS)
-                mesh_dict['n'].extend([_normal[0], _normal[1], -_normal[2]])        # TODO: convert vec to game space
+                _normal = list(normals[vert_norm_id])
+                if round:
+                    _normal = pmc.util.round(_normal, PDX_DECIMALPTS)
+                _normal = swap_coord_space(_normal)         # convert to Game space
+                mesh_dict['n'].extend(_normal)
 
                 # uv
-                # vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())           # FIXME:
-                vert_uv_id = face.getUVIndex(_local_id, uv_setnames[0])
-                _uvcoords = pmc.util.round(uv_coords[vert_uv_id], PDX_DECIMALPTS)
-                mesh_dict['u0'].extend([_uvcoords[0], 1 - _uvcoords[1]])            # TODO: convert uv to game space
+                for i, uv_set in enumerate(uv_setnames):        # TODO: this doesn't work for multiple UV sets
+                    # vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())           # FIXME:
+                    vert_uv_id = face.getUVIndex(_local_id, uv_set)
+                    _uvcoords = uv_coords[i][vert_uv_id]
+                    if round:
+                        _uvcoords = pmc.util.round(_uvcoords, PDX_DECIMALPTS)
+                    _uvcoords = swap_coord_space(_uvcoords)     # convert to Game space
+                    mesh_dict['u'+str(i)].extend(_uvcoords)
 
                 # tangent
                 vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
-                _tangent = pmc.util.round(list(tangents[vert_tangent_id]), PDX_DECIMALPTS)
-                mesh_dict['ta'].extend([_tangent[0], _tangent[1], -_tangent[2], 1.0])  # TODO: convert vec to game space
+                _tangent = list(tangents[vert_tangent_id])
+                if round:
+                    _tangent = pmc.util.round(_tangent, PDX_DECIMALPTS)
+                _tangent = swap_coord_space(_tangent)       # convert to Game space
+                mesh_dict['ta'].extend(_tangent)
+                mesh_dict['ta'].append(1.0)
 
                 # position
-                _position = pmc.util.round(vertices[vert_id], PDX_DECIMALPTS)   # round position info
-                mesh_dict['p'].extend([_position[0], _position[1], -_position[2]])     # TODO: convert pos to game space
+                _position = vertices[vert_id]
+                if round:
+                    _position = pmc.util.round(_position, PDX_DECIMALPTS)
+                _position = swap_coord_space(_position)     # convert to Game space
+                mesh_dict['p'].extend(_position)
 
                 # count this vert as processed
                 vtx_dict[_vtx] = vert_id    # store mapping by counter to mesh relative vertex index
@@ -236,15 +238,13 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
                 _vtx += 1                   # update the counter
 
             # tri-faces
-            triface_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]    # re-order face for left handedness here
-            # count_verts = [vtx_dict.keys()[-3], vtx_dict.keys()[-1], vtx_dict.keys()[-2]]
-            # mesh_dict['tri'].extend(count_verts)
+            triface_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]    # set face order for left handedness
             mesh_dict['tri'].extend([debug_var[0], debug_var[2], debug_var[1]])
 
-            print "face {} - tri {}".format(face.index(), i)
-            print vtx_dict
-            print triface_verts
-            print mesh_dict['tri']
+            # print "face {} - tri {}".format(face.index(), t)
+            # print vtx_dict
+            # print triface_verts
+            # print mesh_dict['tri']
 
     # calculate min and max bounds of mesh
     x_VtxPos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
@@ -256,24 +256,79 @@ def get_mesh_info(maya_mesh, merge_vertices=False):
     return mesh_dict
 
 
+def get_mesh_skin_info(maya_mesh):
+    skinclusters = list(set(pmc.listConnections(maya_mesh, type='skinCluster')))
+    if not skinclusters:
+        return None
+
+    # a mesh can only be connected to one skin cluster
+    skin = skinclusters[0]
+    """
+    skincluster.getMaximumInfluences()
+    """
+    return skinclusters
+
+
+def get_mesh_skeleton_info(maya_mesh):
+    skinclusters = list(set(pmc.listConnections(maya_mesh, type='skinCluster')))
+    if not skinclusters:
+        return []
+
+    # a mesh can only be connected to one skin cluster
+    skin = skinclusters[0]
+    # find influence bones
+    bones = skin.getInfluence()
+
+    # build a list of bone information dictionaries for the exporter
+    bone_list = [{'name': x.name()} for x in bones]
+    for i, bone in enumerate(bones):
+        # bone index
+        bone_list[i]['ix'] = [i]
+
+        # bone parent index
+        if bone.getParent():
+            bone_list[i]['pa'] = [bones.index(bone.getParent())]
+
+        # bone inverse world-space transform
+        mat = list(swap_coord_space(bone.getMatrix(worldSpace=True)).inverse())
+        bone_list[i]['tx'] = []
+        bone_list[i]['tx'].extend(mat[0:3])
+        bone_list[i]['tx'].extend(mat[4:7])
+        bone_list[i]['tx'].extend(mat[8:11])
+        bone_list[i]['tx'].extend(mat[12:15])
+
+    return bone_list
+
+
 def swap_coord_space(data):
     """
         Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up)
     """
     space_matrix = MMatrix((
-        (1.0, 0.0, 0.0, 0),
+        (1, 0, 0, 0),
         (0, 1, 0, 0),
         (0, 0, -1, 0),
         (0, 0, 0, 1)
     ))
 
+    # vector
     if type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
         vec = MVector(data)
         return vec * space_matrix
-
-    if type(data) == MMatrix or type(data) == pmdt.Matrix:
+    # matrix
+    elif type(data) == MMatrix or type(data) == pmdt.Matrix:
         mat = MMatrix(data)
         return space_matrix * mat * space_matrix.inverse()
+    # quaternion
+    elif type(data) == MQuaternion or type(data) == pmdt.Quaternion:
+        mat = MMatrix(data.asMatrix())
+        return MTransformationMatrix(space_matrix * mat * space_matrix.inverse()).rotation(asQuaternion=True)
+    # uv coordinate
+    elif len(data) == 2:
+        return data[0], 1 - data[1]
+    # unknown
+    else:
+        raise NotImplementedError("Unknown data type encountered.")
 
 
 """ ====================================================================================================================
@@ -317,8 +372,7 @@ def create_shader(shader_name, PDX_material, texture_dir):
     new_shadinggroup = pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{}_SG'.format(shader_name))
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
 
-    # TODO: should this be an enum attribute type?
-    # would need to parse the possible engine/material combinations from clausewitz.json
+    # add the game shader attribute, PDX tool uses ENUM attr to store but writes as a string
     pmc.addAttr(longName=PDX_SHADER, dataType='string')
     getattr(new_shader, PDX_SHADER).set(PDX_material.shader[0])
 
@@ -354,21 +408,27 @@ def create_material(PDX_material, mesh, texture_path):
 
 
 def create_locator(PDX_locator, PDX_bone_dict):
+    """
+        Creates a Maya Locator object.
+
+    :param pdx_data.PDXData PDX_locator:
+    :param dict PDX_bone_dict:
+    """
     # create locator
     new_loc = pmc.spaceLocator()
     pmc.select(new_loc)
     pmc.rename(new_loc, PDX_locator.name)
 
-    # parent locator or check for parent transform
+    # parent locator to scene bone, or apply parents transform
     parent = getattr(PDX_locator, 'pa', None)
     parent_Xform = pmdt.Matrix()
+
     if parent is not None:
         parent_bone = pmc.ls(parent[0], type='joint')
-
         if parent_bone:
             pmc.parent(new_loc, parent_bone[0])
         else:
-            # parent bone doesn't exist in scene
+            # parent bone doesn't exist in scene, build its transform
             transform = PDX_bone_dict[parent[0]]
             parent_Xform = pmdt.Matrix(
                 transform[0], transform[1], transform[2], 0.0,
@@ -414,7 +474,7 @@ def create_skeleton(PDX_bone_list):
         unique_name = name.replace('|', '_')
         if pmc.ls(unique_name, type='joint'):
             bone_list[index] = pmc.PyNode(unique_name)
-            continue    # bone already exists, likely the skeleton is already built, so collect and return joints
+            continue        # bone already exists, likely the skeleton is already built, so collect and return joints
 
         # create joint
         new_bone = pmc.joint()
@@ -432,7 +492,7 @@ def create_skeleton(PDX_bone_list):
             transform[9], transform[10], transform[11], 1.0
         )
         # convert to Maya space
-        pmc.xform(matrix=swap_coord_space(mat.inverse()))     # set transform to inverse of matrix in world-space
+        new_bone.setMatrix(swap_coord_space(mat.inverse()), worldSpace=True)    # set to matrix inverse in world-space
         pmc.select(clear=True)
 
         # connect to parent
@@ -467,7 +527,6 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
                                    maximumInfluences=max_infs, obeyMaxInfluences=True)
     pmc.skinPercent(skin_cluster, mesh, normalize=False, pruneWeights=100)
 
-    # # set skin weights from our dict
     # FIXME: this worked for the AI portrait with single inf skins etc, but breaks skinning on the ship (oars etc)
     # for vtx in xrange(len(skin_dict.keys())):
     #     joints = skin_dict[vtx]['joints']
@@ -478,7 +537,7 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
     #         if jnt != -1:
     #             pmc.setAttr('{}.weightList[{}].weights[{}]'.format(skin_cluster, vtx, jnt), wt)
 
-    # then set skin weights
+    # set skin weights from our dict
     for v in xrange(len(skin_dict.keys())):
         joints = [skeleton[j] for j in skin_dict[v]['joints']]
         weights = skin_dict[v]['weights']
@@ -530,7 +589,7 @@ def create_mesh(PDX_mesh, name=None):
     numVertices = 0
     vertexArray = OpenMaya.MFloatPointArray()   # array of points
     for i in xrange(0, len(verts), 3):
-        _verts = swap_coord_space([verts[i], verts[i+1], verts[i+2]])       # convert coords to Maya space
+        _verts = swap_coord_space([verts[i], verts[i+1], verts[i+2]])                     # convert coords to Maya space
         v = OpenMaya.MFloatPoint(_verts[0], _verts[1], _verts[2])
         vertexArray.append(v)
         numVertices += 1
@@ -545,7 +604,7 @@ def create_mesh(PDX_mesh, name=None):
     # vert connections
     polygonConnects = OpenMaya.MIntArray()
     for i in range(0, len(tris), 3):
-        polygonConnects.append(tris[i+2])       # convert handedness to Maya space
+        polygonConnects.append(tris[i+2])                                             # convert handedness to Maya space
         polygonConnects.append(tris[i+1])
         polygonConnects.append(tris[i])
     # OpenMaya.MScriptUtil.createIntArrayFromList(tris, polygonConnects)
@@ -580,7 +639,7 @@ def create_mesh(PDX_mesh, name=None):
     if norms:
         normalsIn = OpenMaya.MVectorArray()     # array of vectors
         for i in xrange(0, len(norms), 3):
-            _norms = swap_coord_space([norms[i], norms[i+1], norms[i+2]])       # convert vector to Maya space
+            _norms = swap_coord_space([norms[i], norms[i+1], norms[i+2]])                 # convert vector to Maya space
             n = OpenMaya.MVector(_norms[0], _norms[1], _norms[2])
             normalsIn.append(n)
         vertexList = OpenMaya.MIntArray()       # matches normal to vert by index
@@ -596,7 +655,7 @@ def create_mesh(PDX_mesh, name=None):
         # OpenMaya.MScriptUtil.createIntArrayFromList(verts_per_poly, uvCounts)
         uvIds = OpenMaya.MIntArray()
         for i in range(0, len(tris), 3):
-            uvIds.append(tris[i+2])       # convert handedness to Maya space
+            uvIds.append(tris[i+2])                                                   # convert handedness to Maya space
             uvIds.append(tris[i+1])
             uvIds.append(tris[i])
         # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
@@ -645,6 +704,7 @@ def create_animcurve(joint, attr):
         for i in range(0, mplugs.length()):
             m_DGMod = OpenMaya.MDGModifier()
             m_DGMod.deleteNode(mplugs[i].node())
+
     # connect the new animation curve to the attribute on the joint
     connect_nodeplugs(anim_curve, 'output', joint, attr)
 
@@ -757,7 +817,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     shapes = asset_elem.find('object')
     locators = asset_elem.find('locator')
 
-    # store all bone transforms, regardless of mesh skinning
+    # store all bone transforms, irrespective of skin association
     scene_bone_dict = dict()
 
     # go through shapes
@@ -767,15 +827,16 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         # create the skeleton first, so we can skin the mesh to it
         joints = None
         skeleton = node.find('skeleton')
-        if imp_skel and skeleton:
+        if skeleton:
             pdx_bone_list = list()
             for b in skeleton:
                 pdx_bone = pdx_data.PDXData(b)
                 pdx_bone_list.append(pdx_bone)
                 scene_bone_dict[pdx_bone.name] = pdx_bone.tx
 
-            print "[io_pdx_mesh] creating skeleton -"
-            joints = create_skeleton(pdx_bone_list)
+            if imp_skel:
+                print "[io_pdx_mesh] creating skeleton -"
+                joints = create_skeleton(pdx_bone_list)
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -812,63 +873,79 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     print "[io_pdx_mesh] finished!"
 
 
-def export_meshfile(meshpath):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
     root_xml.set('pdxasset', [1, 0])
 
-    # create root elements for objects and locators
+    # create root element for objects
     object_xml = Xml.SubElement(root_xml, 'object')
-    locator_xml = Xml.SubElement(root_xml, 'locator')
 
     # populate object data
     maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
     for shape in maya_meshes:
         shapenode_xml = Xml.SubElement(object_xml, shape.name())
-        
+
         # one shape can have multiple materials on a per meshface basis
         shading_groups = list(set(shape.connections(type='shadingEngine')))
 
-        for group in shading_groups:     # this type of object set associates shaders with geometry
-            # create parent element for this mesh
-            meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
+        if exp_mesh and shading_groups:
+            # this type of ObjectSet associates shaders with geometry
+            for group in shading_groups:
+                # create parent element for this mesh (mesh here being geometry sharing a material)
+                meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
 
-            # check which faces are using this material
-            mesh = group.members(flatten=True)[0]
-            mesh_info_dict = get_mesh_info(mesh)
+                # check which faces are using this material
+                mesh = group.members(flatten=True)[0]
+                mesh_info_dict = get_mesh_info(mesh)
 
-            # populate mesh attributes
-            for key in ['p', 'n', 'ta', 'u0', 'tri']:
-                if key in mesh_info_dict and mesh_info_dict[key]:
-                    meshnode_xml.set(key, mesh_info_dict[key])
+                # populate mesh attributes
+                for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
+                    if key in mesh_info_dict and mesh_info_dict[key]:
+                        meshnode_xml.set(key, mesh_info_dict[key])
 
-            # create parent element for bounding box data
-            aabbnode_xml = Xml.SubElement(meshnode_xml, 'aabb')
-            for key in ['min', 'max']:
-                if key in mesh_info_dict and mesh_info_dict[key]:
-                    aabbnode_xml.set(key, mesh_info_dict[key])
+                # create parent element for bounding box data
+                aabbnode_xml = Xml.SubElement(meshnode_xml, 'aabb')
+                for key in ['min', 'max']:
+                    if key in mesh_info_dict and mesh_info_dict[key]:
+                        aabbnode_xml.set(key, mesh_info_dict[key])
 
-            # create parent element for material data
-            materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
-            maya_mat = group.surfaceShader.connections()[0]
-            # populate material attributes
-            materialnode_xml.set('shader', [get_material_shader(maya_mat)])
-            mat_texture_dict = get_material_textures(maya_mat)
-            for slot, texture in mat_texture_dict.iteritems():
-                materialnode_xml.set(slot, [os.path.split(texture)[1]])
+                # create parent element for material data
+                materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
+                maya_mat = group.surfaceShader.connections()[0]
+                # populate material attributes
+                materialnode_xml.set('shader', [get_material_shader(maya_mat)])
+                mat_texture_dict = get_material_textures(maya_mat)
+                for slot, texture in mat_texture_dict.iteritems():
+                    materialnode_xml.set(slot, [os.path.split(texture)[1]])
 
-            # create parent element for skin data if the mesh is skinned
-            if get_mesh_skin(shape):
-                skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
+                # create parent element for skin data, if the mesh is skinned
+                if get_mesh_skin_info(shape):
+                    skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
 
-    # populate locator data
+        # create parent element for skeleton data, if the mesh is skinned
+        bone_info_list = get_mesh_skeleton_info(shape)
+        if exp_skel and bone_info_list:
+            skeletonnode_xml = Xml.SubElement(shapenode_xml, 'skeleton')
+
+            # create sub-elements for each bone, populate bone attributes
+            for bone_info_dict in bone_info_list:
+                bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict['name'])
+                for key in ['ix', 'pa', 'tx']:
+                    if key in bone_info_dict and bone_info_dict[key]:
+                        bonenode_xml.set(key, bone_info_dict[key])
+
+    # create root element for locators
+    locator_xml = Xml.SubElement(root_xml, 'locator')
     maya_locators = [pmc.listRelatives(loc, type='transform', parent=True)[0] for loc in pmc.ls(type=pmc.nt.Locator)]
-    for loc in maya_locators:
-        locnode_xml = Xml.SubElement(locator_xml, loc.name())
-        locnode_xml.set('p', [p for p in loc.getTranslation()])                 # TODO: convert pos to game space
-        locnode_xml.set('q', [q for q in loc.getRotation(quaternion=True)])     # TODO: convert quat to game space
-        if loc.getParent():
-            locnode_xml.set('pa', [loc.getParent().name()])
+    if exp_locs and maya_locators:
+        for loc in maya_locators:
+            # create sub-elements for each locator, populate locator attributes
+            locnode_xml = Xml.SubElement(locator_xml, loc.name())
+            locnode_xml.set('p', list(swap_coord_space(loc.getTranslation())))
+            locnode_xml.set('q', list(swap_coord_space(loc.getRotation(quaternion=True))))
+            if loc.getParent():
+                locnode_xml.set('pa', [loc.getParent().name()])
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
