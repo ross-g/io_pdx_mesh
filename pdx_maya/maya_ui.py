@@ -110,8 +110,9 @@ class PDXmaya_ui(QtWidgets.QDialog):
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
         file_export_mesh = QtWidgets.QAction('Export mesh ...', self)
-        file_export_mesh.setDisabled(True)
+        file_export_mesh.triggered.connect(self.do_export_mesh)
         file_export_anim = QtWidgets.QAction('Export anim ...', self)
+        file_export_anim.triggered.connect(self.do_export_anim)
         file_export_anim.setDisabled(True)
 
         # tools menu
@@ -223,6 +224,40 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 if reply == QtWidgets.QMessageBox.Ok:
                     print "[io_pdx_mesh] Nothing to import."
 
+    @QtCore.Slot()
+    def do_export_mesh(self):
+        export_opts = self.export_ctrls
+        filepath, filename = export_opts.get_export_path()
+
+        # validate directory
+        if not os.path.isdir(filepath):
+            raise IOError("Invalid filepath encountered.\n{}".format(filepath))
+        # determine the output mesh path
+        if not os.path.splitext(filename)[1] == '.mesh':
+            filename += '.mesh'
+        meshpath = os.path.join(filepath, filename)
+
+        print "[io_pdx_mesh] Exporting {}".format(meshpath)
+
+        try:
+            time.sleep(1)
+            export_meshfile(
+                meshpath,
+                exp_mesh=export_opts.chk_mesh.isChecked(),
+                exp_skel=export_opts.chk_skeleton.isChecked(),
+                exp_locs=export_opts.chk_locators.isChecked()
+            )
+            time.sleep(1)
+
+        except Exception as err:
+            print "[io_pdx_mesh] Failed to export {}".format(meshpath)
+            print err
+            raise
+
+    @QtCore.Slot()
+    def do_export_anim(self):
+        pass
+
     def load_settings(self):
         with open(self._settings_file, 'rt') as f:
             try:
@@ -273,8 +308,11 @@ class export_controls(QtWidgets.QWidget):
         
         # export options
         self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
-        self.chk_skel = QtWidgets.QCheckBox('Export skeleton')
-        self.chk_anim = QtWidgets.QCheckBox('Export animations')
+        self.chk_skeleton = QtWidgets.QCheckBox('Export skeleton')
+        self.chk_locators = QtWidgets.QCheckBox('Export locators')
+        for ctrl in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
+            ctrl.setChecked(True)
+        self.chk_animation = QtWidgets.QCheckBox('Export animations')
         self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
         self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
         # self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
@@ -283,7 +321,6 @@ class export_controls(QtWidgets.QWidget):
         # output settings
         lbl_path = QtWidgets.QLabel('Output path:')
         self.txt_path = QtWidgets.QLineEdit()
-        self.txt_path.setDisabled(True)
         self.btn_path = QtWidgets.QPushButton('...', self)
         self.btn_path.setMaximumWidth(20)
         self.btn_path.setMaximumHeight(18)
@@ -296,14 +333,9 @@ class export_controls(QtWidgets.QWidget):
         self.btn_anim_refresh.setDisabled(True)
         self.btn_anim_create.setDisabled(True)
         self.btn_anim_edit.setDisabled(True)
-        self.chk_mesh.setDisabled(True)
-        self.chk_skel.setDisabled(True)
-        self.chk_anim.setDisabled(True)
+        self.chk_animation.setDisabled(True)
         self.chk_merge_vtx.setDisabled(True)
         self.chk_merge_obj.setDisabled(True)
-        self.btn_path.setDisabled(True)
-        self.txt_file.setDisabled(True)
-        self.btn_export.setDisabled(True)
 
         # create layouts
         main_layout = QtWidgets.QHBoxLayout()
@@ -371,8 +403,9 @@ class export_controls(QtWidgets.QWidget):
         right_layout.addWidget(grp_export)
         grp_export.setLayout(grp_export_layout)
         grp_export_layout.addWidget(self.chk_mesh)
-        grp_export_layout.addWidget(self.chk_skel)
-        grp_export_layout.addWidget(self.chk_anim)
+        grp_export_layout.addWidget(self.chk_skeleton)
+        grp_export_layout.addWidget(self.chk_locators)
+        grp_export_layout.addWidget(self.chk_animation)
         grp_export_layout.addWidget(h_line())
         grp_export_layout.addWidget(self.chk_merge_vtx)
         grp_export_layout.addWidget(self.chk_merge_obj)
@@ -395,6 +428,8 @@ class export_controls(QtWidgets.QWidget):
         self.btn_mat_create.clicked.connect(self.create_new_mat)
         self.btn_mat_edit.clicked.connect(self.edit_selected_mat)
         self.btn_anim_refresh.clicked.connect(self.refresh_anim_list)
+        self.btn_path.clicked.connect(self.select_export_path)
+        self.btn_export.clicked.connect(self.do_export)
 
     def refresh_mat_list(self):
         self.list_materials.clearSelection()
@@ -418,6 +453,12 @@ class export_controls(QtWidgets.QWidget):
         self.popup = material_popup(parent=self.parent)
         self.popup.show()
 
+    def select_mat(self, curr_sel):
+        try:
+            pmc.select(curr_sel.text())
+        except:
+            self.refresh_mat_list()
+
     def refresh_anim_list(self):
         self.list_animations.clearSelection()
         self.list_animations.clear()
@@ -430,11 +471,24 @@ class export_controls(QtWidgets.QWidget):
 
         self.list_animations.sortItems()
 
-    def select_mat(self, curr_sel):
-        try:
-            pmc.select(curr_sel.text())
-        except:
-            self.refresh_mat_list()
+    def select_export_path(self):
+        filepath, filefilter = QtWidgets.QFileDialog.getSaveFileName(self, caption='Select export folder',
+                                                                     filter='PDX Mesh files (*.mesh)')
+        path, name = os.path.split(filepath)
+
+        if filepath != '' and os.path.isdir(path):
+            self.txt_path.setText(path)
+            self.txt_file.setText(name)
+            self.txt_file.setToolTip(filepath)
+
+    def get_export_path(self):
+        filepath = self.txt_path.text()
+        filename = self.txt_file.text() or self.txt_file.placeholderText()
+        return filepath, filename
+
+    def do_export(self):
+        if self.chk_mesh.isChecked() or self.chk_skeleton.isChecked() or self.chk_locators.isChecked():
+            self.parent.do_export_mesh()
 
 
 class import_popup(QtWidgets.QWidget):
@@ -615,7 +669,7 @@ class material_popup(QtWidgets.QWidget):
             mat_shader = getattr(mat_node, PDX_SHADER).get()
             
             self.mat_name.setText(mat_name)
-            if self.mat_type.findText(mat_shader) is not -1 :
+            if self.mat_type.findText(mat_shader) is not -1:
                 self.mat_type.setCurrentIndex(self.mat_type.findText(mat_shader))
             else:
                 self.mat_type.setEditText(mat_shader)
