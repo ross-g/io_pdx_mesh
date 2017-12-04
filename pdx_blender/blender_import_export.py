@@ -31,6 +31,8 @@ PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 
+PDX_DECIMALPTS = 5
+
 
 """ ====================================================================================================================
     Helper functions.
@@ -46,6 +48,14 @@ def get_BMesh(mesh_data):
     bm.from_mesh(mesh_data)
 
     return bm
+
+
+def get_bone_by_name(bone_name):
+    scene_rigs = bpy.data.armatures
+
+    for rig in scene_rigs:
+        if bone_name in [b.name for b in rig.bones]:
+            return rig
 
 
 def swap_coord_space(data):
@@ -113,7 +123,7 @@ def create_material(PDX_material, mesh, texture_dir):
             norm_tex.use_map_color_diffuse = False
             norm_tex.use_map_normal = True
             norm_tex.normal_map_space = 'TANGENT'
-         
+
     if getattr(PDX_material, 'spec', None):
         texture_path = os.path.join(texture_dir, PDX_material.spec[0])
         if os.path.exists(texture_path):
@@ -127,20 +137,32 @@ def create_material(PDX_material, mesh, texture_dir):
     mesh.materials.append(new_material)
 
 
-def create_locator(PDX_locator):
+def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
     new_loc.empty_draw_type = 'PLAIN_AXES'
-    new_loc.show_axis = True
+    new_loc.empty_draw_size = 0.25
+    new_loc.show_axis = False
 
     bpy.context.scene.objects.link(new_loc)
 
     # parent locator
     parent = getattr(PDX_locator, 'pa', None)
-    # if parent is not None:
-    #     parent_bone = pmc.ls(parent[0], type='joint')
-    #     if parent_bone:
-    #         pmc.parent(new_loc, parent_bone[0])
+    parent_Xform = Matrix()
+
+    if parent is not None:
+        armt = get_bone_by_name(parent[0])
+        if armt:
+            pass
+        else:
+            # parent bone doesn't exist in scene, build its transform
+            transform = PDX_bone_dict[parent[0]]
+            parent_Xform = Matrix((
+                (transform[0], transform[3], transform[6], transform[9]),
+                (transform[1], transform[4], transform[7], transform[10]),
+                (transform[2], transform[5], transform[8], transform[11]),
+                (0.0, 0.0, 0.0, 1.0)
+            ))
 
     # set attributes
     new_loc.rotation_mode = 'XYZ'
@@ -152,12 +174,17 @@ def create_locator(PDX_locator):
 
     bpy.context.scene.update()
 
+    # apply parent transform
+    new_loc.matrix_world = new_loc.matrix_world * parent_Xform.inverted_safe()
+
     # convert to Blender space
-    Xform = swap_coord_space(new_loc.matrix_world)
-    new_loc.matrix_world = Xform
+    new_loc.matrix_world = swap_coord_space(new_loc.matrix_world)
 
 
 def create_skeleton(PDX_bone_list):
+    """
+        TODO: Blender doesn't cope with zero length bones, can we work around this?
+    """
     # keep track of bones as we create them
     bone_list = [None for _ in range(0, len(PDX_bone_list))]
 
@@ -167,11 +194,13 @@ def create_skeleton(PDX_bone_list):
 
     # create the armature datablock
     armt = bpy.data.armatures.new('armature')
+    armt.draw_type = 'STICK'
 
     # create the object and link to the scene
     new_rig = bpy.data.objects.new(tmp_rig_name, armt)
     bpy.context.scene.objects.link(new_rig)
     bpy.context.scene.objects.active = new_rig
+    new_rig.show_x_ray = True
     new_rig.select = True
 
     bpy.ops.object.mode_set(mode='EDIT')
@@ -181,15 +210,16 @@ def create_skeleton(PDX_bone_list):
         parent = getattr(bone, 'pa', None)
 
         # determine bone name
-        name = bone.name.split(':')[-1]
+        name = bone.name#.split(':')[-1]
         namespace = bone.name.split(':')[:-1]  # TODO: setup namespaces properly
 
         # ensure bone name is unique
         # Maya allows non-unique transform names (on leaf nodes) and handles them internally with | separators
-        unique_name = name.replace('|', '_')
+        # unique_name = name.replace('|', '_')
         # if pmc.ls(unique_name, type='joint'):
         #     bone_list[index] = pmc.PyNode(unique_name)
         #     continue    # bone already exists, likely the skeleton is already built, so collect and return joints
+        unique_name = name
 
         # create joint
         new_bone = armt.edit_bones.new(name=unique_name)
@@ -209,13 +239,13 @@ def create_skeleton(PDX_bone_list):
             (transform[2], transform[5], transform[8], transform[11]),
             (0.0, 0.0, 0.0, 1.0)
         ))
-        # new_bone.head = swap_coord_space(mat.inverted_safe().to_translation())      # convert coords to Blender space
-        new_bone.transform(swap_coord_space(mat.inverted_safe()))      # convert coords to Blender space
+        # set matrix directly as this includes bone roll
+        new_bone.matrix = swap_coord_space(mat.inverted_safe())                        # convert coords to Blender space
 
         # set tail transform (based on possible children)
         bone_children = [b for b in PDX_bone_list if getattr(b, 'pa', [None]) == bone.ix]
         if bone_children:
-            # use the average of all children as the tail
+            # use the first child position as the tail
             child_Xform = bone_children[0].tx
             c_mat = Matrix((
                 (child_Xform[0], child_Xform[3], child_Xform[6], child_Xform[9]),
@@ -223,7 +253,8 @@ def create_skeleton(PDX_bone_list):
                 (child_Xform[2], child_Xform[5], child_Xform[8], child_Xform[11]),
                 (0.0, 0.0, 0.0, 1.0)
             ))
-            new_bone.tail = swap_coord_space(c_mat.inverted_safe().to_translation())      # convert coords to Blender space
+            new_bone.tail = swap_coord_space(c_mat.inverted_safe().to_translation())   # convert coords to Blender space
+
         else:
             # leaf node bone, use an extension of the parent vector as the tail
             new_bone.tail = new_bone.head + (new_bone.parent.vector / new_bone.parent.length) * 0.1
@@ -236,30 +267,35 @@ def create_skeleton(PDX_bone_list):
 
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.scene.update()
-    new_rig.show_x_ray = True
 
-    return bone_list, new_rig
+    return new_rig
 
 
 def create_skin(PDX_skin, obj, armature, max_infs=None):
     if max_infs is None:
         max_infs = 4
 
-    # create dictionary of skinning info per vertex
+    # create dictionary of skinning info per bone
     skin_dict = dict()
 
     num_infs = PDX_skin.bones[0]
-    for vtx in xrange(0, len(PDX_skin.ix)/max_infs):
+    armt_bones = armature.data.bones
+
+    for vtx in range(0, int(len(PDX_skin.ix)/max_infs)):
         skin_dict[vtx] = dict(joints=[], weights=[])
 
     # gather joint index and weighting that each vertex is skinned to
-    for vtx, j in enumerate(xrange(0, len(PDX_skin.ix), max_infs)):
+    for vtx, j in enumerate(range(0, len(PDX_skin.ix), max_infs)):
         skin_dict[vtx]['joints'] = PDX_skin.ix[j:j+num_infs]
         skin_dict[vtx]['weights'] = PDX_skin.w[j:j+num_infs]
 
-    # then set skin weights
-    for v in xrange(len(skin_dict.keys())):
-        joints = [skeleton[j] for j in skin_dict[v]['joints']]
+    # create skin weight vertex groups
+    for bone in armt_bones:
+        obj.vertex_groups.new(bone.name)
+
+    # set all skin weights
+    for v in range(len(skin_dict.keys())):
+        joints = [armt_bones[j].name for j in skin_dict[v]['joints']]       # FIXME: this may not work if we have failed to create any zero length bones
         weights = skin_dict[v]['weights']
         # normalise joint weights
         try:
@@ -269,8 +305,8 @@ def create_skin(PDX_skin, obj, armature, max_infs=None):
         # strip zero weight entries
         joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
 
-        # pmc.skinPercent(skin_cluster, '{}.vtx[{}]'.format(mesh.name(), v),
-        #                 transformValue=joint_weights, normalize=True)
+        for joint, weight in joint_weights:
+            obj.vertex_groups[joint].add([v], weight, 'REPLACE')
 
     # create an armature modifier for the mesh object
     skin_mod = obj.modifiers.new(armature.name + '_skin', 'ARMATURE')
@@ -304,14 +340,14 @@ def create_mesh(PDX_mesh, name=None):
     vertexArray = []   # array of points
     for i in range(0, len(verts), 3):
         # v = [verts[i], verts[i+1], verts[i+2]]
-        v = swap_coord_space([verts[i], verts[i+1], verts[i+2]])      # convert coords to Blender space
+        v = swap_coord_space([verts[i], verts[i+1], verts[i+2]])                       # convert coords to Blender space
         vertexArray.append(v)
 
     # faces
     faceArray = []
     for i in range(0, len(tris), 3):
         # f = [tris[i], tris[i+1], tris[i+2]]
-        f = [tris[i+2], tris[i+1], tris[i]]         # convert handedness to Blender space
+        f = [tris[i+2], tris[i+1], tris[i]]                                        # convert handedness to Blender space
         faceArray.append(f)
 
     # create the mesh datablock
@@ -333,7 +369,7 @@ def create_mesh(PDX_mesh, name=None):
         normals = []
         for i in range(0, len(norms), 3):
             # n = [norms[i], norms[i+1], norms[i+2]]
-            n = swap_coord_space([norms[i], norms[i+1], norms[i+2]])      # convert vector to Blender space
+            n = swap_coord_space([norms[i], norms[i+1], norms[i+2]])                   # convert vector to Blender space
             normals.append(n)
 
         new_mesh.polygons.foreach_set('use_smooth', [True] * len(new_mesh.polygons))
@@ -341,17 +377,17 @@ def create_mesh(PDX_mesh, name=None):
         new_mesh.use_auto_smooth = True
         new_mesh.show_edge_sharp = True
         new_mesh.free_normals_split()
-    
+
     # apply the UV data channels
     for idx in uv_Ch:
         uv_data = uv_Ch[idx]
         uvSetName = 'map' + str(idx+1)
-        
+
         uvArray = []
         for i in range(0, len(uv_data), 2):
             uv = [uv_data[i], 1 - uv_data[i+1]]     # flip the UV coords in V!
             uvArray.append(uv)
-
+        print("creating "+uvSetName)
         new_mesh.uv_textures.new(uvSetName)
         bm = get_BMesh(new_mesh)
         bm.faces.ensure_lookup_table()
@@ -365,7 +401,7 @@ def create_mesh(PDX_mesh, name=None):
 
         bm.to_mesh(new_mesh)    # write the bmesh back to the mesh
         bm.free()
-    
+
     # select the object
     bpy.ops.object.select_all(action='DESELECT')
     bpy.context.scene.objects.active = new_obj
@@ -388,22 +424,26 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     shapes = asset_elem.find('object')
     locators = asset_elem.find('locator')
 
+    # store all bone transforms, irrespective of skin association
+    scene_bone_dict = dict()
+
     # go through shapes
     for node in shapes:
         print("[io_pdx_mesh] creating node - {}".format(node.tag))
 
         # create the skeleton first, so we can skin the mesh to it
-        joints = None
         rig = None
         skeleton = node.find('skeleton')
-        if imp_skel and skeleton:
+        if skeleton:
             pdx_bone_list = list()
             for b in skeleton:
                 pdx_bone = pdx_data.PDXData(b)
                 pdx_bone_list.append(pdx_bone)
+                scene_bone_dict[pdx_bone.name] = pdx_bone.tx
 
-            print("[io_pdx_mesh] creating skeleton -")
-            joints, rig = create_skeleton(pdx_bone_list)
+            if imp_skel:
+                print("[io_pdx_mesh] creating skeleton -")
+                rig = create_skeleton(pdx_bone_list)
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -432,7 +472,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         print("[io_pdx_mesh] creating locators -")
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
-            create_locator(pdx_locator)
+            create_locator(pdx_locator, scene_bone_dict)
 
     print("[io_pdx_mesh] finished!")
 
