@@ -16,7 +16,6 @@ except ImportError:
 import bpy
 import bmesh
 import math
-from bpy_extras.io_utils import axis_conversion as axis_conversion
 from mathutils import Vector, Matrix, Quaternion
 
 from .. import pdx_data
@@ -50,12 +49,23 @@ def get_BMesh(mesh_data):
     return bm
 
 
-def get_bone_by_name(bone_name):
-    scene_rigs = bpy.data.armatures
+def get_rig_from_bone_name(bone_name):
+    scene_rigs = (obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature)
 
     for rig in scene_rigs:
-        if bone_name in [b.name for b in rig.bones]:
+        armt = rig.data
+        if bone_name in [b.name for b in armt.bones]:
             return rig
+
+
+def clean_imported_name(name):
+    # strip any namespace names, taking the final name only
+    clean_name = name.split(':')[-1]
+
+    # replace hierarchy separator character used by Maya in the case of non-unique leaf node names
+    clean_name = clean_name.replace('|', '_')
+
+    return clean_name
 
 
 def swap_coord_space(data):
@@ -69,12 +79,23 @@ def swap_coord_space(data):
         (0, 0, 0, 1)
     ))
 
+    # vector
     if type(data) == Vector or len(data) == 3:
         vec = Vector(data)
         return (vec * space_matrix)
-
-    if type(data) == Matrix:
+    # matrix
+    elif type(data) == Matrix:
         return (space_matrix * data * space_matrix.inverted())
+    # # quaternion
+    # elif type(data) == MQuaternion or type(data) == pmdt.Quaternion:
+    #     mat = MMatrix(data.asMatrix())
+    #     return MTransformationMatrix(space_matrix * mat * space_matrix.inverse()).rotation(asQuaternion=True)
+    # uv coordinate
+    elif len(data) == 2:
+        return data[0], 1 - data[1]
+    # unknown
+    else:
+        raise NotImplementedError("Unknown data type encountered.")
 
 
 """ ====================================================================================================================
@@ -84,16 +105,23 @@ def swap_coord_space(data):
 
 
 def create_datatexture(tex_filepath):
-    """
-        Creates & connects up a new file node and place2dTexture node, uses the supplied filepath.
-    """
-    texture_name = os.path.splitext(os.path.split(tex_filepath)[1])[0]
+    texture_name = os.path.split(tex_filepath)[1]
 
-    newImage = bpy.data.images.load(tex_filepath)
-    newBlendDataTexture = bpy.data.textures.new(texture_name, type='IMAGE')
-    newBlendDataTexture.image = newImage
+    if texture_name in bpy.data.images:
+        new_image = bpy.data.images[texture_name]
+    else:
+        new_image = bpy.data.images.load(tex_filepath)
 
-    return newBlendDataTexture
+    if texture_name in bpy.data.textures:
+        new_texture = bpy.data.textures[texture_name]
+    else:
+        new_texture = bpy.data.textures.new(texture_name, type='IMAGE')
+        new_texture.image = new_image
+
+    new_image.use_fake_user = True
+    new_texture.use_fake_user = True
+
+    return new_texture
 
 
 def create_material(PDX_material, mesh, texture_dir):
@@ -102,7 +130,7 @@ def create_material(PDX_material, mesh, texture_dir):
     new_material.diffuse_intensity = 1
     new_material.specular_shader = 'PHONG'
 
-    new_material[PDX_SHADER] =  PDX_material.shader[0]
+    new_material[PDX_SHADER] = PDX_material.shader[0]
 
     if getattr(PDX_material, 'diff', None):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
@@ -151,12 +179,14 @@ def create_locator(PDX_locator, PDX_bone_dict):
     parent_Xform = Matrix()
 
     if parent is not None:
-        armt = get_bone_by_name(parent[0])
-        if armt:
+        rig = get_rig_from_bone_name(parent[0])
+        if rig:
+            # TODO: parent constrain the locator to a bone
             pass
         else:
             # parent bone doesn't exist in scene, build its transform
             transform = PDX_bone_dict[parent[0]]
+            # note we transpose the matrix on creation
             parent_Xform = Matrix((
                 (transform[0], transform[3], transform[6], transform[9]),
                 (transform[1], transform[4], transform[7], transform[10]),
@@ -174,26 +204,29 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     bpy.context.scene.update()
 
-    # apply parent transform
-    new_loc.matrix_world = new_loc.matrix_world * parent_Xform.inverted_safe()
+    # apply parent transform (must be multipled in transposed form, then re-transpoed before being applied)
+    new_loc.matrix_world = (new_loc.matrix_world.transposed() * parent_Xform.inverted_safe().transposed()).transposed()
 
     # convert to Blender space
     new_loc.matrix_world = swap_coord_space(new_loc.matrix_world)
 
 
 def create_skeleton(PDX_bone_list):
-    """
-        TODO: Blender doesn't cope with zero length bones, can we work around this?
-    """
     # keep track of bones as we create them
     bone_list = [None for _ in range(0, len(PDX_bone_list))]
 
-    # bpy.ops.object.select_all(action='DESELECT')
+    # check this skeleton is not already built in the scene
+    matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.name)) for bone in PDX_bone_list]
+    matching_rigs = list(set(rig for rig in matching_rigs if rig))
+    if len(matching_rigs) == 1:
+        return matching_rigs[0]
+
     # temporary name used during creation
     tmp_rig_name = 'io_pdx_rig'
 
     # create the armature datablock
     armt = bpy.data.armatures.new('armature')
+    armt.name = 'imported_armature'
     armt.draw_type = 'STICK'
 
     # create the object and link to the scene
@@ -209,17 +242,9 @@ def create_skeleton(PDX_bone_list):
         transform = bone.tx
         parent = getattr(bone, 'pa', None)
 
-        # determine bone name
-        name = bone.name#.split(':')[-1]
-        namespace = bone.name.split(':')[:-1]  # TODO: setup namespaces properly
-
-        # ensure bone name is unique
-        # Maya allows non-unique transform names (on leaf nodes) and handles them internally with | separators
-        # unique_name = name.replace('|', '_')
-        # if pmc.ls(unique_name, type='joint'):
-        #     bone_list[index] = pmc.PyNode(unique_name)
-        #     continue    # bone already exists, likely the skeleton is already built, so collect and return joints
-        unique_name = name
+        # determine unique bone name
+        # Maya allows non-unique transform names (on leaf nodes) and handles it internally by using | separators
+        unique_name = clean_imported_name(bone.name)
 
         # create joint
         new_bone = armt.edit_bones.new(name=unique_name)
@@ -245,25 +270,32 @@ def create_skeleton(PDX_bone_list):
         # set tail transform (based on possible children)
         bone_children = [b for b in PDX_bone_list if getattr(b, 'pa', [None]) == bone.ix]
         if bone_children:
-            # use the first child position as the tail
-            child_Xform = bone_children[0].tx
+            # use the first childs position as the tail
+            child_transform = bone_children[0].tx
             c_mat = Matrix((
-                (child_Xform[0], child_Xform[3], child_Xform[6], child_Xform[9]),
-                (child_Xform[1], child_Xform[4], child_Xform[7], child_Xform[10]),
-                (child_Xform[2], child_Xform[5], child_Xform[8], child_Xform[11]),
+                (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
+                (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
+                (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
                 (0.0, 0.0, 0.0, 1.0)
             ))
             new_bone.tail = swap_coord_space(c_mat.inverted_safe().to_translation())   # convert coords to Blender space
 
         else:
-            # leaf node bone, use an extension of the parent vector as the tail
+            # leaf node bone, use an arbitrary extension of the parent bone vector (as zero length bones are culled)
             new_bone.tail = new_bone.head + (new_bone.parent.vector / new_bone.parent.length) * 0.1
 
-    # set "use_connect" for bones whos parent has exactly 1 child bone
+    # set or correct some bone settings based on hierarchy
     for bone in bone_list:
         bone_parent = bone.parent
-        if bone_parent and len(bone_parent.children) == 1:
-            bone.use_connect = True
+        if bone_parent:
+            # Blender culls zero length bones, nudge the tail to ensure we don't create any
+            if bone_parent.head == bone_parent.tail:
+                bone_parent.tail += Vector((0, 0, 0.01))
+                continue
+
+            # set "use_connect" for bones whos parent has exactly 1 child bone (provided we didn't nudge their tail)
+            if len(bone_parent.children) == 1:
+                bone.use_connect = True
 
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.scene.update()
@@ -271,7 +303,7 @@ def create_skeleton(PDX_bone_list):
     return new_rig
 
 
-def create_skin(PDX_skin, obj, armature, max_infs=None):
+def create_skin(PDX_skin, obj, rig, max_infs=None):
     if max_infs is None:
         max_infs = 4
 
@@ -279,7 +311,7 @@ def create_skin(PDX_skin, obj, armature, max_infs=None):
     skin_dict = dict()
 
     num_infs = PDX_skin.bones[0]
-    armt_bones = armature.data.bones
+    armt_bones = rig.data.bones
 
     for vtx in range(0, int(len(PDX_skin.ix)/max_infs)):
         skin_dict[vtx] = dict(joints=[], weights=[])
@@ -295,7 +327,8 @@ def create_skin(PDX_skin, obj, armature, max_infs=None):
 
     # set all skin weights
     for v in range(len(skin_dict.keys())):
-        joints = [armt_bones[j].name for j in skin_dict[v]['joints']]       # FIXME: this may not work if we have failed to create any zero length bones
+        # FIXME: this will break if we have failed to create any bones (due to zero length etc)
+        joints = [armt_bones[j].name for j in skin_dict[v]['joints']]
         weights = skin_dict[v]['weights']
         # normalise joint weights
         try:
@@ -309,8 +342,8 @@ def create_skin(PDX_skin, obj, armature, max_infs=None):
             obj.vertex_groups[joint].add([v], weight, 'REPLACE')
 
     # create an armature modifier for the mesh object
-    skin_mod = obj.modifiers.new(armature.name + '_skin', 'ARMATURE')
-    skin_mod.object = armature
+    skin_mod = obj.modifiers.new(rig.name + '_skin', 'ARMATURE')
+    skin_mod.object = rig
     skin_mod.use_bone_envelopes = False
     skin_mod.use_vertex_groups = True
 
@@ -339,14 +372,12 @@ def create_mesh(PDX_mesh, name=None):
     # vertices
     vertexArray = []   # array of points
     for i in range(0, len(verts), 3):
-        # v = [verts[i], verts[i+1], verts[i+2]]
         v = swap_coord_space([verts[i], verts[i+1], verts[i+2]])                       # convert coords to Blender space
         vertexArray.append(v)
 
     # faces
     faceArray = []
     for i in range(0, len(tris), 3):
-        # f = [tris[i], tris[i+1], tris[i+2]]
         f = [tris[i+2], tris[i+1], tris[i]]                                        # convert handedness to Blender space
         faceArray.append(f)
 
@@ -368,31 +399,27 @@ def create_mesh(PDX_mesh, name=None):
     if norms:
         normals = []
         for i in range(0, len(norms), 3):
-            # n = [norms[i], norms[i+1], norms[i+2]]
             n = swap_coord_space([norms[i], norms[i+1], norms[i+2]])                   # convert vector to Blender space
             normals.append(n)
 
         new_mesh.polygons.foreach_set('use_smooth', [True] * len(new_mesh.polygons))
         new_mesh.normals_split_custom_set_from_vertices(normals)
         new_mesh.use_auto_smooth = True
-        new_mesh.show_edge_sharp = True
         new_mesh.free_normals_split()
 
     # apply the UV data channels
     for idx in uv_Ch:
-        uv_data = uv_Ch[idx]
         uvSetName = 'map' + str(idx+1)
+        new_mesh.uv_textures.new(uvSetName)
 
         uvArray = []
+        uv_data = uv_Ch[idx]
         for i in range(0, len(uv_data), 2):
             uv = [uv_data[i], 1 - uv_data[i+1]]     # flip the UV coords in V!
             uvArray.append(uv)
-        print("creating "+uvSetName)
-        new_mesh.uv_textures.new(uvSetName)
+
         bm = get_BMesh(new_mesh)
-        bm.faces.ensure_lookup_table()
         uv_layer = bm.loops.layers.uv[uvSetName]
-        bm.faces.layers.tex.verify()
 
         for face in bm.faces:
             for loop in face.loops:
