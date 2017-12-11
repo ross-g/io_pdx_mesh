@@ -599,7 +599,6 @@ def create_mesh(PDX_mesh, name=None):
     polygonCounts = OpenMaya.MIntArray()    # count of vertices per poly
     for i in range(0, numPolygons):
         polygonCounts.append(3)
-    # OpenMaya.MScriptUtil.createIntArrayFromList([3]*numPolygons, polygonCounts)
 
     # vert connections
     polygonConnects = OpenMaya.MIntArray()
@@ -607,7 +606,6 @@ def create_mesh(PDX_mesh, name=None):
         polygonConnects.append(tris[i+2])                                             # convert handedness to Maya space
         polygonConnects.append(tris[i+1])
         polygonConnects.append(tris[i])
-    # OpenMaya.MScriptUtil.createIntArrayFromList(tris, polygonConnects)
 
     # default UVs
     uArray = OpenMaya.MFloatArray()
@@ -652,14 +650,12 @@ def create_mesh(PDX_mesh, name=None):
         uvCounts = OpenMaya.MIntArray()
         for i in range(0, numPolygons):
             uvCounts.append(3)
-        # OpenMaya.MScriptUtil.createIntArrayFromList(verts_per_poly, uvCounts)
         uvIds = OpenMaya.MIntArray()
         for i in range(0, len(tris), 3):
             uvIds.append(tris[i+2])                                                   # convert handedness to Maya space
             uvIds.append(tris[i+1])
             uvIds.append(tris[i])
-        # OpenMaya.MScriptUtil.createIntArrayFromList(raw_tris, uvIds)
-        # note bulk assignment via .assignUVs only works to the default UV set!
+        # note we don't call setUVs before assignUVs for the default UV set, this was done during creation!
         mFn_Mesh.assignUVs(uvCounts, uvIds, 'map1')
 
     # set other UV channels
@@ -677,6 +673,9 @@ def create_mesh(PDX_mesh, name=None):
 
             mFn_Mesh.createUVSetWithName(uvSetName)
             mFn_Mesh.setUVs(uArray, vArray, uvSetName)
+            mFn_Mesh.assignUVs(uvCounts, uvIds, uvSetName)
+
+    mFn_Mesh.updateSurface()
 
     # assign the default material
     pmc.select(new_mesh)
