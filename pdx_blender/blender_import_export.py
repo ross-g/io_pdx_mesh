@@ -181,8 +181,13 @@ def create_locator(PDX_locator, PDX_bone_dict):
     if parent is not None:
         rig = get_rig_from_bone_name(parent[0])
         if rig:
-            # TODO: parent constrain the locator to a bone
-            pass
+            parent_constraint = new_loc.constraints.new('CHILD_OF')
+            parent_constraint.name = 'imported_constraint'
+            parent_constraint.target = rig
+            parent_constraint.subtarget = parent[0]
+
+            bone_space = rig.matrix_world * rig.data.bones[parent[0]].matrix.to_4x4()
+            parent_constraint.inverse_matrix = bone_space.inverted()
         else:
             # parent bone doesn't exist in scene, build its transform
             transform = PDX_bone_dict[parent[0]]
