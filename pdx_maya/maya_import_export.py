@@ -31,6 +31,7 @@ from io_pdx_mesh import pdx_data
 PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
+PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
 
@@ -171,7 +172,7 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
     vertices = mesh.getPoints(space='world')        # list of vertices positions
     normals = mesh.getNormals(space='world')        # list of vectors for each vertex per face
     triangles = mesh.getTriangles()
-    uv_setnames = mesh.getUVSetNames()
+    uv_setnames = mesh.getUVSetNames()  # TODO: must validate that each set has UV data
     uv_coords = {}
     for i, uv_set in enumerate(uv_setnames):
         _u, _v = mesh.getUVs(uvSet=uv_set)
@@ -207,7 +208,7 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
                 mesh_dict['n'].extend(_normal)
 
                 # uv
-                for i, uv_set in enumerate(uv_setnames):        # TODO: this doesn't work for multiple UV sets
+                for i, uv_set in enumerate(uv_setnames):
                     # vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())           # FIXME:
                     vert_uv_id = face.getUVIndex(_local_id, uv_set)
                     _uvcoords = uv_coords[i][vert_uv_id]
@@ -256,17 +257,26 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
     return mesh_dict
 
 
-def get_mesh_skin_info(maya_mesh):
+def get_mesh_skin_info(maya_mesh, merge_vertices=False):
     skinclusters = list(set(pmc.listConnections(maya_mesh, type='skinCluster')))
     if not skinclusters:
         return None
 
     # a mesh can only be connected to one skin cluster
     skin = skinclusters[0]
-    """
-    skincluster.getMaximumInfluences()
-    """
-    return skinclusters
+    # find influence bones
+    bones = skin.getInfluence()
+
+    # build a dictionary of skin information for the exporter
+    skin_dict = {x: [] for x in ['bones', 'ix', 'w']}
+
+    # set number of joint influences per vert
+    skin_dict['bones'] = skin.getMaximumInfluences()
+
+    skin.getWeights(maya_mesh, influenceIndex=0)
+    skin.getPointsAffectedByInfluence(bones[0])
+
+    return skin_dict
 
 
 def get_mesh_skeleton_info(maya_mesh):
@@ -505,7 +515,7 @@ def create_skeleton(PDX_bone_list):
 
 def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
     if max_infs is None:
-        max_infs = 4
+        max_infs = PDX_MAXSKININFS
 
     # create dictionary of skinning info per vertex
     skin_dict = dict()
@@ -524,33 +534,24 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
 
     # create skin cluster and then prune all default skin weights
     skin_cluster = pmc.skinCluster(bindMethod=0, skinMethod=0, normalizeWeights=0,
-                                   maximumInfluences=max_infs, obeyMaxInfluences=True)
+                                   maximumInfluences=num_infs, obeyMaxInfluences=True)
     pmc.skinPercent(skin_cluster, mesh, normalize=False, pruneWeights=100)
-
-    # FIXME: this worked for the AI portrait with single inf skins etc, but breaks skinning on the ship (oars etc)
-    # for vtx in xrange(len(skin_dict.keys())):
-    #     joints = skin_dict[vtx]['joints']
-    #     weights = skin_dict[vtx]['weights']
-    #
-    #     for jnt, wt in zip(joints, weights):
-    #         # we shouldn't get unused influences, but just in case ignore joint index -1
-    #         if jnt != -1:
-    #             pmc.setAttr('{}.weightList[{}].weights[{}]'.format(skin_cluster, vtx, jnt), wt)
 
     # set skin weights from our dict
     for v in xrange(len(skin_dict.keys())):
         joints = [skeleton[j] for j in skin_dict[v]['joints']]
         weights = skin_dict[v]['weights']
+
         # normalise joint weights
         try:
             norm_weights = [float(w)/sum(weights) for w in weights]
         except:
             norm_weights = weights
-        # strip zero weight entries
-        joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
 
-        pmc.skinPercent(skin_cluster, '{}.vtx[{}]'.format(mesh.name(), v),
-                        transformValue=joint_weights, normalize=True)
+        # strip invalid entries (either zero weight or negative joint index)
+        joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0 and j != -1]
+
+        pmc.skinPercent(skin_cluster, '{}.vtx[{}]'.format(mesh.name(), v), transformValue=joint_weights, normalize=True)
 
     # turn on skin weights normalization again
     pmc.setAttr('{}.normalizeWeights'.format(skin_cluster), True)
@@ -645,17 +646,18 @@ def create_mesh(PDX_mesh, name=None):
             vertexList.append(i)
         mFn_Mesh.setVertexNormals(normalsIn, vertexList)
 
-    # apply the default UV data
+    # apply the UV data channels
+    uvCounts = OpenMaya.MIntArray()
+    for i in range(0, numPolygons):
+        uvCounts.append(3)
+    uvIds = OpenMaya.MIntArray()
+    for i in range(0, len(tris), 3):
+        uvIds.append(tris[i+2])                                                       # convert handedness to Maya space
+        uvIds.append(tris[i+1])
+        uvIds.append(tris[i])
+
+    # note we don't call setUVs before assignUVs for the default UV set, this was done during creation!
     if uv_Ch.get(0):
-        uvCounts = OpenMaya.MIntArray()
-        for i in range(0, numPolygons):
-            uvCounts.append(3)
-        uvIds = OpenMaya.MIntArray()
-        for i in range(0, len(tris), 3):
-            uvIds.append(tris[i+2])                                                   # convert handedness to Maya space
-            uvIds.append(tris[i+1])
-            uvIds.append(tris[i])
-        # note we don't call setUVs before assignUVs for the default UV set, this was done during creation!
         mFn_Mesh.assignUVs(uvCounts, uvIds, 'map1')
 
     # set other UV channels
@@ -919,8 +921,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
                     materialnode_xml.set(slot, [os.path.split(texture)[1]])
 
                 # create parent element for skin data, if the mesh is skinned
-                if get_mesh_skin_info(shape):
+                skin_info_dict = get_mesh_skin_info(shape)
+                if exp_skel and skin_info_dict:
                     skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
+                    for key in ['bones', 'ix', 'w']:
+                        if key in skin_info_dict and skin_info_dict[key]:
+                            skinnode_xml.set(key, skin_info_dict[key])
 
         # create parent element for skeleton data, if the mesh is skinned
         bone_info_list = get_mesh_skeleton_info(shape)
@@ -948,6 +954,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
+
+    pmc.select(None)
+    print "[io_pdx_mesh] finished!"
 
 
 def import_animfile(animpath, timestart=1.0):

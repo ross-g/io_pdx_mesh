@@ -230,12 +230,23 @@ class PDXmaya_ui(QtWidgets.QDialog):
         filepath, filename = export_opts.get_export_path()
 
         # validate directory
+        if filepath == '':
+            QtWidgets.QMessageBox.information(self, 'ERROR', 'Please select an "output path" to export files.')
+            return
         if not os.path.isdir(filepath):
-            raise IOError("Invalid filepath encountered.\n{}".format(filepath))
+            reply = QtWidgets.QMessageBox.warning(self, 'WRITE Error',
+                                                  'Unable to export content. The filepath ... '
+                                                  '\n\n\t{}'
+                                                  '\n ... is not a valid location!'.format(filepath),
+                                                  QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+            if reply == QtWidgets.QMessageBox.Ok:
+                print "[io_pdx_mesh] Nothing to export."
+            return
+
         # determine the output mesh path
         if not os.path.splitext(filename)[1] == '.mesh':
             filename += '.mesh'
-        meshpath = os.path.join(filepath, filename)
+        meshpath = os.path.join(os.path.normpath(filepath), filename)
 
         print "[io_pdx_mesh] Exporting {}".format(meshpath)
 
