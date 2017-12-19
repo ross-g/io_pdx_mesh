@@ -16,7 +16,7 @@ except ImportError:
 
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
-import maya.OpenMaya as OpenMaya    # Maya Python API 1.0
+import maya.OpenMaya as OpenMaya            # Maya Python API 1.0   # TODO: test using API 2.0 for speedup
 import maya.OpenMayaAnim as OpenMayaAnim    # Maya Python API 1.0
 from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion    # Maya Python API 2.0
 
@@ -168,11 +168,15 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
     vtx_dict = {}
     _vtx = 0
 
+    # API mesh function set
+    mesh_obj = get_MObject(mesh.name())
+    mFn_Mesh = OpenMaya.MFnMesh(mesh_obj)
+
     # cache some mesh info
     vertices = mesh.getPoints(space='world')        # list of vertices positions
     normals = mesh.getNormals(space='world')        # list of vectors for each vertex per face
     triangles = mesh.getTriangles()
-    uv_setnames = mesh.getUVSetNames()  # TODO: must validate that each set has UV data
+    uv_setnames = [uv_set for uv_set in mesh.getUVSetNames() if mFn_Mesh.numUVs(uv_set) > 0]
     uv_coords = {}
     for i, uv_set in enumerate(uv_setnames):
         _u, _v = mesh.getUVs(uvSet=uv_set)
@@ -187,9 +191,9 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
         num_triangles = triangles[0][face.index()]
 
         # store data for each tri of each face
-        for t in xrange(0, num_triangles):
+        for tri in xrange(0, num_triangles):
             # vertices making this triangle
-            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), t)
+            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), tri)
 
             debug_var = []
 
@@ -204,17 +208,21 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
                 _normal = list(normals[vert_norm_id])
                 if round:
                     _normal = pmc.util.round(_normal, PDX_DECIMALPTS)
-                _normal = swap_coord_space(_normal)         # convert to Game space
+                _normal = swap_coord_space(_normal)                                              # convert to Game space
                 mesh_dict['n'].extend(_normal)
 
                 # uv
                 for i, uv_set in enumerate(uv_setnames):
                     # vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())           # FIXME:
-                    vert_uv_id = face.getUVIndex(_local_id, uv_set)
-                    _uvcoords = uv_coords[i][vert_uv_id]
-                    if round:
-                        _uvcoords = pmc.util.round(_uvcoords, PDX_DECIMALPTS)
-                    _uvcoords = swap_coord_space(_uvcoords)     # convert to Game space
+                    try:
+                        vert_uv_id = face.getUVIndex(_local_id, uv_set)
+                        _uvcoords = uv_coords[i][vert_uv_id]
+                        if round:
+                            _uvcoords = pmc.util.round(_uvcoords, PDX_DECIMALPTS)
+                        _uvcoords = swap_coord_space(_uvcoords)                                  # convert to Game space
+                    # case where verts are unmapped, eg when two meshes are merged with different UV set counts
+                    except RuntimeError:
+                        _uvcoords = (0.0, 0.0)
                     mesh_dict['u'+str(i)].extend(_uvcoords)
 
                 # tangent
@@ -222,7 +230,7 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
                 _tangent = list(tangents[vert_tangent_id])
                 if round:
                     _tangent = pmc.util.round(_tangent, PDX_DECIMALPTS)
-                _tangent = swap_coord_space(_tangent)       # convert to Game space
+                _tangent = swap_coord_space(_tangent)                                            # convert to Game space
                 mesh_dict['ta'].extend(_tangent)
                 mesh_dict['ta'].append(1.0)
 
@@ -230,7 +238,7 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
                 _position = vertices[vert_id]
                 if round:
                     _position = pmc.util.round(_position, PDX_DECIMALPTS)
-                _position = swap_coord_space(_position)     # convert to Game space
+                _position = swap_coord_space(_position)                                          # convert to Game space
                 mesh_dict['p'].extend(_position)
 
                 # count this vert as processed
@@ -239,13 +247,8 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
                 _vtx += 1                   # update the counter
 
             # tri-faces
-            triface_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]    # set face order for left handedness
+            triface_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]       # convert handedness to Game space
             mesh_dict['tri'].extend([debug_var[0], debug_var[2], debug_var[1]])
-
-            # print "face {} - tri {}".format(face.index(), t)
-            # print vtx_dict
-            # print triface_verts
-            # print mesh_dict['tri']
 
     # calculate min and max bounds of mesh
     x_VtxPos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
@@ -448,8 +451,8 @@ def create_locator(PDX_locator, PDX_bone_dict):
             )
 
     # set attributes
-    obj = get_MObject(new_loc.name())
-    mFn_Xform = OpenMaya.MFnTransform(obj)
+    loc_obj = get_MObject(new_loc.name())
+    mFn_Xform = OpenMaya.MFnTransform(loc_obj)
 
     # rotation
     mFn_Xform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
