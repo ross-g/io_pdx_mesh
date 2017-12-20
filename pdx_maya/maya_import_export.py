@@ -146,12 +146,13 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
+def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     """
-        Returns a dictionary of mesh information neccessary to export.
-        By default this does NOT merge vertices across triangles, so each tri-vert is exported separately!
+        Returns a dictionary of mesh information neccessary to the exporter.
+        By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
+        exported separately!
     """
-    # ensure we're using MeshFace type
+    # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
         meshfaces = maya_mesh
         mesh = meshfaces.node()
@@ -161,18 +162,24 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
     else:
         raise NotImplementedError("Unsupported mesh type encountered. {}".format(type(maya_mesh)))
 
-    # build a dictionary of mesh information for the exporter
-    mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
+    # we need to test vertices for equality based on their attributes
+    # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
+    class UniqueVertex(object):
 
-    # track processed verts in a dictionary, key: mesh_dict array index, value: mesh vertex id
-    vtx_dict = {}
-    _vtx = 0
+        def __init__(self, vert_id, position, normal, uv_dict):
+            self.id = vert_id
+            self.p = position
+            self.n = normal
+            self.u0 = uv_dict
+
+        def __eq__(self, other):
+            return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0
 
     # API mesh function set
     mesh_obj = get_MObject(mesh.name())
     mFn_Mesh = OpenMaya.MFnMesh(mesh_obj)
 
-    # cache some mesh info
+    # cache some mesh data
     vertices = mesh.getPoints(space='world')        # list of vertices positions
     normals = mesh.getNormals(space='world')        # list of vectors for each vertex per face
     triangles = mesh.getTriangles()
@@ -181,74 +188,90 @@ def get_mesh_info(maya_mesh, merge_vertices=False, round=False):
     for i, uv_set in enumerate(uv_setnames):
         _u, _v = mesh.getUVs(uvSet=uv_set)
         uv_coords[i] = zip(_u, _v)
-    tangents = mesh.getTangents(space='world', uvSet=uv_setnames[0])
+    if uv_setnames:
+        tangents = mesh.getTangents(space='world', uvSet=uv_setnames[0])
+
+    # build a blank dictionary of mesh information for the exporter
+    mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
+
+    # collect all unique verts in the order that we process them
+    unique_verts = []
 
     for face in meshfaces:
-        # vertices making this face
-        face_vert_ids = face.getVertices()
-
-        # number of triangles making this face
-        num_triangles = triangles[0][face.index()]
+        face_vert_ids = face.getVertices()              # vertices making this face
+        num_triangles = triangles[0][face.index()]      # number of triangles making this face
 
         # store data for each tri of each face
         for tri in xrange(0, num_triangles):
-            # vertices making this triangle
-            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), tri)
+            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), tri)   # vertices making this triangle
 
-            debug_var = []
+            dict_vert_idx = []
 
             # loop over tri verts
             for vert_id in tri_vert_ids:
-                # face relative vertex index
-                _local_id = face_vert_ids.index(vert_id)
-
-                # normal
-                # vert_norm_ids = set(mesh.vtx[vert_id].getNormalIndices())     # FIXME:
-                vert_norm_id = face.normalIndex(_local_id)
-                _normal = list(normals[vert_norm_id])
-                if round:
-                    _normal = pmc.util.round(_normal, PDX_DECIMALPTS)
-                _normal = swap_coord_space(_normal)                                              # convert to Game space
-                mesh_dict['n'].extend(_normal)
-
-                # uv
-                for i, uv_set in enumerate(uv_setnames):
-                    # vert_uv_ids = set(mesh.vtx[vert_id].getUVIndices())           # FIXME:
-                    try:
-                        vert_uv_id = face.getUVIndex(_local_id, uv_set)
-                        _uvcoords = uv_coords[i][vert_uv_id]
-                        if round:
-                            _uvcoords = pmc.util.round(_uvcoords, PDX_DECIMALPTS)
-                        _uvcoords = swap_coord_space(_uvcoords)                                  # convert to Game space
-                    # case where verts are unmapped, eg when two meshes are merged with different UV set counts
-                    except RuntimeError:
-                        _uvcoords = (0.0, 0.0)
-                    mesh_dict['u'+str(i)].extend(_uvcoords)
-
-                # tangent
-                vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
-                _tangent = list(tangents[vert_tangent_id])
-                if round:
-                    _tangent = pmc.util.round(_tangent, PDX_DECIMALPTS)
-                _tangent = swap_coord_space(_tangent)                                            # convert to Game space
-                mesh_dict['ta'].extend(_tangent)
-                mesh_dict['ta'].append(1.0)
+                _local_id = face_vert_ids.index(vert_id)    # face relative vertex index
 
                 # position
                 _position = vertices[vert_id]
-                if round:
+                if round_data:
                     _position = pmc.util.round(_position, PDX_DECIMALPTS)
                 _position = swap_coord_space(_position)                                          # convert to Game space
-                mesh_dict['p'].extend(_position)
 
-                # count this vert as processed
-                vtx_dict[_vtx] = vert_id    # store mapping by counter to mesh relative vertex index
-                debug_var.append(_vtx)
-                _vtx += 1                   # update the counter
+                # normal
+                vert_norm_id = face.normalIndex(_local_id)
+                _normal = list(normals[vert_norm_id])
+                if round_data:
+                    _normal = pmc.util.round(_normal, PDX_DECIMALPTS)
+                _normal = swap_coord_space(_normal)                                              # convert to Game space
+
+                # uv
+                _uv_coords = {}
+                for i, uv_set in enumerate(uv_setnames):
+                    try:
+                        vert_uv_id = face.getUVIndex(_local_id, uv_set)
+                        uv = uv_coords[i][vert_uv_id]
+                        if round_data:
+                            uv = pmc.util.round(uv, PDX_DECIMALPTS)
+                        uv = swap_coord_space(uv)                                  # convert to Game space
+                    # case where verts are unmapped, eg when two meshes are merged with different UV set counts
+                    except RuntimeError:
+                        uv = (0.0, 0.0)
+                    _uv_coords[i] = uv
+
+                # tangent (omitted if there were no UVs)
+                if uv_setnames:
+                    vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
+                    _tangent = list(tangents[vert_tangent_id])
+                    if round_data:
+                        _tangent = pmc.util.round(_tangent, PDX_DECIMALPTS)
+                    _tangent = swap_coord_space(_tangent)                                        # convert to Game space
+
+                # check if this tri vert is new and unique, or can just reference an existing vertex
+                new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
+
+                # new unique vertex, collect it and add the vert data to the dict
+                if new_vert not in unique_verts or skip_merge_vertices:
+                    unique_verts.append(new_vert)
+                    mesh_dict['p'].extend(_position)
+                    mesh_dict['n'].extend(_normal)
+                    for i, uv_set in enumerate(uv_setnames):
+                        mesh_dict['u' + str(i)].extend(_uv_coords[i])
+                    if uv_setnames:
+                        mesh_dict['ta'].extend(_tangent)
+                        mesh_dict['ta'].append(1.0)
+                    i = len(unique_verts) - 1           # the tri will reference the last added vertex
+
+                # we have already stored this vertex, no data needs to be added to the dict
+                else:
+                    i = unique_verts.index(new_vert)    # the tri can just reference an existing vertex
+
+                # store the tri vert reference
+                dict_vert_idx.append(i)
 
             # tri-faces
-            triface_verts = [tri_vert_ids[0], tri_vert_ids[2], tri_vert_ids[1]]       # convert handedness to Game space
-            mesh_dict['tri'].extend([debug_var[0], debug_var[2], debug_var[1]])
+            mesh_dict['tri'].extend(
+                [dict_vert_idx[0], dict_vert_idx[2], dict_vert_idx[1]]                # convert handedness to Game space
+            )
 
     # calculate min and max bounds of mesh
     x_VtxPos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
@@ -279,7 +302,8 @@ def get_mesh_skin_info(maya_mesh, merge_vertices=False):
     skin.getWeights(maya_mesh, influenceIndex=0)
     skin.getPointsAffectedByInfluence(bones[0])
 
-    return skin_dict
+    # return skin_dict
+    return None
 
 
 def get_mesh_skeleton_info(maya_mesh):
@@ -442,13 +466,20 @@ def create_locator(PDX_locator, PDX_bone_dict):
             pmc.parent(new_loc, parent_bone[0])
         else:
             # parent bone doesn't exist in scene, build its transform
-            transform = PDX_bone_dict[parent[0]]
-            parent_Xform = pmdt.Matrix(
-                transform[0], transform[1], transform[2], 0.0,
-                transform[3], transform[4], transform[5], 0.0,
-                transform[6], transform[7], transform[8], 0.0,
-                transform[9], transform[10], transform[11], 1.0
-            )
+            if parent[0] in PDX_bone_dict:
+                transform = PDX_bone_dict[parent[0]]
+                parent_Xform = pmdt.Matrix(
+                    transform[0], transform[1], transform[2], 0.0,
+                    transform[3], transform[4], transform[5], 0.0,
+                    transform[6], transform[7], transform[8], 0.0,
+                    transform[9], transform[10], transform[11], 1.0
+                )
+            else:
+                print "[io_pdx_mesh] ERROR! unable to create locator '{}' (missing parent '{}' in file data)".format(
+                    PDX_locator.name, parent[0]
+                )
+                pmc.delete(new_loc)
+                return
 
     # set attributes
     loc_obj = get_MObject(new_loc.name())
@@ -822,7 +853,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     locators = asset_elem.find('locator')
 
     # store all bone transforms, irrespective of skin association
-    scene_bone_dict = dict()
+    complete_bone_dict = dict()
 
     # go through shapes
     for node in shapes:
@@ -836,7 +867,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
             for b in skeleton:
                 pdx_bone = pdx_data.PDXData(b)
                 pdx_bone_list.append(pdx_bone)
-                scene_bone_dict[pdx_bone.name] = pdx_bone.tx
+                complete_bone_dict[pdx_bone.name] = pdx_bone.tx
 
             if imp_skel:
                 print "[io_pdx_mesh] creating skeleton -"
@@ -871,13 +902,13 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         print "[io_pdx_mesh] creating locators -"
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
-            create_locator(pdx_locator, scene_bone_dict)
+            create_locator(pdx_locator, complete_bone_dict)
 
     pmc.select(None)
     print "[io_pdx_mesh] finished!"
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
     root_xml.set('pdxasset', [1, 0])
@@ -901,7 +932,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
 
                 # check which faces are using this material
                 mesh = group.members(flatten=True)[0]
-                mesh_info_dict = get_mesh_info(mesh)
+                mesh_info_dict = get_mesh_info(mesh, not merge_verts)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
@@ -950,6 +981,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
         for loc in maya_locators:
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
+            # TODO: if we export locators without exporting bones, then we may need to write a different form of
+            #       translation if a locator is parented to a bone for example
             locnode_xml.set('p', list(swap_coord_space(loc.getTranslation())))
             locnode_xml.set('q', list(swap_coord_space(loc.getRotation(quaternion=True))))
             if loc.getParent():

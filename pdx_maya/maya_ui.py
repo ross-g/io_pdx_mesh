@@ -199,7 +199,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
             else:
-                reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
+                reply = QtWidgets.QMessageBox.warning(self, 'READ ERROR',
                                                       'Unable to read selected file. The filepath ... '
                                                       '\n\n\t{}'
                                                       '\n ... is not a .mesh file!'.format(filepath),
@@ -216,7 +216,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
             else:
-                reply = QtWidgets.QMessageBox.warning(self, 'READ Error',
+                reply = QtWidgets.QMessageBox.warning(self, 'READ ERROR',
                                                       'Unable to read selected file. The filepath ... '
                                                       '\n\n\t{}'
                                                       '\n ... is not a .anim file!'.format(filepath),
@@ -234,7 +234,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
             QtWidgets.QMessageBox.information(self, 'ERROR', 'Please select an "output path" to export files.')
             return
         if not os.path.isdir(filepath):
-            reply = QtWidgets.QMessageBox.warning(self, 'WRITE Error',
+            reply = QtWidgets.QMessageBox.warning(self, 'WRITE ERROR',
                                                   'Unable to export content. The filepath ... '
                                                   '\n\n\t{}'
                                                   '\n ... is not a valid location!'.format(filepath),
@@ -251,17 +251,16 @@ class PDXmaya_ui(QtWidgets.QDialog):
         print "[io_pdx_mesh] Exporting {}".format(meshpath)
 
         try:
-            time.sleep(1)
             export_meshfile(
                 meshpath,
                 exp_mesh=export_opts.chk_mesh.isChecked(),
                 exp_skel=export_opts.chk_skeleton.isChecked(),
-                exp_locs=export_opts.chk_locators.isChecked()
+                exp_locs=export_opts.chk_locators.isChecked(),
+                merge_verts=export_opts.chk_merge_vtx.isChecked()
             )
-            time.sleep(1)
 
         except Exception as err:
-            print "[io_pdx_mesh] Failed to export {}".format(meshpath)
+            print "[io_pdx_mesh] FAILED to export {}".format(meshpath)
             print err
             raise
 
@@ -280,7 +279,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                                            'Check the Maya script output for details.\n\n'
                                            'Some functions of the tool will not work without these settings.',
                                            QtGui.QMessageBox.Ok, defaultButton=QtGui.QMessageBox.Ok)
-                print "[io_pdx_mesh] Critical error."
+                print "[io_pdx_mesh] CRITICAL ERROR!"
                 print err
                 return {}
 
@@ -321,11 +320,11 @@ class export_controls(QtWidgets.QWidget):
         self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
         self.chk_skeleton = QtWidgets.QCheckBox('Export skeleton')
         self.chk_locators = QtWidgets.QCheckBox('Export locators')
-        for ctrl in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
-            ctrl.setChecked(True)
         self.chk_animation = QtWidgets.QCheckBox('Export animations')
         self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
         self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
+        for ctrl in [self.chk_mesh, self.chk_skeleton, self.chk_locators, self.chk_merge_vtx]:
+            ctrl.setChecked(True)
         # self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
         # self.chk_preview = QtWidgets.QCheckBox('Preview on export')
 
@@ -345,7 +344,6 @@ class export_controls(QtWidgets.QWidget):
         self.btn_anim_create.setDisabled(True)
         self.btn_anim_edit.setDisabled(True)
         self.chk_animation.setDisabled(True)
-        self.chk_merge_vtx.setDisabled(True)
         self.chk_merge_obj.setDisabled(True)
 
         # create layouts
@@ -579,7 +577,6 @@ class import_popup(QtWidgets.QWidget):
             # TODO: thread import to unblock PyQt UI?
             self.prog_bar.setRange(0, 0)
             self.prog_bar.setValue(0)
-            time.sleep(1)
             import_meshfile(
                 self.pdx_file, 
                 imp_mesh=self.chk_mesh.isChecked(), 
@@ -588,12 +585,11 @@ class import_popup(QtWidgets.QWidget):
                 )
             self.prog_bar.setMaximum(100)
             self.prog_bar.setValue(100)
-            time.sleep(1)
             self.close()
             self.parent.refresh_gui()
 
         except Exception as err:
-            print "[io_pdx_mesh] Failed to import {}".format(self.pdx_file)
+            print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
             print err
             self.close()
             raise
@@ -607,19 +603,17 @@ class import_popup(QtWidgets.QWidget):
             # TODO: thread import to unblock PyQt UI?
             self.prog_bar.setRange(0, 0)
             self.prog_bar.setValue(0)
-            time.sleep(1)
             import_animfile(
                 self.pdx_file, 
                 timestart=self.spn_start.value()
                 )
             self.prog_bar.setMaximum(100)
             self.prog_bar.setValue(100)
-            time.sleep(1)
             self.close()
             self.parent.refresh_gui()
 
         except Exception as err:
-            print "[io_pdx_mesh] Failed to import {}".format(self.pdx_file)
+            print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
             print err
             self.close()
             raise
