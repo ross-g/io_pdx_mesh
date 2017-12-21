@@ -8,7 +8,7 @@
 """
 
 import os
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -283,15 +283,13 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     return mesh_dict
 
 
-def get_mesh_skin_info(maya_mesh, merge_vertices=False):
+def get_mesh_skin_info(maya_mesh, skip_merge_vertices=False):
     skinclusters = list(set(pmc.listConnections(maya_mesh, type='skinCluster')))
     if not skinclusters:
         return None
 
     # a mesh can only be connected to one skin cluster
     skin = skinclusters[0]
-    # find influence bones
-    bones = skin.getInfluence()
 
     # build a dictionary of skin information for the exporter
     skin_dict = {x: [] for x in ['bones', 'ix', 'w']}
@@ -299,11 +297,26 @@ def get_mesh_skin_info(maya_mesh, merge_vertices=False):
     # set number of joint influences per vert
     skin_dict['bones'] = skin.getMaximumInfluences()
 
-    skin.getWeights(maya_mesh, influenceIndex=0)
-    skin.getPointsAffectedByInfluence(bones[0])
+    # find influence bones
+    bones = skin.getInfluence()
 
-    # return skin_dict
-    return None
+    # iterate over influences to find weights, per vertex
+    vert_weights = defaultdict(dict)
+    for bone_index in xrange(len(bones)):
+        vert_id = 0
+        for weight in skin.getWeights(maya_mesh, influenceIndex=bone_index):
+            # store any non-zero weights, by influence, per vertex
+            if weight != 0.0:
+                vert_weights[vert_id][bone_index] = weight
+            vert_id += 1
+
+    # collect data from the weights dict into the skin dict
+    for vert_id in vert_weights:
+        for influence, weight in vert_weights[vert_id].iteritems():
+            skin_dict['ix'].append(influence)
+            skin_dict['w'].append(weight)
+
+    return skin_dict
 
 
 def get_mesh_skeleton_info(maya_mesh):
