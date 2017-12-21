@@ -1,12 +1,13 @@
 """
     Paradox asset files, Blender import/export.
+
+    As Blenders 3D space is (Z-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
+    mirror all positions, normals etc along the Z axis, rotate about X and flip texture coordinates in V.
     
     author : ross-g
 """
 
 import os
-import sys
-import inspect
 from collections import OrderedDict
 try:
     import xml.etree.cElementTree as Xml
@@ -29,6 +30,7 @@ from .. import pdx_data
 PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
+PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
 
@@ -310,7 +312,7 @@ def create_skeleton(PDX_bone_list):
 
 def create_skin(PDX_skin, obj, rig, max_infs=None):
     if max_infs is None:
-        max_infs = 4
+        max_infs = PDX_MAXSKININFS
 
     # create dictionary of skinning info per bone
     skin_dict = dict()
@@ -396,7 +398,7 @@ def create_mesh(PDX_mesh, name=None):
     # create the object and link to the scene
     if name is None:
         name = tmp_mesh_name
-    new_obj = bpy.data.objects.new(name, new_mesh)
+    new_obj = bpy.data.objects.new(clean_imported_name(name), new_mesh)
     bpy.context.scene.objects.link(new_obj)
     new_mesh.name = name
 
