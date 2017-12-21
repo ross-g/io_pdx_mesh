@@ -74,6 +74,16 @@ def connect_nodeplugs(source_mobject, source_mplug, dest_mobject, dest_mplug):
 """
 
 
+def clean_imported_name(name):
+    # strip any namespace names, taking the final name only
+    clean_name = name.split(':')[-1]
+
+    # replace hierarchy separator character used by Maya in the case of non-unique leaf node names
+    clean_name = clean_name.replace('|', '_')
+
+    return clean_name
+
+
 def list_scene_materials():
     return [mat for mat in pmc.ls(materials=True)]
 
@@ -232,7 +242,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                         uv = uv_coords[i][vert_uv_id]
                         if round_data:
                             uv = pmc.util.round(uv, PDX_DECIMALPTS)
-                        uv = swap_coord_space(uv)                                  # convert to Game space
+                        uv = swap_coord_space(uv)                                                # convert to Game space
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
                         uv = (0.0, 0.0)
@@ -280,10 +290,13 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
     mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
 
-    return mesh_dict
+    # create an ordered list of vertex ids that we have gathered into the dict
+    vert_id_list = [vert.id for vert in unique_verts]
+
+    return mesh_dict, vert_id_list
 
 
-def get_mesh_skin_info(maya_mesh, skip_merge_vertices=False):
+def get_mesh_skin_info(maya_mesh, vertex_ids=None):
     skinclusters = list(set(pmc.listConnections(maya_mesh, type='skinCluster')))
     if not skinclusters:
         return None
@@ -295,14 +308,20 @@ def get_mesh_skin_info(maya_mesh, skip_merge_vertices=False):
     skin_dict = {x: [] for x in ['bones', 'ix', 'w']}
 
     # set number of joint influences per vert
-    skin_dict['bones'] = skin.getMaximumInfluences()
+    skin_dict['bones'].append(skin.getMaximumInfluences())
 
     # find influence bones
+    # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
     bones = skin.getInfluence()
 
+    # parse all verts in order if we didn't supply a subset of vert ids
+    if vertex_ids is None:
+        vertex_ids = range(len(maya_mesh.verts))
+
     # iterate over influences to find weights, per vertex
-    vert_weights = defaultdict(dict)
+    vert_weights = {v: {} for v in vertex_ids}  # defaultdict(dict)
     for bone_index in xrange(len(bones)):
+        # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
         vert_id = 0
         for weight in skin.getWeights(maya_mesh, influenceIndex=bone_index):
             # store any non-zero weights, by influence, per vertex
@@ -311,10 +330,14 @@ def get_mesh_skin_info(maya_mesh, skip_merge_vertices=False):
             vert_id += 1
 
     # collect data from the weights dict into the skin dict
-    for vert_id in vert_weights:
-        for influence, weight in vert_weights[vert_id].iteritems():
+    for vtx in vertex_ids:
+        for influence, weight in vert_weights[vtx].iteritems():
             skin_dict['ix'].append(influence)
             skin_dict['w'].append(weight)
+        if len(vert_weights[vtx]) < PDX_MAXSKININFS:    # pad out with null data to fill container
+            padding = PDX_MAXSKININFS - len(vert_weights[vtx])
+            skin_dict['ix'].extend([-1]*padding)
+            skin_dict['w'].extend([0.0]*padding)
 
     return skin_dict
 
@@ -332,6 +355,7 @@ def get_mesh_skeleton_info(maya_mesh):
     # build a list of bone information dictionaries for the exporter
     bone_list = [{'name': x.name()} for x in bones]
     for i, bone in enumerate(bones):
+        # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
         # bone index
         bone_list[i]['ix'] = [i]
 
@@ -522,13 +546,10 @@ def create_skeleton(PDX_bone_list):
         transform = bone.tx
         parent = getattr(bone, 'pa', None)
 
-        # determine bone name
-        name = bone.name.split(':')[-1]
-        namespace = bone.name.split(':')[:-1]  # TODO: setup namespaces properly
+        # determine unique bone name
+        # Maya allows non-unique transform names (on leaf nodes) and handles it internally by using | separators
+        unique_name = clean_imported_name(bone.name)
 
-        # ensure bone name is unique
-        # Maya allows non-unique transform names (on leaf nodes) and handles them internally with | separators
-        unique_name = name.replace('|', '_')
         if pmc.ls(unique_name, type='joint'):
             bone_list[index] = pmc.PyNode(unique_name)
             continue        # bone already exists, likely the skeleton is already built, so collect and return joints
@@ -676,9 +697,7 @@ def create_mesh(PDX_mesh, name=None):
 
     # name and namespace
     if name is not None:
-        mesh_name = name.split(':')[-1]
-        namespace = name.split(':')[:-1]      # TODO: setup namespaces properly
-
+        mesh_name = clean_imported_name(name)
         pmc.rename(new_mesh, mesh_name)
 
     # apply the vertex normal data
@@ -759,8 +778,8 @@ def create_animcurve(joint, attr):
     return anim_curve, mFn_AnimCurve
 
 
-def create_anim_keys(joint, key_dict, timestart):
-    jnt_obj = get_MObject(joint.name())
+def create_anim_keys(joint_name, key_dict, timestart):
+    jnt_obj = get_MObject(joint_name)
 
     # calculate start and end frames
     timestart = int(timestart)
@@ -932,6 +951,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # populate object data
     maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
     for shape in maya_meshes:
+        print "[io_pdx_mesh] writing node - {}".format(shape.name())
         shapenode_xml = Xml.SubElement(object_xml, shape.name())
 
         # one shape can have multiple materials on a per meshface basis
@@ -941,11 +961,13 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
             # this type of ObjectSet associates shaders with geometry
             for group in shading_groups:
                 # create parent element for this mesh (mesh here being geometry sharing a material)
+                print "[io_pdx_mesh] writing mesh -"
                 meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
 
                 # check which faces are using this material
                 mesh = group.members(flatten=True)[0]
-                mesh_info_dict = get_mesh_info(mesh, not merge_verts)
+                # get all necessary info about this set of faces and determine which unique verts they include
+                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
@@ -959,6 +981,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                         aabbnode_xml.set(key, mesh_info_dict[key])
 
                 # create parent element for material data
+                print "[io_pdx_mesh] writing material -"
                 materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
                 maya_mat = group.surfaceShader.connections()[0]
                 # populate material attributes
@@ -968,8 +991,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                     materialnode_xml.set(slot, [os.path.split(texture)[1]])
 
                 # create parent element for skin data, if the mesh is skinned
-                skin_info_dict = get_mesh_skin_info(shape)
+                skin_info_dict = get_mesh_skin_info(shape, vert_ids)
                 if exp_skel and skin_info_dict:
+                    print "[io_pdx_mesh] writing skinning data -"
                     skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
                     for key in ['bones', 'ix', 'w']:
                         if key in skin_info_dict and skin_info_dict[key]:
@@ -978,6 +1002,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
         # create parent element for skeleton data, if the mesh is skinned
         bone_info_list = get_mesh_skeleton_info(shape)
         if exp_skel and bone_info_list:
+            print "[io_pdx_mesh] writing skeleton -"
             skeletonnode_xml = Xml.SubElement(shapenode_xml, 'skeleton')
 
             # create sub-elements for each bone, populate bone attributes
@@ -993,9 +1018,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     if exp_locs and maya_locators:
         for loc in maya_locators:
             # create sub-elements for each locator, populate locator attributes
+            print "[io_pdx_mesh] writing locators -"
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
-            # TODO: if we export locators without exporting bones, then we may need to write a different form of
-            #       translation if a locator is parented to a bone for example
+            # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
             locnode_xml.set('p', list(swap_coord_space(loc.getTranslation())))
             locnode_xml.set('q', list(swap_coord_space(loc.getRotation(quaternion=True))))
             if loc.getParent():
@@ -1042,11 +1067,12 @@ def import_animfile(animpath, timestart=1.0):
     print "[io_pdx_mesh] finding bones -"
     for bone in info:
         bone_joint = None
+        bone_name = clean_imported_name(bone.tag)
         try:
-            bone_joint = pmc.PyNode(bone.tag)
+            bone_joint = pmc.PyNode(bone_name)  # type: pmc.nodetypes.joint
         except pmc.MayaObjectError:
-            bone_errors.append(bone.tag)
-            print "[io_pdx_mesh] failed to find bone {}".format(bone.tag)
+            bone_errors.append(bone_name)
+            print "[io_pdx_mesh] failed to find bone {}".format(bone_name)
 
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
         if bone_joint:
@@ -1070,7 +1096,7 @@ def import_animfile(animpath, timestart=1.0):
     # check which transform types are animated on each bone
     all_bone_keyframes = OrderedDict()
     for bone in info:
-        bone_name = bone.tag
+        bone_name = clean_imported_name(bone.tag)
         key_data = dict()
         all_bone_keyframes[bone_name] = key_data
 
@@ -1097,7 +1123,7 @@ def import_animfile(animpath, timestart=1.0):
         keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if keys.values():
-            create_anim_keys(pmc.PyNode(bone_name), keys, timestart)
+            create_anim_keys(bone_name, keys, timestart)
 
     pmc.select(None)
     print "[io_pdx_mesh] finished!"
