@@ -80,7 +80,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                            'left: 10px;'
                            '}'
                            )
-        
+
     def create_ui(self):
         # window properties
         self.setWindowTitle('PDX Maya Tools')
@@ -142,12 +142,12 @@ class PDXmaya_ui(QtWidgets.QDialog):
         )
 
         file_menu.addActions([
-            file_import_mesh, 
+            file_import_mesh,
             file_import_anim
             ])
         file_menu.addSeparator()
         file_menu.addActions([
-            file_export_mesh, 
+            file_export_mesh,
             file_export_anim
             ])
         tools_menu.addActions([
@@ -155,14 +155,14 @@ class PDXmaya_ui(QtWidgets.QDialog):
             ])
         tools_menu.addSeparator()
         tools_menu.addActions([
-            tool_ignore_joints, 
+            tool_ignore_joints,
             tool_unignore_joints
             ])
         tools_menu.addSeparator()
         tools_menu.addActions([
-            tool_show_jnt_localaxes, 
-            tool_hide_jnt_localaxes, 
-            tool_show_loc_localaxes, 
+            tool_show_jnt_localaxes,
+            tool_hide_jnt_localaxes,
+            tool_show_loc_localaxes,
             tool_hide_loc_localaxes
             ])
         help_menu.addActions([
@@ -231,8 +231,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         # validate directory
         if filepath == '':
-            QtWidgets.QMessageBox.information(self, 'ERROR', 'Please select an "output path" to export files.')
-            return
+            export_opts.select_export_path()
+            filepath, filename = export_opts.get_export_path()
         if not os.path.isdir(filepath):
             reply = QtWidgets.QMessageBox.warning(self, 'WRITE ERROR',
                                                   'Unable to export content. The filepath ... '
@@ -258,6 +258,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 exp_locs=export_opts.chk_locators.isChecked(),
                 merge_verts=export_opts.chk_merge_vtx.isChecked()
             )
+            QtWidgets.QMessageBox.information(self, 'Success', 'Mesh export finished!\n\n{}'.format(meshpath))
 
         except Exception as err:
             print "[io_pdx_mesh] FAILED to export {}".format(meshpath)
