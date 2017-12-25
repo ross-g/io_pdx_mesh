@@ -4,14 +4,9 @@
     author : ross-g
 """
 
-import os
-import sys
-import time
 import webbrowser
 import inspect
 import json
-import pymel.core as pmc
-import maya.cmds as cmds
 import maya.OpenMayaUI as omUI
 
 try:
@@ -21,6 +16,8 @@ except ImportError:
     from PySide import QtCore, QtGui
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
+
+from io_pdx_mesh.pdx_data import PDXData
 
 try:
     import maya_import_export
@@ -512,7 +509,7 @@ class import_popup(QtWidgets.QWidget):
 
         self.setWindowTitle('Import options')
         self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
-        self.setFixedSize(300, 125)
+        self.setFixedSize(250, 100)
         if self.parent:
             center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
             center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
@@ -527,7 +524,6 @@ class import_popup(QtWidgets.QWidget):
         self.btn_import = QtWidgets.QPushButton('Import ...', self)
         self.btn_import.setToolTip('Select a {} file to import.'.format(self.pdx_type))
         self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
-        self.prog_bar = QtWidgets.QProgressBar(self)
         # mesh specific controls
         self.chk_mesh = QtWidgets.QCheckBox('Mesh')
         self.chk_skeleton = QtWidgets.QCheckBox('Skeleton')
@@ -559,7 +555,6 @@ class import_popup(QtWidgets.QWidget):
                 opts_layout.addWidget(qt_control)
         main_layout.addLayout(opts_layout)
         main_layout.addSpacing(10)
-        main_layout.addWidget(self.prog_bar)
         main_layout.addLayout(btn_layout)
         btn_layout.addWidget(self.btn_import)
         btn_layout.addWidget(self.btn_cancel)
@@ -573,22 +568,16 @@ class import_popup(QtWidgets.QWidget):
 
     def import_mesh(self):
         print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
-
         try:
-            # TODO: thread import to unblock PyQt UI?
-            self.prog_bar.setRange(0, 0)
-            self.prog_bar.setValue(0)
             import_meshfile(
                 self.pdx_file, 
                 imp_mesh=self.chk_mesh.isChecked(), 
                 imp_skel=self.chk_skeleton.isChecked(), 
-                imp_locs=self.chk_locators.isChecked()
+                imp_locs=self.chk_locators.isChecked(),
+                show_progress=True
                 )
-            self.prog_bar.setMaximum(100)
-            self.prog_bar.setValue(100)
             self.close()
             self.parent.refresh_gui()
-
         except Exception as err:
             print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
             print err
@@ -599,20 +588,14 @@ class import_popup(QtWidgets.QWidget):
 
     def import_anim(self):
         print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
-
         try:
-            # TODO: thread import to unblock PyQt UI?
-            self.prog_bar.setRange(0, 0)
-            self.prog_bar.setValue(0)
             import_animfile(
                 self.pdx_file, 
-                timestart=self.spn_start.value()
+                timestart=self.spn_start.value(),
+                show_progress=True
                 )
-            self.prog_bar.setMaximum(100)
-            self.prog_bar.setValue(100)
             self.close()
             self.parent.refresh_gui()
-
         except Exception as err:
             print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
             print err
@@ -668,8 +651,8 @@ class material_popup(QtWidgets.QWidget):
         btn_layout.addWidget(self.btn_okay)
         btn_layout.addWidget(self.btn_cancel)
 
-        # material specific
-        if self.material:       # editing a selected material
+        # editing a selected material
+        if self.material:
             mat_name = self.material.text()
             mat_node = pmc.PyNode(mat_name)
             mat_shader = getattr(mat_node, PDX_SHADER).get()
@@ -681,8 +664,8 @@ class material_popup(QtWidgets.QWidget):
                 self.mat_type.setEditText(mat_shader)
 
             self.btn_okay.setText('Okay')
-
-        else:                   # creating a new material
+        # creating a new material
+        else:
             self.btn_okay.setText('Save')
     
     def connect_signals(self):
@@ -694,16 +677,24 @@ class material_popup(QtWidgets.QWidget):
         return self.parent.settings[sel_engine]['material']
 
     def save_mat(self):
-        if self.material:       # editing a selected material
+        # editing a selected material
+        if self.material:
             mat_name = self.material.text()
             mat_node = pmc.PyNode(mat_name)
 
             pmc.rename(mat_node, self.mat_name.text())
             getattr(mat_node, PDX_SHADER).set(self.mat_type.currentText())
-
-        else:                   # creating a new material
+        # creating a new material
+        else:
             mat_name = self.mat_name.text()
-            mat_pdx = type('Material', (object,), {'shader': self.mat_type.currentText()})
+            # create a mock PDXData object for convenience here to pass to the create_shader function
+            mat_pdx = type(
+                'Material',
+                (PDXData, object),
+                {
+                    'shader': [self.mat_type.currentText()]
+                }
+            )
 
             create_shader(mat_name, mat_pdx, None)
         
