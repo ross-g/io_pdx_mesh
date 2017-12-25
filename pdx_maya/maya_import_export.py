@@ -43,28 +43,6 @@ PDX_DECIMALPTS = 5
 """
 
 
-class MayaProgress(object):
-    """
-        Wrapping the Maya progress window for convenience.
-    """
-    def __init__(self, title, max_value):
-        super(MayaProgress, self).__init__()
-        pmc.progressWindow(title=title, progress=0, min=0, max=max_value, isInterruptable=False)
-        self.max = max_value
-        self.prog = 0
-
-    def update(self, step, status):
-        progress = pmc.progressWindow(query=True, progress=True)
-        if progress >= self.max:
-            pmc.progressWindow(edit=True, progress=0)
-        pmc.progressWindow(edit=True, step=step, status=status)
-        self.prog += step
-
-    @staticmethod
-    def finished():
-        pmc.progressWindow(endProgress=True)
-
-
 def get_MObject(object_name):
     m_Obj = OpenMaya.MObject()
 
@@ -712,11 +690,11 @@ def create_mesh(PDX_mesh, name=None):
         create the new mesh """
     mFn_Mesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
     mFn_Mesh.setName(tmp_mesh_name)
-    m_DagMod.doIt()         # sets up the transform parent to the mesh shape
+    # set up the transform parent to the new mesh (linking it to the scene)
+    m_DagMod.doIt()
 
     # PyNode for the mesh
     new_mesh = pmc.PyNode(tmp_mesh_name)
-    new_transform = pmc.listRelatives(new_mesh, type='transform', parent=True)[0]
 
     # name and namespace
     if name is not None:
@@ -899,11 +877,12 @@ def create_anim_keys(joint_name, key_dict, timestart):
 """
 
 
-def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, show_progress=False):
+def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progress_fn=None):
     start = time.time()
     progress = None
-    if show_progress:
-        progress = MayaProgress('Importing', 10)
+    print "[io_pdx_mesh] Importing {}".format(meshpath)
+    if progress_fn:
+        progress = progress_fn('Importing', 10)
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(meshpath)
@@ -918,7 +897,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, show_
     # go through shapes
     for node in shapes:
         print "[io_pdx_mesh] creating node - {}".format(node.tag)
-        if show_progress:
+        if progress_fn:
             progress.update(1, 'creating node')
 
         # create the skeleton first, so we can skin the mesh to it
@@ -933,7 +912,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, show_
 
             if imp_skel:
                 print "[io_pdx_mesh] creating skeleton -"
-                if show_progress:
+                if progress_fn:
                     progress.update(1, 'creating skeleton')
                 joints = create_skeleton(pdx_bone_list)
 
@@ -943,7 +922,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, show_
             pdx_mesh_list = list()
             for m in meshes:
                 print "[io_pdx_mesh] creating mesh -"
-                if show_progress:
+                if progress_fn:
                     progress.update(1, 'creating mesh')
                 pdx_mesh = pdx_data.PDXData(m)
                 pdx_material = getattr(pdx_mesh, 'material', None)
@@ -956,21 +935,21 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, show_
                 # create the material
                 if pdx_material:
                     print "[io_pdx_mesh] creating material -"
-                    if show_progress:
+                    if progress_fn:
                         progress.update(1, 'creating material')
                     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
                 # create the skin cluster
                 if joints and pdx_skin:
                     print "[io_pdx_mesh] creating skinning data -"
-                    if show_progress:
+                    if progress_fn:
                         progress.update(1, 'creating skinning data')
                     create_skin(pdx_skin, mesh, joints)
 
     # go through locators
     if imp_locs and locators:
         print "[io_pdx_mesh] creating locators -"
-        if show_progress:
+        if progress_fn:
             progress.update(1, 'creating locators')
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
@@ -978,7 +957,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, show_
 
     pmc.select(None)
     print "[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start)
-    if show_progress:
+    if progress_fn:
         progress.finished()
 
 
@@ -1077,11 +1056,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     print "[io_pdx_mesh] export finished! ({} sec)".format(time.time()-start)
 
 
-def import_animfile(animpath, timestart=1.0, show_progress=False):
+def import_animfile(animpath, timestart=1.0, progress_fn=None):
     start = time.time()
     progress = None
-    if show_progress:
-        progress = MayaProgress('Importing', 10)
+    print "[io_pdx_mesh] Importing {}".format(animpath)
+    if progress_fn:
+        progress = progress_fn('Importing', 10)
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(animpath)
@@ -1105,13 +1085,13 @@ def import_animfile(animpath, timestart=1.0, show_progress=False):
             raise NotImplementedError("Unsupported animation speed. {}".format(fps))
 
     print "[io_pdx_mesh] setting playback speed - {}".format(fps)
-    if show_progress:
+    if progress_fn:
         progress.update(1, 'setting playback speed')
     pmc.playbackOptions(e=True, playbackSpeed=1.0)
     pmc.playbackOptions(e=True, animationStartTime=0.0)
 
     print "[io_pdx_mesh] setting playback range - ({},{})".format(timestart,(timestart+framecount))
-    if show_progress:
+    if progress_fn:
         progress.update(1, 'setting playback range')
     pmc.playbackOptions(e=True, minTime=timestart)
     pmc.playbackOptions(e=True, maxTime=(timestart+framecount))
@@ -1120,7 +1100,7 @@ def import_animfile(animpath, timestart=1.0, show_progress=False):
 
     # find bones being animated in the scene
     print "[io_pdx_mesh] finding bones -"
-    if show_progress:
+    if progress_fn:
         progress.update(1, 'finding bones')
     bone_errors = []
     for bone in info:
@@ -1131,7 +1111,7 @@ def import_animfile(animpath, timestart=1.0, show_progress=False):
         except pmc.MayaObjectError:
             bone_errors.append(bone_name)
             print "[io_pdx_mesh] failed to find bone {}".format(bone_name)
-            if show_progress:
+            if progress_fn:
                 progress.update(1, 'failed to find bone!')
 
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
@@ -1181,7 +1161,7 @@ def import_animfile(animpath, timestart=1.0, show_progress=False):
 
     for bone_name in all_bone_keyframes:
         print "[io_pdx_mesh] setting keyframes on bone {}".format(bone_name)
-        if show_progress:
+        if progress_fn:
             progress.update(1, 'setting keyframes on bone')
         keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
@@ -1190,5 +1170,5 @@ def import_animfile(animpath, timestart=1.0, show_progress=False):
 
     pmc.select(None)
     print "[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start)
-    if show_progress:
+    if progress_fn:
         progress.finished()

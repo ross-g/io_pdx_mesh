@@ -41,7 +41,7 @@ def h_line():
 
 
 """ ================================================================================================
-    UI class for the import/export tool.
+    UI classes for the import/export tool.
 ====================================================================================================
 """
 
@@ -567,38 +567,38 @@ class import_popup(QtWidgets.QWidget):
         self.btn_cancel.clicked.connect(self.close)
 
     def import_mesh(self):
-        print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
         try:
+            self.close()
             import_meshfile(
                 self.pdx_file, 
                 imp_mesh=self.chk_mesh.isChecked(), 
                 imp_skel=self.chk_skeleton.isChecked(), 
                 imp_locs=self.chk_locators.isChecked(),
-                show_progress=True
+                progress_fn=MayaProgress
                 )
-            self.close()
             self.parent.refresh_gui()
         except Exception as err:
             print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
             print err
+            MayaProgress.finished()
             self.close()
             raise
 
         self.close()
 
     def import_anim(self):
-        print "[io_pdx_mesh] Importing {}".format(self.pdx_file)
         try:
+            self.close()
             import_animfile(
                 self.pdx_file, 
                 timestart=self.spn_start.value(),
-                show_progress=True
+                progress_fn=MayaProgress
                 )
-            self.close()
             self.parent.refresh_gui()
         except Exception as err:
             print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
             print err
+            MayaProgress.finished()
             self.close()
             raise
 
@@ -700,6 +700,30 @@ class material_popup(QtWidgets.QWidget):
         
         self.parent.export_ctrls.refresh_mat_list()
         self.close()
+
+
+class MayaProgress(object):
+    """
+        Wrapping the Maya progress window for convenience.
+    """
+    def __init__(self, title, max_value):
+        super(MayaProgress, self).__init__()
+        pmc.progressWindow(title=title, progress=0, min=0, max=max_value, status='', isInterruptable=False)
+
+    def __del__(self):
+        self.finished()
+
+    @staticmethod
+    def update(step, status):
+        progress = pmc.progressWindow(query=True, progress=True)
+        max_value = pmc.progressWindow(query=True, max=True)
+        if progress >= max_value:
+            pmc.progressWindow(edit=True, progress=0)
+        pmc.progressWindow(edit=True, step=step, status=status)
+
+    @staticmethod
+    def finished():
+        pmc.progressWindow(endProgress=True)
 
 
 """ ================================================================================================
