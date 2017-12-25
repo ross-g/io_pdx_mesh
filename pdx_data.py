@@ -13,7 +13,6 @@ from __future__ import print_function
 import os
 import sys
 import struct
-import inspect
 from collections import OrderedDict
 
 try:
@@ -177,7 +176,7 @@ def parseData(bdata, pos):
         pos += str_data_length
 
     else:
-        raise NotImplementedError("Unknown data type encountered.")
+        raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
 
     return datavalues, pos
 
@@ -207,7 +206,7 @@ def read_meshfile(filepath, to_stdout=False):
     if bytes(b''.join(header)) == b'@@b@':
         pos = 4
     else:
-        raise NotImplementedError("Unknown file header.")
+        raise NotImplementedError("Unknown file header. {}".format(header))
 
     parent_element = file_element
     depth_list = [file_element]
@@ -316,7 +315,7 @@ def writeData(data_array):
     elif len(types) < 1:
         return datastring
     else:
-        raise NotImplementedError("Mixed data type encountered. {}".format(data_array))
+        raise NotImplementedError("Mixed data type encountered. {} - {}".format(types, data_array))
 
     if datatype == int:
         # write integer data
@@ -368,7 +367,6 @@ def write_meshfile(filepath, root_xml):
     """
         Iterates over an XML element and writes the hierarchical element structure back into a binary file.
     """
-    # TODO use https://pymotw.com/2/StringIO/index.html instead?
     datastring = b''
 
     # write the file header '@@b@'
@@ -380,7 +378,7 @@ def write_meshfile(filepath, root_xml):
     if root_xml.tag == 'File':
         datastring += writeProperty('pdxasset', root_xml.get('pdxasset'))
     else:
-        raise NotImplementedError("Unknown XML root encountered.")
+        raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
 
     # TODO: writing properties would be easier if order was irrelevant, you should test this
     # write objects root
