@@ -17,7 +17,7 @@ except ImportError:
 
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
-import maya.OpenMaya as OpenMaya            # Maya Python API 1.0   # TODO: test using API 2.0 for speedup
+import maya.OpenMaya as OpenMaya            # Maya Python API 1.0
 import maya.OpenMayaAnim as OpenMayaAnim    # Maya Python API 1.0
 from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion    # Maya Python API 2.0
 
@@ -51,6 +51,16 @@ def get_MObject(object_name):
     m_SelList.getDependNode(0, m_Obj)
 
     return m_Obj
+
+
+def get_MDagPath(object_name):
+    m_DagPath = OpenMaya.MDagPath()
+
+    m_SelList = OpenMaya.MSelectionList()
+    m_SelList.add(object_name)
+    m_SelList.getDagPath(0, m_DagPath)
+
+    return m_DagPath
 
 
 def get_plug(mobject, plug_name):
@@ -606,21 +616,35 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
                                    maximumInfluences=num_infs, obeyMaxInfluences=True)
     pmc.skinPercent(skin_cluster, mesh, normalize=False, pruneWeights=100)
 
-    # set skin weights from our dict
-    for v in xrange(len(skin_dict.keys())):
-        joints = [skeleton[j] for j in skin_dict[v]['joints']]
-        weights = skin_dict[v]['weights']
+    # API skin cluster function set
+    skin_obj = get_MObject(skin_cluster.name())
+    mFn_SkinCluster = OpenMayaAnim.MFnSkinCluster(skin_obj)
 
-        # normalise joint weights
-        try:
-            norm_weights = [float(w)/sum(weights) for w in weights]
-        except:
-            norm_weights = weights
+    mesh_dag = get_MDagPath(mesh.name())
 
-        # strip invalid entries (either zero weight or negative joint index)
-        joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0 and j != -1]
+    indices = OpenMaya.MIntArray()
+    for vtx in xrange(len(skin_dict.keys())):
+        indices.append(vtx)
+    mFn_SingleIdxCo = OpenMaya.MFnSingleIndexedComponent()
+    vertex_IdxCo = mFn_SingleIdxCo.create(OpenMaya.MFn.kMeshVertComponent)
+    mFn_SingleIdxCo.addElements(indices)    # must only add indices after running create()
 
-        pmc.skinPercent(skin_cluster, '{}.vtx[{}]'.format(mesh.name(), v), transformValue=joint_weights, normalize=True)
+    infs = OpenMaya.MIntArray()
+    for j in xrange(len(skeleton)):
+        infs.append(j)
+
+    weights = OpenMaya.MDoubleArray()
+    for vtx in xrange(len(skin_dict.keys())):
+        jts = skin_dict[vtx]['joints']
+        wts = skin_dict[vtx]['weights']
+        for j in xrange(len(skeleton)):
+            if j in jts:
+                weights.append(wts[jts.index(j)])
+            else:
+                weights.append(0.0)
+
+    # set skin weights
+    mFn_SkinCluster.setWeights(mesh_dag, vertex_IdxCo, infs, weights)
 
     # turn on skin weights normalization again
     pmc.setAttr('{}.normalizeWeights'.format(skin_cluster), True)
