@@ -13,6 +13,7 @@ from __future__ import print_function
 import os
 import sys
 import struct
+import inspect
 from collections import OrderedDict
 
 try:
@@ -29,7 +30,7 @@ except ImportError:
 
 class PDXData(object):
     """
-        Simple class that turns an XML element hierarchy with attributes into a object for more convenient
+        Simple class to turn an XML element with attributes into a object for more convenient
         access to attributes.
     """
     def __init__(self, element, depth=None):
@@ -40,7 +41,6 @@ class PDXData(object):
         self.depth = 0
         if depth is not None:
             self.depth = depth
-
         # object attribute collection
         self.attrdict = OrderedDict()
 
@@ -57,12 +57,12 @@ class PDXData(object):
 
     def __str__(self):
         string = list()
-        for _key, _val in self.attrdict.iteritems():
-            if type(_val) == type(self):
-                string.append('{}{}:'.format(self.depth*'    ', _key))
-                string.append('{}'.format(_val))
+        for k, v in self.attrdict.iteritems():
+            if type(v) == type(self):
+                string.append('{}{}:'.format(self.depth*'    ', k))
+                string.append('{}'.format(v))
             else:
-                string.append('{}{}:  {}'.format(self.depth*'    ', _key, len(_val)))
+                string.append('{}{}:  {}'.format(self.depth*'    ', k, len(v)))
         return '\n'.join(string)
 
 
@@ -176,7 +176,7 @@ def parseData(bdata, pos):
         pos += str_data_length
 
     else:
-        raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
+        raise NotImplementedError("Unknown data type encountered.")
 
     return datavalues, pos
 
@@ -206,7 +206,7 @@ def read_meshfile(filepath, to_stdout=False):
     if bytes(b''.join(header)) == b'@@b@':
         pos = 4
     else:
-        raise NotImplementedError("Unknown file header. {}".format(header))
+        raise NotImplementedError("Unknown file header.")
 
     parent_element = file_element
     depth_list = [file_element]
@@ -312,10 +312,8 @@ def writeData(data_array):
     types = set([type(d) for d in data_array])
     if len(types) == 1:
         datatype = types.pop()
-    elif len(types) < 1:
-        return datastring
     else:
-        raise NotImplementedError("Mixed data type encountered. {} - {}".format(types, data_array))
+        raise NotImplementedError("Mixed data type encountered.")
 
     if datatype == int:
         # write integer data
@@ -365,8 +363,9 @@ def writeData(data_array):
 
 def write_meshfile(filepath, root_xml):
     """
-        Iterates over an XML element and writes the hierarchical element structure back into a binary file.
+        Iterates over an XML element and writes the hierarchical element structure to binary file.
     """
+    # TODO use https://pymotw.com/2/StringIO/index.html instead?
     datastring = b''
 
     # write the file header '@@b@'
@@ -378,7 +377,7 @@ def write_meshfile(filepath, root_xml):
     if root_xml.tag == 'File':
         datastring += writeProperty('pdxasset', root_xml.get('pdxasset'))
     else:
-        raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
+        raise NotImplementedError("Unknown XML root encountered.")
 
     # TODO: writing properties would be easier if order was irrelevant, you should test this
     # write objects root
@@ -467,21 +466,29 @@ def write_meshfile(filepath, root_xml):
 
 if __name__ == '__main__':
     """
-       When called from the command line we just print the structure and contents of the .mesh or .anim file to stdout
+       When called as a script we just print the structure and contents of the mesh file to stdout
     """
     clear = lambda: os.system('cls')
     clear()
+    _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+    a_file = os.path.join(_script_dir, 'test files', 'fallen_empire_fighter.mesh')
 
     if len(sys.argv) > 1:
         a_file = sys.argv[1]
-        a_data = read_meshfile(a_file)
 
-        for elem in a_data.iter():
-            print('object', elem.tag)
-            for k, v in elem.items():
-                print('    property', k, '({})'.format(len(v)))
-                print(v)
-            print()
+    a_data = read_meshfile(a_file)
+
+    # for elem in a_data.iter():
+    #     print('object', elem.tag)
+    #     for k, v in elem.items():
+    #         print('    property', k, '({})'.format(len(v)))
+    #         print(v)
+    #     print()
+
+    b_file = os.path.join(_script_dir, 'test files', 'test_write.mesh')
+    write_meshfile(b_file, a_data)
+
+    b_data = read_meshfile(b_file)
 
 
 """
@@ -508,7 +515,7 @@ General binary format is:
                     p    (float)  verts
                     n    (float)  normals
                     ta    (float)  tangents
-                    u0    (float)  UVs
+                    u    (float)  UVs
                     tri    (int)  triangles
                     aabb    (object)
                         min    (float)  min bounding box
