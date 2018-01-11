@@ -27,7 +27,7 @@ print('[io_pdx_mesh] __init__ (running from {})'.format(app))
 # check if running in Blender
 if app == 'blender':
     import bpy
-    
+
     # register the Blender addon
     from .pdx_blender import register, unregister
 
@@ -35,7 +35,11 @@ if app == 'blender':
 if app == 'maya':
     import maya.cmds
 
-    # launch the Maya UI
-    import pdx_maya.maya_ui
-    reload(pdx_maya.maya_ui)
-    pdx_maya.maya_ui.main()
+    try:
+        # launch the Maya UI
+        import pdx_maya.maya_ui
+        reload(pdx_maya.maya_ui)
+        pdx_maya.maya_ui.main()
+    except Exception as e:
+        print sys.exc_info()
+        raise e
