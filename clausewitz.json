@@ -50,8 +50,12 @@
         "material": [
             "Collision",
             "PdxMeshAdvanced",
+            "PdxMeshAdvancedAnim",
             "PdxMeshAdvancedSnow",
-            "PdxMeshHoI4"
+            "PdxMeshBorder",
+            "PdxMeshHoI4",
+            "PdxMeshSnow",
+            "PdxMeshStandard"
         ],
         "path": "X:/project/hoi4/game",
         "target_exe": "X:/project/hoi4/game/hoi4_D.exe"
