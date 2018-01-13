@@ -1007,12 +1007,14 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
         if exp_mesh and shading_groups:
             # this type of ObjectSet associates shaders with geometry
             for group in shading_groups:
-                # create parent element for this mesh (mesh here being geometry sharing a material)
+                # create parent element for this mesh (mesh here being geometry sharing a material, within one shape)
                 print "[io_pdx_mesh] writing mesh -"
                 meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
 
-                # check which faces are using this material
-                mesh = group.members(flatten=True)[0]
+                # check which faces are using this shading group
+                # (groups are shared across shapes, so only select group members that are components of this shape)
+                mesh = [m for m in group.members(flatten=True) if m.node() == shape][0]
+
                 # get all necessary info about this set of faces and determine which unique verts they include
                 mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts)
 
