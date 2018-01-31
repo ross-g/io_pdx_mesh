@@ -260,7 +260,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     _uv_coords[i] = uv
 
                 # tangent (omitted if there were no UVs)
-                if uv_setnames:
+                if uv_setnames and tangents:
                     vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
                     _tangent = list(tangents[vert_tangent_id])
                     if round_data:
@@ -277,7 +277,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     mesh_dict['n'].extend(_normal)
                     for i, uv_set in enumerate(uv_setnames):
                         mesh_dict['u' + str(i)].extend(_uv_coords[i])
-                    if uv_setnames:
+                    if uv_setnames and _tangent:
                         mesh_dict['ta'].extend(_tangent)
                         mesh_dict['ta'].append(1.0)
                     i = len(unique_verts) - 1           # the tri will reference the last added vertex
@@ -1007,6 +1007,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
         if exp_mesh and shading_groups:
             # this type of ObjectSet associates shaders with geometry
             for group in shading_groups:
+                # validate that this shading group corresponds to a PDX material, skip otherwise
+                maya_mat = group.surfaceShader.connections()[0]
+                if not hasattr(maya_mat, PDX_SHADER):
+                    continue
+
                 # create parent element for this mesh (mesh here being geometry sharing a material, within one shape)
                 print "[io_pdx_mesh] writing mesh -"
                 meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
@@ -1032,7 +1037,6 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 # create parent element for material data
                 print "[io_pdx_mesh] writing material -"
                 materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
-                maya_mat = group.surfaceShader.connections()[0]
                 # populate material attributes
                 materialnode_xml.set('shader', [get_material_shader(maya_mat)])
                 mat_texture_dict = get_material_textures(maya_mat)
