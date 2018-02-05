@@ -27,38 +27,37 @@ from . import blender_import_export, blender_ui
 
 class PDXBlender_settings(PropertyGroup):
     setup_engine = EnumProperty(
-            name='Engine',
-            description='Engine',
-            items=blender_ui.get_engine_list
-        )
+        name='Engine',
+        description='Engine',
+        items=blender_ui.get_engine_list
+    )
     setup_fps = IntProperty(
-            name='Animation fps',
-            description='Animation fps',
-            min=1,
-            default=15,
-            update=blender_ui.set_animation_fps
-        )
+        name='Animation fps',
+        description='Animation fps',
+        min=1,
+        default=15,
+        update=blender_ui.set_animation_fps
+    )
     chk_merge_vtx = BoolProperty(
-            name='Merge vertices',
-            description='Merge vertices',
-            default=True,
-        )
+        name='Merge vertices',
+        description='Merge vertices',
+        default=True,
+    )
     chk_merge_obj = BoolProperty(
-            name='Merge objects',
-            description='Merge objects',
-            default=True,
-        )
+        name='Merge objects',
+        description='Merge objects',
+        default=True,
+    )
     # chk_create = BoolProperty(
-    #         name='Create .gfx and .asset',
-    #         description='Create .gfx and .asset',
-    #         default=False,
-    #     )
+    #     name='Create .gfx and .asset',
+    #     description='Create .gfx and .asset',
+    #     default=False,
+    # )
     # chk_preview = BoolProperty(
-    #         name='Preview on export',
-    #         description='Preview on export',
-    #         default=False,
-    #     )
-
+    #     name='Preview on export',
+    #     description='Preview on export',
+    #     default=False,
+    # )
 
 
 """ ====================================================================================================================
@@ -70,6 +69,7 @@ class PDXBlender_settings(PropertyGroup):
 classes = [
     PDXBlender_settings,
     blender_ui.import_mesh,
+    blender_ui.popup_message,
     blender_ui.edit_settings,
     blender_ui.PDXblender_file_ui,
     blender_ui.PDXblender_setup_ui,
@@ -84,11 +84,6 @@ classes = [
 
 
 def register():
-    # try:
-    #     unregister()
-    # except:
-    #     pass
-
     print("[io_pdx_mesh] Loading Blender UI.")
     import importlib
     importlib.reload(blender_import_export)
