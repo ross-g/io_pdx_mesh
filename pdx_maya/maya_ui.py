@@ -4,9 +4,11 @@
     author : ross-g
 """
 
-import webbrowser
-import inspect
 import json
+import inspect
+import webbrowser
+
+import pymel.core as pmc
 import maya.OpenMayaUI as omUI
 
 try:
@@ -244,8 +246,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
         if not os.path.splitext(filename)[1] == '.mesh':
             filename += '.mesh'
         meshpath = os.path.join(os.path.normpath(filepath), filename)
-
-        print "[io_pdx_mesh] Exporting {}".format(meshpath)
 
         try:
             export_meshfile(

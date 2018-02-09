@@ -903,8 +903,9 @@ def create_anim_keys(joint_name, key_dict, timestart):
 
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progress_fn=None):
     start = time.time()
+    print "[io_pdx_mesh] importing {}".format(meshpath)
+
     progress = None
-    print "[io_pdx_mesh] Importing {}".format(meshpath)
     if progress_fn:
         progress = progress_fn('Importing', 10)
 
@@ -987,6 +988,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
     start = time.time()
+    print "[io_pdx_mesh] exporting {}".format(meshpath)
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
@@ -1088,8 +1090,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
 def import_animfile(animpath, timestart=1.0, progress_fn=None):
     start = time.time()
+    print "[io_pdx_mesh] importing {}".format(animpath)
+
     progress = None
-    print "[io_pdx_mesh] Importing {}".format(animpath)
     if progress_fn:
         progress = progress_fn('Importing', 10)
 
