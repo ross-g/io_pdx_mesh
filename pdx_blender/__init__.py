@@ -68,10 +68,13 @@ class PDXBlender_settings(PropertyGroup):
 
 classes = [
     PDXBlender_settings,
-    blender_ui.import_mesh,
     blender_ui.popup_message,
+    blender_ui.import_mesh,
+    blender_ui.export_mesh,
+    blender_ui.show_axis,
     blender_ui.edit_settings,
     blender_ui.PDXblender_file_ui,
+    blender_ui.PDXblender_tools_ui,
     blender_ui.PDXblender_setup_ui,
     blender_ui.PDXblender_help_ui
 ]

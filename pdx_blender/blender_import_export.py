@@ -8,6 +8,7 @@
 """
 
 import os
+import time
 from collections import OrderedDict
 try:
     import xml.etree.cElementTree as Xml
@@ -70,6 +71,16 @@ def clean_imported_name(name):
     return clean_name
 
 
+def set_local_axis_display(state, data_type):
+    object_list = [obj for obj in bpy.data.objects if type(obj.data) == data_type]
+
+    for node in object_list:
+        try:
+            node.show_axis = state
+        except:
+            print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
+
+
 def swap_coord_space(data):
     """
         Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
@@ -84,14 +95,14 @@ def swap_coord_space(data):
     # vector
     if type(data) == Vector or len(data) == 3:
         vec = Vector(data)
-        return (vec * space_matrix)
+        return vec * space_matrix
     # matrix
     elif type(data) == Matrix:
-        return (space_matrix * data * space_matrix.inverted())
-    # # quaternion
-    # elif type(data) == MQuaternion or type(data) == pmdt.Quaternion:
-    #     mat = MMatrix(data.asMatrix())
-    #     return MTransformationMatrix(space_matrix * mat * space_matrix.inverse()).rotation(asQuaternion=True)
+        return space_matrix * data * space_matrix.inverted()
+    # quaternion
+    elif type(data) == Quaternion:
+        mat = data.to_matrix()
+        return (space_matrix * mat.to_4x4() * space_matrix.inverted()).to_quaternion()
     # uv coordinate
     elif len(data) == 2:
         return data[0], 1 - data[1]
@@ -176,7 +187,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     bpy.context.scene.objects.link(new_loc)
 
-    # parent locator
+    # parent locator through a constraint
     parent = getattr(PDX_locator, 'pa', None)
     parent_Xform = Matrix()
 
@@ -451,6 +462,9 @@ def create_mesh(PDX_mesh, name=None):
 
 
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
+    start = time.time()
+    print("[io_pdx_mesh] Importing {}".format(meshpath))
+
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(meshpath)
 
@@ -508,11 +522,47 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
             pdx_locator = pdx_data.PDXData(loc)
             create_locator(pdx_locator, scene_bone_dict)
 
-    print("[io_pdx_mesh] finished!")
+    print("[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start))
 
 
-def export_meshfile(meshpath):
-    pass
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
+    start = time.time()
+    print("[io_pdx_mesh] Exporting {}".format(meshpath))
+
+    # create an XML structure to store the object hierarchy
+    root_xml = Xml.Element('File')
+    root_xml.set('pdxasset', [1, 0])
+
+    # create root element for objects
+    object_xml = Xml.SubElement(root_xml, 'object')
+
+    # populate object data
+    blender_meshes = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh]
+    for shape in blender_meshes:
+        print("[io_pdx_mesh] writing node - {}".format(shape.name))
+        shapenode_xml = Xml.SubElement(object_xml, shape.name)
+
+    # create root element for locators
+    locator_xml = Xml.SubElement(root_xml, 'locator')
+    blender_empties = [obj for obj in bpy.data.objects if obj.data is None]
+    if exp_locs and blender_empties:
+        for loc in blender_empties:
+            # create sub-elements for each locator, populate locator attributes
+            print("[io_pdx_mesh] writing locators -")
+            locnode_xml = Xml.SubElement(locator_xml, loc.name)
+            # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
+            position = list(swap_coord_space(loc.location))
+            rotation = list(swap_coord_space(loc.rotation_euler.to_quaternion()))
+            locnode_xml.set('p', position)
+            locnode_xml.set('q', [rotation[1], rotation[2], rotation[3], rotation[0]])
+            # if loc.getParent():   # we create parent constraints rather than parent empties directly
+            #     locnode_xml.set('pa', [loc.getParent().name()])
+
+    # write the binary file from our XML structure
+    pdx_data.write_meshfile(meshpath, root_xml)
+
+    bpy.ops.object.select_all(action='DESELECT')
+    print("[io_pdx_mesh] export finished! ({} sec)".format(time.time() - start))
 
 
 def import_animfile(animpath, timestart=1.0):
