@@ -120,9 +120,14 @@ class import_mesh(Operator, ImportHelper):
         description='Import locators',
         default=True,
     )
- 
+
     def execute(self, context):
-        import_meshfile(self.filepath, imp_mesh=self.chk_mesh, imp_skel=self.chk_skel, imp_locs=self.chk_locs)
+        import_meshfile(
+            self.filepath,
+            imp_mesh=self.chk_mesh,
+            imp_skel=self.chk_skel,
+            imp_locs=self.chk_locs
+        )
         return {'FINISHED'}
 
 
@@ -155,9 +160,20 @@ class export_mesh(Operator, ExportHelper):
         description='Export locators',
         default=True,
     )
+    chk_merge = BoolProperty(
+        name='Merge vertices',
+        description='Merge vertices',
+        default=True,
+    )
 
     def execute(self, context):
-        export_meshfile(self.filepath, exp_mesh=self.chk_mesh, exp_skel=self.chk_skel, exp_locs=self.chk_locs)
+        export_meshfile(
+            self.filepath,
+            exp_mesh=self.chk_mesh,
+            exp_skel=self.chk_skel,
+            exp_locs=self.chk_locs,
+            merge_verts=self.chk_merge
+        )
         return {'FINISHED'}
 
 
@@ -170,7 +186,7 @@ class show_axis(Operator):
         default=True
     )
     obj_type = type(None)   # TODO: can this be a property so we can over-ride it per usage rather than set at class level?
- 
+
     def execute(self, context):
         set_local_axis_display(self.show, self.obj_type)
         return {'FINISHED'}
@@ -199,11 +215,6 @@ class PDXblender_file_ui(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
-    # @classmethod
-    # def poll(cls, context):
-    #     obj = context.active_object
-    #     return (obj and obj.type == 'MESH')
-
     def draw(self, context):
         self.layout.label('Import:', icon='IMPORT')
         row = self.layout.row()
@@ -224,9 +235,14 @@ class PDXblender_tools_ui(Panel):
     bl_region_type = 'TOOLS'
 
     def draw(self, context):
-        settings = context.scene.io_pdx_settings
-
         col = self.layout.column(align=True)
+
+        col.label('Bone axes:')
+        row = col.row(align=True)
+        op_show_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_OB_ARMATURE', text='Show all')
+        op_show_axis.show = True
+        op_hide_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_ARMATURE', text='Hide all')
+        op_hide_axis.show = False
         col.label('Locator axes:')
         row = col.row(align=True)
         op_show_axis = row.operator('io_pdx_mesh.show_axis', icon='MANIPUL', text='Show all')
@@ -234,10 +250,11 @@ class PDXblender_tools_ui(Panel):
         op_hide_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_EMPTY', text='Hide all')
         op_hide_axis.show = False
         col.separator()
+
         col.label('Materials:')
         row = col.row(align=True)
         row.operator('io_pdx_mesh.popup_message', icon='MATERIAL', text='Create ...')
-        row.operator('io_pdx_mesh.popup_message', icon='MATERIAL', text='Edit')
+        row.operator('io_pdx_mesh.popup_message', icon='MATERIAL', text='Assign shader')
 
 
 class PDXblender_setup_ui(Panel):
@@ -256,13 +273,7 @@ class PDXblender_setup_ui(Panel):
         row = box.row()
         row.label('Animation')
         row.prop(settings, 'setup_fps', text='fps')
-
-        box = self.layout.box()
-        box.label('Export settings:')
-        box.prop(settings, 'chk_merge_vtx')
-        box.prop(settings, 'chk_merge_obj')
-        # box.prop(settings, 'chk_create')
-        # box.prop(settings, 'chk_preview')
+        self.layout.operator('io_pdx_mesh.edit_settings', icon='FILE_TEXT', text='Edit Clausewitz settings')
 
 
 class PDXblender_help_ui(Panel):
@@ -273,6 +284,5 @@ class PDXblender_help_ui(Panel):
     bl_region_type = 'TOOLS'
 
     def draw(self, context):
-        self.layout.operator('io_pdx_mesh.edit_settings', icon='FILE_TEXT', text='Edit Clausewitz settings')
         self.layout.operator('wm.url_open', icon='QUESTION', text='Paradox forums').url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
         self.layout.operator('wm.url_open', icon='QUESTION', text='Source code').url = 'https://github.com/ross-g/io_pdx_mesh'

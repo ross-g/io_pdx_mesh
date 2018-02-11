@@ -3,7 +3,7 @@
 
     As Blenders 3D space is (Z-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
     mirror all positions, normals etc along the Z axis, rotate about X and flip texture coordinates in V.
-    
+
     author : ross-g
 """
 
@@ -42,7 +42,7 @@ PDX_DECIMALPTS = 5
 """
 
 
-def get_BMesh(mesh_data):
+def get_bmesh(mesh_data):
     """
         Returns a BMesh from existing mesh data
     """
@@ -69,6 +69,138 @@ def clean_imported_name(name):
     clean_name = clean_name.replace('|', '_')
 
     return clean_name
+
+
+def check_mesh_material(blender_obj):
+    """
+        Object needs at least one of it's materials to be a PDX material if we're going to export it
+    """
+    result = False
+
+    materials = [slot.material for slot in blender_obj.material_slots]
+    for material in materials:
+        if material:
+            result = result or (PDX_SHADER in material.keys())
+
+    return result
+
+
+def get_material_shader(blender_material):
+    return blender_material.get(PDX_SHADER, None)
+
+
+def get_material_textures(blender_material):
+    texture_dict = dict()
+
+    material_texture_slots = [slot for slot in blender_material.texture_slots if slot is not None]
+    for tex_slot in material_texture_slots:
+        tex_filepath = tex_slot.texture.image.filepath
+
+        if tex_slot.use_map_color_diffuse:
+            texture_dict['diff'] = tex_filepath
+        elif tex_slot.use_map_normal:
+            texture_dict['n'] = tex_filepath
+        elif tex_slot.use_map_color_spec:
+            texture_dict['spec'] = tex_filepath
+
+    return texture_dict
+
+
+def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=False):
+    """
+        Returns a dictionary of mesh information neccessary for the exporter.
+        By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
+        exported separately!
+    """
+    # get Bmesh data structures for this mesh
+    mesh = get_bmesh(blender_obj.data)
+    bmesh.ops.triangulate(mesh, faces=mesh.faces[:], quad_method=0, ngon_method=0)
+
+    # ensure Bmesh data needed for int subscription is initialized
+    mesh.faces.ensure_lookup_table()
+    mesh.verts.ensure_lookup_table()
+    # initialize the index values of each sequence
+    mesh.faces.index_update()
+    mesh.verts.index_update()
+
+    # we need to test vertices for equality based on their attributes
+    # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
+    class UniqueVertex(object):
+
+        def __init__(self, vert_id, position, normal, uv_dict):
+            self.id = vert_id
+            self.p = position
+            self.n = normal
+            self.u0 = uv_dict
+
+        def __eq__(self, other):
+            return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0
+
+    # build a blank dictionary of mesh information for the exporter
+    mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
+
+    # collect all unique verts in the order that we process them
+    unique_verts = []
+
+    for tri in mesh.faces:      # all Bmesh faces were triangulated previously
+        if tri.material_index != mat_index:
+            continue            # skip this triangle if it has the wrong material index
+
+        dict_vert_idx = []
+
+        for vert in tri.verts:
+            vert_id = vert.index
+
+            # position
+            _position = blender_obj.matrix_world * vert.co
+            _position = swap_coord_space(_position)                                              # convert to Game space
+
+            # normal
+            _normal = blender_obj.matrix_world * vert.normal    # FIXME: normal export looks wrong?
+            _normal = swap_coord_space(_normal)                                                  # convert to Game space
+
+            # uv
+            _uv_coords = {}  # TODO: implement UV export
+
+            # tangent (omitted if there were no UVs)  # TODO: implement tangent export
+
+            # check if this tri vert is new and unique, or can just reference an existing vertex
+            new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
+
+            # new unique vertex, collect it and add the vert data to the dict
+            if new_vert not in unique_verts or skip_merge_vertices:
+                unique_verts.append(new_vert)
+                mesh_dict['p'].extend(_position)
+                mesh_dict['n'].extend(_normal)
+                # for i, uv_set in enumerate(uv_setnames):
+                #     mesh_dict['u' + str(i)].extend(_uv_coords[i])
+                # if uv_setnames:
+                #     mesh_dict['ta'].extend(_tangent)
+                #     mesh_dict['ta'].append(1.0)
+                i = len(unique_verts) - 1  # the tri will reference the last added vertex
+            # we have already stored this vertex, no data needs to be added to the dict
+            else:
+                i = unique_verts.index(new_vert)  # the tri can just reference an existing vertex
+
+            # store the tri vert reference
+            dict_vert_idx.append(i)
+
+        # tri-faces
+        mesh_dict['tri'].extend(
+            [dict_vert_idx[0], dict_vert_idx[2], dict_vert_idx[1]]                    # convert handedness to Game space
+        )
+
+    # calculate min and max bounds of mesh
+    x_VtxPos = set([mesh_dict['p'][i] for i in range(0, len(mesh_dict['p']), 3)])
+    y_VtxPos = set([mesh_dict['p'][i+1] for i in range(0, len(mesh_dict['p']), 3)])
+    z_VtxPos = set([mesh_dict['p'][i+2] for i in range(0, len(mesh_dict['p']), 3)])
+    mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
+    mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
+
+    # create an ordered list of vertex ids that we have gathered into the dict
+    vert_id_list = [vert.id for vert in unique_verts]
+
+    return mesh_dict, vert_id_list
 
 
 def set_local_axis_display(state, data_type):
@@ -436,7 +568,7 @@ def create_mesh(PDX_mesh, name=None):
             uv = [uv_data[i], 1 - uv_data[i+1]]     # flip the UV coords in V!
             uvArray.append(uv)
 
-        bm = get_BMesh(new_mesh)
+        bm = get_bmesh(new_mesh)
         uv_layer = bm.loops.layers.uv[uvSetName]
 
         for face in bm.faces:
@@ -525,7 +657,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     print("[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start))
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
     start = time.time()
     print("[io_pdx_mesh] Exporting {}".format(meshpath))
 
@@ -537,10 +669,42 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True):
     object_xml = Xml.SubElement(root_xml, 'object')
 
     # populate object data
-    blender_meshes = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh]
-    for shape in blender_meshes:
-        print("[io_pdx_mesh] writing node - {}".format(shape.name))
-        shapenode_xml = Xml.SubElement(object_xml, shape.name)
+    blender_meshes = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
+    for obj in blender_meshes:
+        print("[io_pdx_mesh] writing node - {}".format(obj.name))
+        objnode_xml = Xml.SubElement(object_xml, obj.name)
+
+        # one object can have multiple materials on a per face basis
+        materials = list(obj.data.materials)
+
+        if exp_mesh and materials:
+            for mat_idx, blender_mat in enumerate(materials):
+                # create parent element for this mesh (mesh here being faces sharing a material, within one object)
+                print("[io_pdx_mesh] writing mesh -")
+                meshnode_xml = Xml.SubElement(objnode_xml, 'mesh')
+
+                # get all necessary info about this set of faces and determine which unique verts they include
+                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts)
+
+                # populate mesh attributes
+                for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
+                    if key in mesh_info_dict and mesh_info_dict[key]:
+                        meshnode_xml.set(key, mesh_info_dict[key])
+
+                # create parent element for bounding box data
+                aabbnode_xml = Xml.SubElement(meshnode_xml, 'aabb')
+                for key in ['min', 'max']:
+                    if key in mesh_info_dict and mesh_info_dict[key]:
+                        aabbnode_xml.set(key, mesh_info_dict[key])
+
+                # create parent element for material data
+                print("[io_pdx_mesh] writing material -")
+                materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
+                # populate material attributes
+                materialnode_xml.set('shader', [get_material_shader(blender_mat)])
+                mat_texture_dict = get_material_textures(blender_mat)
+                for slot, texture in mat_texture_dict.items():
+                    materialnode_xml.set(slot, [os.path.split(texture)[1]])
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')

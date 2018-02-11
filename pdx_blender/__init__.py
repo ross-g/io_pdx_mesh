@@ -4,19 +4,22 @@
     author : ross-g
 """
 
-if 'bpy' in locals():
-    import importlib
-    if 'blender_import_export' in locals():
-        importlib.reload(blender_import_export)
-    if 'blender_ui' in locals():
-        importlib.reload(blender_ui)
+# if 'bpy' in locals():
+#     import importlib
+#     if 'blender_import_export' in locals():
+#         importlib.reload(blender_import_export)
+#     if 'blender_ui' in locals():
+#         importlib.reload(blender_ui)
 
 import os
+import importlib
 import bpy
 from bpy.types import PropertyGroup
 from bpy.props import PointerProperty, StringProperty, BoolProperty, EnumProperty, IntProperty
 
 from . import blender_import_export, blender_ui
+importlib.reload(blender_import_export)
+importlib.reload(blender_ui)
 
 
 """ ====================================================================================================================
@@ -38,16 +41,16 @@ class PDXBlender_settings(PropertyGroup):
         default=15,
         update=blender_ui.set_animation_fps
     )
-    chk_merge_vtx = BoolProperty(
-        name='Merge vertices',
-        description='Merge vertices',
-        default=True,
-    )
-    chk_merge_obj = BoolProperty(
-        name='Merge objects',
-        description='Merge objects',
-        default=True,
-    )
+    # chk_merge_vtx = BoolProperty(
+    #     name='Merge vertices',
+    #     description='Merge vertices',
+    #     default=True,
+    # )
+    # chk_merge_obj = BoolProperty(
+    #     name='Merge objects',
+    #     description='Merge objects',
+    #     default=True,
+    # )
     # chk_create = BoolProperty(
     #     name='Create .gfx and .asset',
     #     description='Create .gfx and .asset',
