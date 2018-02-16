@@ -269,11 +269,11 @@ def create_datatexture(tex_filepath):
     return new_texture
 
 
-def create_material(PDX_material, mesh, texture_dir):
-    mat_name = 'PDXphong_' + mesh.name
-    new_material = bpy.data.materials.new(mat_name)
+def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
+    new_material = bpy.data.materials.new('io_pdx_mat')
     new_material.diffuse_intensity = 1
     new_material.specular_shader = 'PHONG'
+    new_material.use_fake_user = True
 
     new_material[PDX_SHADER] = PDX_material.shader[0]
 
@@ -307,7 +307,11 @@ def create_material(PDX_material, mesh, texture_dir):
             spec_tex.use_map_color_diffuse = False
             spec_tex.use_map_color_spec = True
 
-    mesh.materials.append(new_material)
+    if mat_name is not None:
+        new_material.name = mat_name
+    if mesh is not None:
+        new_material.name = 'PDXphong_' + mesh.name
+        mesh.materials.append(new_material)
 
 
 def create_locator(PDX_locator, PDX_bone_dict):
@@ -640,7 +644,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
                 # create the material
                 if pdx_material:
                     print("[io_pdx_mesh] creating material -")
-                    create_material(pdx_material, mesh, os.path.split(meshpath)[0])
+                    create_material(pdx_material, os.path.split(meshpath)[0], mesh)
 
                 # create the vertex group skin
                 if rig and pdx_skin:

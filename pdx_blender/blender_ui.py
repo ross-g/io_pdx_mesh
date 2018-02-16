@@ -10,14 +10,15 @@ import json
 import importlib
 import bpy
 from bpy.types import Operator, Panel
-from bpy.props import StringProperty, IntProperty, BoolProperty
+from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+
+from ..pdx_data import PDXData
 
 try:
     from . import blender_import_export
     importlib.reload(blender_import_export)
     from .blender_import_export import *
-
 except Exception as err:
     print(err)
     raise
@@ -51,9 +52,18 @@ def get_engine_list(self, context):
     global engine_list
 
     settings = load_settings()     # settings from json
-    engine_list = ((engine, engine, '') for engine in sorted(settings.keys()))
+    engine_list = ((engine, engine, engine) for engine in sorted(settings.keys()))
 
     return engine_list
+
+
+def get_material_list(self, context):
+    sel_engine = context.scene.io_pdx_settings.setup_engine
+
+    settings = load_settings()     # settings from json
+    material_list = [(material, material, material) for material in settings[sel_engine]['material']]
+
+    return material_list
 
 
 def set_animation_fps(self, context):
@@ -63,6 +73,7 @@ def set_animation_fps(self, context):
 class popup_message(Operator):
     bl_idname = 'io_pdx_mesh.popup_message'
     bl_label = '[io_pdx_mesh]'
+    bl_options = {'REGISTER'}
 
     msg_text = StringProperty(
         default='NOT YET IMPLEMENTED!',
@@ -83,6 +94,59 @@ class popup_message(Operator):
     def draw(self, context):
         self.layout.label(self.msg_text, icon=self.msg_icon)
         self.layout.label('')
+
+
+class material_popup(Operator):
+    bl_idname = 'io_pdx_mesh.material_popup'
+    bl_label = 'PDX material'
+    bl_options = {'REGISTER'}
+
+    mat_name = StringProperty(
+        name='Name',
+        default=''
+    )
+    mat_type = EnumProperty(
+        name='Shader',
+        items=get_material_list
+    )
+    use_custom = BoolProperty(
+        name='custom Shader:',
+        default=False,
+    )
+    custom_type = StringProperty(
+        name='Shader',
+        default=''
+    )
+
+    def execute(self, context):
+        mat_name = self.mat_name
+        mat_type = self.mat_type
+        if self.use_custom:
+            mat_type = self.custom_type
+        # create a mock PDXData object for convenience here to pass to the create_shader function
+        mat_pdx = type(
+            'Material',
+            (PDXData, object),
+            {'shader': [mat_type]}
+        )
+
+        create_material(mat_pdx, None, mat_name=mat_name)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.mat_name = ''
+        self.mat_type = get_material_list(self, context)[0][0]
+        self.use_custom = False
+        self.custom_type = ''
+        return context.window_manager.invoke_props_dialog(self, width=350)
+
+    def draw(self, context):
+        box = self.layout.box()
+        box.prop(self, 'mat_name')
+        box.prop(self, 'mat_type')
+        row = box.split(0.33)
+        row.prop(self, 'use_custom')
+        row.prop(self, 'custom_type', text='')
 
 
 """ ====================================================================================================================
@@ -208,7 +272,7 @@ class edit_settings(Operator):
 """
 
 
-class PDXblender_file_ui(Panel):
+class PDXblender_1file_ui(Panel):
     bl_idname = 'panel.io_pdx_mesh.file'
     bl_label = 'File'
     bl_category = 'PDX Blender Tools'
@@ -217,17 +281,17 @@ class PDXblender_file_ui(Panel):
 
     def draw(self, context):
         self.layout.label('Import:', icon='IMPORT')
-        row = self.layout.row()
+        row = self.layout.row(align=True)
         row.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Load mesh ...')
         row.operator('io_pdx_mesh.popup_message', icon='RENDER_ANIMATION', text='Load anim ...')
 
         self.layout.label('Export:', icon='EXPORT')
-        row = self.layout.row()
+        row = self.layout.row(align=True)
         row.operator('io_pdx_mesh.export_mesh', icon='MESH_CUBE', text='Save mesh ...')
         row.operator('io_pdx_mesh.popup_message', icon='RENDER_ANIMATION', text='Save anim ...')
 
 
-class PDXblender_tools_ui(Panel):
+class PDXblender_2tools_ui(Panel):
     bl_idname = 'panel.io_pdx_mesh.tools'
     bl_label = 'Tools'
     bl_category = 'PDX Blender Tools'
@@ -237,13 +301,12 @@ class PDXblender_tools_ui(Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.label('Bone axes:')
+        col.label('Display local axes:')
         row = col.row(align=True)
         op_show_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_OB_ARMATURE', text='Show all')
         op_show_axis.show = True
         op_hide_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_ARMATURE', text='Hide all')
         op_hide_axis.show = False
-        col.label('Locator axes:')
         row = col.row(align=True)
         op_show_axis = row.operator('io_pdx_mesh.show_axis', icon='MANIPUL', text='Show all')
         op_show_axis.show = True
@@ -253,11 +316,11 @@ class PDXblender_tools_ui(Panel):
 
         col.label('Materials:')
         row = col.row(align=True)
-        row.operator('io_pdx_mesh.popup_message', icon='MATERIAL', text='Create ...')
-        row.operator('io_pdx_mesh.popup_message', icon='MATERIAL', text='Assign shader')
+        row.operator('io_pdx_mesh.material_popup', icon='MATERIAL', text='Create ...')
+        row.operator('io_pdx_mesh.popup_message', icon='MATERIAL', text='Edit')
 
 
-class PDXblender_setup_ui(Panel):
+class PDXblender_3setup_ui(Panel):
     bl_idname = 'panel.io_pdx_mesh.setup'
     bl_label = 'Setup'
     bl_category = 'PDX Blender Tools'
@@ -276,7 +339,7 @@ class PDXblender_setup_ui(Panel):
         self.layout.operator('io_pdx_mesh.edit_settings', icon='FILE_TEXT', text='Edit Clausewitz settings')
 
 
-class PDXblender_help_ui(Panel):
+class PDXblender_4help_ui(Panel):
     bl_idname = 'panel.io_pdx_mesh.help'
     bl_label = 'Help'
     bl_category = 'PDX Blender Tools'
