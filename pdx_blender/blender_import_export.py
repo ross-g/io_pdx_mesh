@@ -112,16 +112,19 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
         exported separately!
     """
-    # get Bmesh data structures for this mesh
-    mesh = get_bmesh(blender_obj.data)
-    bmesh.ops.triangulate(mesh, faces=mesh.faces[:], quad_method=0, ngon_method=0)
+    # get mesh and Bmesh data structures for this mesh
+    mesh = blender_obj.data     # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
+    mesh.calc_normals_split()
+    bm = get_bmesh(mesh)
+    bm.transform(blender_obj.matrix_world)
+    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method=0, ngon_method=0)
 
     # ensure Bmesh data needed for int subscription is initialized
-    mesh.faces.ensure_lookup_table()
-    mesh.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    bm.verts.ensure_lookup_table()
     # initialize the index values of each sequence
-    mesh.faces.index_update()
-    mesh.verts.index_update()
+    bm.faces.index_update()
+    bm.verts.index_update()
 
     # we need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
@@ -136,31 +139,41 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         def __eq__(self, other):
             return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0
 
+    # cache some mesh data
+    uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)]
+
     # build a blank dictionary of mesh information for the exporter
     mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
 
     # collect all unique verts in the order that we process them
     unique_verts = []
 
-    for tri in mesh.faces:      # all Bmesh faces were triangulated previously
+    for tri in bm.faces:      # all Bmesh faces were triangulated previously
         if tri.material_index != mat_index:
             continue            # skip this triangle if it has the wrong material index
 
         dict_vert_idx = []
 
-        for vert in tri.verts:
+        for loop in tri.loops:
+            vert = loop.vert
             vert_id = vert.index
 
             # position
-            _position = blender_obj.matrix_world * vert.co
+            _position = vert.co
             _position = swap_coord_space(_position)                                              # convert to Game space
 
             # normal
-            _normal = blender_obj.matrix_world * vert.normal    # FIXME: normal export looks wrong?
+            # FIXME: seems like custom normal per face-vertex is not available through bmesh?
+            _normal = mesh.loops[loop.index].normal     # assumes mesh-loop and bmesh-loop share indices
             _normal = swap_coord_space(_normal)                                                  # convert to Game space
 
             # uv
-            _uv_coords = {}  # TODO: implement UV export
+            _uv_coords = {}
+            for i, uv_set in enumerate(uv_setnames):
+                uv_layer = bm.loops.layers.uv[uv_set]
+                uv = loop[uv_layer].uv
+                uv = swap_coord_space(list(uv))                                                  # convert to Game space
+                _uv_coords[i] = uv
 
             # tangent (omitted if there were no UVs)  # TODO: implement tangent export
 
@@ -172,8 +185,8 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
                 unique_verts.append(new_vert)
                 mesh_dict['p'].extend(_position)
                 mesh_dict['n'].extend(_normal)
-                # for i, uv_set in enumerate(uv_setnames):
-                #     mesh_dict['u' + str(i)].extend(_uv_coords[i])
+                for i, uv_set in enumerate(uv_setnames):
+                    mesh_dict['u' + str(i)].extend(_uv_coords[i])
                 # if uv_setnames:
                 #     mesh_dict['ta'].extend(_tangent)
                 #     mesh_dict['ta'].append(1.0)
@@ -658,7 +671,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
             pdx_locator = pdx_data.PDXData(loc)
             create_locator(pdx_locator, scene_bone_dict)
 
-    print("[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start))
+    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time()-start))
 
 
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
@@ -730,7 +743,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     pdx_data.write_meshfile(meshpath, root_xml)
 
     bpy.ops.object.select_all(action='DESELECT')
-    print("[io_pdx_mesh] export finished! ({} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time() - start))
 
 
 def import_animfile(animpath, timestart=1.0):
