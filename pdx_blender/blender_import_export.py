@@ -42,6 +42,10 @@ PDX_DECIMALPTS = 5
 """
 
 
+def util_round(data, ndigits=0):
+    return data.__class__(round(x, ndigits) for x in data)
+
+
 def get_bmesh(mesh_data):
     """
         Returns a BMesh from existing mesh data
@@ -162,12 +166,16 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
 
             # position
             _position = vert.co
+            if round_data:
+                _position = util_round(_position, PDX_DECIMALPTS)
             _position = swap_coord_space(_position)                                              # convert to Game space
 
             # normal
             # FIXME? seems like custom normal per face-vertex is not available through bmesh
             # _normal = loop.calc_normal()
             _normal = mesh.loops[loop.index].normal             # assumes mesh-loop and bmesh-loop share indices
+            if round_data:
+                _normal = util_round(_normal, PDX_DECIMALPTS)
             _normal = swap_coord_space(_normal)                                                  # convert to Game space
 
             # uv
@@ -175,6 +183,8 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             for i, uv_set in enumerate(uv_setnames):
                 uv_layer = bm.loops.layers.uv[uv_set]
                 uv = loop[uv_layer].uv
+                if round_data:
+                    uv = util_round(uv, PDX_DECIMALPTS)
                 uv = swap_coord_space(list(uv))                                                  # convert to Game space
                 _uv_coords[i] = uv
 
@@ -182,6 +192,8 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             if uv_setnames:
                 # _tangent = loop.calc_tangent()
                 _tangent = mesh.loops[loop.index].tangent       # assumes mesh-loop and bmesh-loop share indices
+                if round_data:
+                    _tangent = util_round(_tangent, PDX_DECIMALPTS)
                 _tangent = swap_coord_space(_tangent)                                            # convert to Game space
 
             # check if this tri vert is new and unique, or can just reference an existing vertex
@@ -713,7 +725,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 meshnode_xml = Xml.SubElement(objnode_xml, 'mesh')
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts)
+                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts, True)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
