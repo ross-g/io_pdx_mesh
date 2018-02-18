@@ -85,6 +85,13 @@ def connect_nodeplugs(source_mobject, source_mplug, dest_mobject, dest_mplug):
 """
 
 
+def util_round(data, ndigits=0):
+    """
+        Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed)
+    """
+    return data.__class__(round(x, ndigits) for x in data)
+
+
 def clean_imported_name(name):
     # strip any namespace names, taking the final name only
     clean_name = name.split(':')[-1]
@@ -235,14 +242,14 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                 # position
                 _position = vertices[vert_id]
                 if round_data:
-                    _position = pmc.util.round(_position, PDX_DECIMALPTS)
+                    _position = util_round(_position, PDX_DECIMALPTS)
                 _position = swap_coord_space(_position)                                          # convert to Game space
 
                 # normal
                 vert_norm_id = face.normalIndex(_local_id)
                 _normal = list(normals[vert_norm_id])
                 if round_data:
-                    _normal = pmc.util.round(_normal, PDX_DECIMALPTS)
+                    _normal = util_round(_normal, PDX_DECIMALPTS)
                 _normal = swap_coord_space(_normal)                                              # convert to Game space
 
                 # uv
@@ -252,7 +259,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
                         uv = uv_coords[i][vert_uv_id]
                         if round_data:
-                            uv = pmc.util.round(uv, PDX_DECIMALPTS)
+                            uv = util_round(uv, PDX_DECIMALPTS)
                         uv = swap_coord_space(uv)                                                # convert to Game space
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
@@ -264,7 +271,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
                     _tangent = list(tangents[vert_tangent_id])
                     if round_data:
-                        _tangent = pmc.util.round(_tangent, PDX_DECIMALPTS)
+                        _tangent = util_round(_tangent, PDX_DECIMALPTS)
                     _tangent = swap_coord_space(_tangent)                                        # convert to Game space
 
                 # check if this tri vert is new and unique, or can just reference an existing vertex
