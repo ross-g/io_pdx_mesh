@@ -141,6 +141,8 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
 
     # cache some mesh data
     uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)]
+    if uv_setnames:
+        mesh.calc_tangents(uv_setnames[0])
 
     # build a blank dictionary of mesh information for the exporter
     mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
@@ -163,8 +165,9 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             _position = swap_coord_space(_position)                                              # convert to Game space
 
             # normal
-            # FIXME: seems like custom normal per face-vertex is not available through bmesh?
-            _normal = mesh.loops[loop.index].normal     # assumes mesh-loop and bmesh-loop share indices
+            # FIXME? seems like custom normal per face-vertex is not available through bmesh
+            # _normal = loop.calc_normal()
+            _normal = mesh.loops[loop.index].normal             # assumes mesh-loop and bmesh-loop share indices
             _normal = swap_coord_space(_normal)                                                  # convert to Game space
 
             # uv
@@ -175,7 +178,11 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
                 uv = swap_coord_space(list(uv))                                                  # convert to Game space
                 _uv_coords[i] = uv
 
-            # tangent (omitted if there were no UVs)  # TODO: implement tangent export
+            # tangent (omitted if there were no UVs)
+            if uv_setnames:
+                # _tangent = loop.calc_tangent()
+                _tangent = mesh.loops[loop.index].tangent       # assumes mesh-loop and bmesh-loop share indices
+                _tangent = swap_coord_space(_tangent)                                            # convert to Game space
 
             # check if this tri vert is new and unique, or can just reference an existing vertex
             new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
@@ -187,10 +194,10 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
                 mesh_dict['n'].extend(_normal)
                 for i, uv_set in enumerate(uv_setnames):
                     mesh_dict['u' + str(i)].extend(_uv_coords[i])
-                # if uv_setnames:
-                #     mesh_dict['ta'].extend(_tangent)
-                #     mesh_dict['ta'].append(1.0)
-                i = len(unique_verts) - 1  # the tri will reference the last added vertex
+                if uv_setnames:
+                    mesh_dict['ta'].extend(_tangent)
+                    mesh_dict['ta'].append(1.0)
+                i = len(unique_verts) - 1           # the tri will reference the last added vertex
             # we have already stored this vertex, no data needs to be added to the dict
             else:
                 i = unique_verts.index(new_vert)  # the tri can just reference an existing vertex
@@ -210,8 +217,13 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
     mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
 
-    # create an ordered list of vertex ids that we have gathered into the dict
+    # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in unique_verts]
+
+    # cleanup
+    bm.free()
+    mesh.free_tangents()
+    mesh.free_normals_split()
 
     return mesh_dict, vert_id_list
 
