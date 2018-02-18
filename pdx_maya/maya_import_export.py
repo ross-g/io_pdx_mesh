@@ -3,7 +3,7 @@
 
     As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
     mirror all positions, normals etc along the Z axis and flip texture coordinates in V.
-    
+
     author : ross-g
 """
 
@@ -301,7 +301,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
     mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
 
-    # create an ordered list of vertex ids that we have gathered into the dict
+    # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in unique_verts]
 
     return mesh_dict, vert_id_list
@@ -849,12 +849,12 @@ def create_anim_keys(joint_name, key_dict, timestart):
             # create the curve and API function set
             anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
             animated_attrs[attrib] = mFn_AnimCurve
-        
+
         # create data arrays per animating attribute
         x_rot_data = OpenMaya.MDoubleArray()
         y_rot_data = OpenMaya.MDoubleArray()
         z_rot_data = OpenMaya.MDoubleArray()
-        
+
         for quat_data in key_dict['q']:
             # mirror in Z
             q = [quat_data[0], quat_data[1], -quat_data[2], -quat_data[3]]
@@ -876,7 +876,7 @@ def create_anim_keys(joint_name, key_dict, timestart):
             # create the curve and API function set
             anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
             animated_attrs[attrib] = mFn_AnimCurve
-        
+
         # create data arrays per animating attribute
         x_trans_data = OpenMaya.MDoubleArray()
         y_trans_data = OpenMaya.MDoubleArray()
@@ -981,7 +981,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
             create_locator(pdx_locator, complete_bone_dict)
 
     pmc.select(None)
-    print "[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start)
+    print "[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time()-start)
     if progress_fn:
         progress.finished()
 
@@ -1023,7 +1023,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 mesh = [m for m in group.members(flatten=True) if m.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts)
+                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts, True)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
@@ -1085,7 +1085,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     pdx_data.write_meshfile(meshpath, root_xml)
 
     pmc.select(None)
-    print "[io_pdx_mesh] export finished! ({} sec)".format(time.time()-start)
+    print "[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time()-start)
 
 
 def import_animfile(animpath, timestart=1.0, progress_fn=None):
@@ -1202,6 +1202,6 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
             create_anim_keys(bone_name, keys, timestart)
 
     pmc.select(None)
-    print "[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start)
+    print "[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time()-start)
     if progress_fn:
         progress.finished()
