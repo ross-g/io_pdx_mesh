@@ -118,7 +118,7 @@ def set_local_axis_display(state, object_type=None, object_list=None):
             node = pmc.listRelatives(node, parent=True)[0]
         try:
             node.displayLocalAxis.set(state)
-        except:
+        except Exception:
             print "[io_pdx_mesh] node '{}' has no displayLocalAxis property".format(node)
 
 
@@ -128,7 +128,7 @@ def set_ignore_joints(state):
     for joint in joint_list:
         try:
             getattr(joint, PDX_IGNOREJOINT).set(state)
-        except:
+        except Exception:
             pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
             getattr(joint, PDX_IGNOREJOINT).set(state)
 
@@ -241,16 +241,16 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
 
                 # position
                 _position = vertices[vert_id]
-                if round_data:
-                    _position = util_round(_position, PDX_DECIMALPTS)
                 _position = swap_coord_space(_position)                                          # convert to Game space
+                if round_data:
+                    _position = util_round(list(_position), PDX_DECIMALPTS)
 
                 # normal
                 vert_norm_id = face.normalIndex(_local_id)
                 _normal = list(normals[vert_norm_id])
-                if round_data:
-                    _normal = util_round(_normal, PDX_DECIMALPTS)
                 _normal = swap_coord_space(_normal)                                              # convert to Game space
+                if round_data:
+                    _normal = util_round(list(_normal), PDX_DECIMALPTS)
 
                 # uv
                 _uv_coords = {}
@@ -258,9 +258,9 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     try:
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
                         uv = uv_coords[i][vert_uv_id]
-                        if round_data:
-                            uv = util_round(uv, PDX_DECIMALPTS)
                         uv = swap_coord_space(uv)                                                # convert to Game space
+                        if round_data:
+                            uv = util_round(list(uv), PDX_DECIMALPTS)
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
                         uv = (0.0, 0.0)
@@ -270,9 +270,9 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                 if uv_setnames and tangents:
                     vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
                     _tangent = list(tangents[vert_tangent_id])
-                    if round_data:
-                        _tangent = util_round(_tangent, PDX_DECIMALPTS)
                     _tangent = swap_coord_space(_tangent)                                        # convert to Game space
+                    if round_data:
+                        _tangent = util_round(list(_tangent), PDX_DECIMALPTS)
 
                 # check if this tri vert is new and unique, or can just reference an existing vertex
                 new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
