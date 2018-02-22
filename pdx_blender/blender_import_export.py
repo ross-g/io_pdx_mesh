@@ -166,35 +166,35 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
 
             # position
             _position = vert.co
+            _position = list(swap_coord_space(_position))                                        # convert to Game space
             if round_data:
                 _position = util_round(_position, PDX_DECIMALPTS)
-            _position = swap_coord_space(_position)                                              # convert to Game space
 
             # normal
             # FIXME? seems like custom normal per face-vertex is not available through bmesh
             # _normal = loop.calc_normal()
             _normal = mesh.loops[loop.index].normal             # assumes mesh-loop and bmesh-loop share indices
+            _normal = list(swap_coord_space(_normal))                                            # convert to Game space
             if round_data:
                 _normal = util_round(_normal, PDX_DECIMALPTS)
-            _normal = swap_coord_space(_normal)                                                  # convert to Game space
 
             # uv
             _uv_coords = {}
             for i, uv_set in enumerate(uv_setnames):
                 uv_layer = bm.loops.layers.uv[uv_set]
                 uv = loop[uv_layer].uv
+                uv = list(swap_coord_space(list(uv)))                                            # convert to Game space
                 if round_data:
                     uv = util_round(uv, PDX_DECIMALPTS)
-                uv = swap_coord_space(list(uv))                                                  # convert to Game space
                 _uv_coords[i] = uv
 
             # tangent (omitted if there were no UVs)
             if uv_setnames:
                 # _tangent = loop.calc_tangent()
                 _tangent = mesh.loops[loop.index].tangent       # assumes mesh-loop and bmesh-loop share indices
+                _tangent = list(swap_coord_space(_tangent))                                      # convert to Game space
                 if round_data:
                     _tangent = util_round(_tangent, PDX_DECIMALPTS)
-                _tangent = swap_coord_space(_tangent)                                            # convert to Game space
 
             # check if this tri vert is new and unique, or can just reference an existing vertex
             new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
@@ -246,7 +246,7 @@ def set_local_axis_display(state, data_type):
     for node in object_list:
         try:
             node.show_axis = state
-        except:
+        except Exception:
             print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
 
 
