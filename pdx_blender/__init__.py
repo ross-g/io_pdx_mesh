@@ -41,26 +41,19 @@ class PDXBlender_settings(PropertyGroup):
         default=15,
         update=blender_ui.set_animation_fps
     )
-    # chk_merge_vtx = BoolProperty(
-    #     name='Merge vertices',
-    #     description='Merge vertices',
-    #     default=True,
-    # )
-    # chk_merge_obj = BoolProperty(
-    #     name='Merge objects',
-    #     description='Merge objects',
-    #     default=True,
-    # )
-    # chk_create = BoolProperty(
-    #     name='Create .gfx and .asset',
-    #     description='Create .gfx and .asset',
-    #     default=False,
-    # )
-    # chk_preview = BoolProperty(
-    #     name='Preview on export',
-    #     description='Preview on export',
-    #     default=False,
-    # )
+
+
+class PDXMaterial_settings(PropertyGroup):
+    mat_name = StringProperty(
+        name='Material name',
+        description='Material name',
+        default=''
+    )
+    mat_type = StringProperty(
+        name='Shader type',
+        description='Shader type',
+        default=''
+    )
 
 
 """ ====================================================================================================================
@@ -69,11 +62,11 @@ class PDXBlender_settings(PropertyGroup):
 """
 
 
-classes = [PDXBlender_settings]
+classes = [PDXBlender_settings, PDXMaterial_settings]
 
 # Append classes dynamically from submodules
 for name, obj in inspect.getmembers(blender_ui, inspect.isclass):
-    if obj.__module__.startswith(__name__):
+    if obj.__module__.startswith(__name__) and hasattr(obj, 'bl_rna'):
         classes.append(obj)
 
 
@@ -94,6 +87,7 @@ def register():
 
     # initialise tool properties to scene
     bpy.types.Scene.io_pdx_settings = PointerProperty(type=PDXBlender_settings)
+    bpy.types.Scene.io_pdx_material = PointerProperty(type=PDXMaterial_settings)
 
 
 def unregister():
@@ -102,3 +96,4 @@ def unregister():
 
     # remove tool properties from scene
     del bpy.types.Scene.io_pdx_settings
+    del bpy.types.Scene.io_pdx_material

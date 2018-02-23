@@ -62,12 +62,25 @@ def get_material_list(self, context):
 
     settings = load_settings()     # settings from json
     material_list = [(material, material, material) for material in settings[sel_engine]['material']]
+    material_list.insert(0, ('__NONE__', '', ''))
+
+    return material_list
+
+
+def get_scene_material_list(self, context):
+    material_list = [(mat.name, mat.name, mat.name) for mat in bpy.data.materials if mat.get(PDX_SHADER, None)]
 
     return material_list
 
 
 def set_animation_fps(self, context):
     context.scene.render.fps = context.scene.io_pdx_settings.setup_fps
+
+
+""" ====================================================================================================================
+    Operator classes called by the tool UI.
+========================================================================================================================
+"""
 
 
 class popup_message(Operator):
@@ -96,9 +109,7 @@ class popup_message(Operator):
         self.layout.label('')
 
 
-class material_popup(Operator):
-    bl_idname = 'io_pdx_mesh.material_popup'
-    bl_label = 'PDX material'
+class material_popup(object):
     bl_options = {'REGISTER'}
 
     mat_name = StringProperty(
@@ -106,7 +117,7 @@ class material_popup(Operator):
         default=''
     )
     mat_type = EnumProperty(
-        name='Shader',
+        name='Shader preset',
         items=get_material_list
     )
     use_custom = BoolProperty(
@@ -118,10 +129,15 @@ class material_popup(Operator):
         default=''
     )
 
+
+class material_create_popup(material_popup, Operator):
+    bl_idname = 'io_pdx_mesh.material_create_popup'
+    bl_label = 'Create a PDX material'
+
     def execute(self, context):
         mat_name = self.mat_name
         mat_type = self.mat_type
-        if self.use_custom:
+        if self.use_custom or mat_type == '__NONE__':
             mat_type = self.custom_type
         # create a mock PDXData object for convenience here to pass to the create_shader function
         mat_pdx = type(
@@ -135,7 +151,7 @@ class material_popup(Operator):
 
     def invoke(self, context, event):
         self.mat_name = ''
-        self.mat_type = get_material_list(self, context)[0][0]
+        self.mat_type = '__NONE__'
         self.use_custom = False
         self.custom_type = ''
         return context.window_manager.invoke_props_dialog(self, width=350)
@@ -147,12 +163,52 @@ class material_popup(Operator):
         row = box.split(0.33)
         row.prop(self, 'use_custom')
         row.prop(self, 'custom_type', text='')
+        self.layout.separator()
 
 
-""" ====================================================================================================================
-    Operator classes called by the tool UI.
-========================================================================================================================
-"""
+class material_edit_popup(material_popup, Operator):
+    bl_idname = 'io_pdx_mesh.material_edit_popup'
+    bl_label = 'Edit a PDX material'
+
+    def mat_select(self, context):
+        mat = bpy.data.materials[self.scene_mats]
+
+        curr_mat = context.scene.io_pdx_material
+        curr_mat.mat_name = mat.name
+        curr_mat.mat_type = mat[PDX_SHADER]
+        print("updated curr_mat:", mat.name, mat[PDX_SHADER])
+
+    scene_mats = EnumProperty(
+        name='Selected material',
+        items=get_scene_material_list,
+        update=mat_select
+    )
+
+    def execute(self, context):
+        mat = bpy.data.materials[self.scene_mats]
+        curr_mat = context.scene.io_pdx_material
+        mat.name = curr_mat.mat_name
+        mat[PDX_SHADER] = curr_mat.mat_type
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.mat_select(context)
+        mat = bpy.data.materials[self.scene_mats]
+        self.mat_name = mat.name
+        self.custom_type = mat[PDX_SHADER]
+        return context.window_manager.invoke_props_dialog(self, width=350)
+
+    def draw(self, context):
+        print("draw")
+        curr_mat = context.scene.io_pdx_material
+
+        self.layout.prop(self, 'scene_mats')
+        self.layout.separator()
+
+        box = self.layout.box()
+        box.prop(curr_mat, 'mat_name')
+        box.prop(curr_mat, 'mat_type')
+        self.layout.separator()
 
 
 class import_mesh(Operator, ImportHelper):
@@ -314,10 +370,16 @@ class PDXblender_2tools_ui(Panel):
         op_hide_axis.show = False
         col.separator()
 
-        col.label('Materials:')
+        col.label('PDX materials:')
         row = col.row(align=True)
-        row.operator('io_pdx_mesh.material_popup', icon='MATERIAL', text='Create ...')
-        row.operator('io_pdx_mesh.popup_message', icon='MATERIAL', text='Edit')
+        row.operator('io_pdx_mesh.material_create_popup', icon='MATERIAL', text='Create ...')
+        row.operator('io_pdx_mesh.material_edit_popup', icon='TEXTURE_SHADED', text='Edit')
+        col.separator()
+
+        col.label('Animation clips:')
+        row = col.row(align=True)
+        row.operator('io_pdx_mesh.popup_message', icon='IPO_BEZIER', text='Create ...')
+        row.operator('io_pdx_mesh.popup_message', icon='NORMALIZE_FCURVES', text='Edit')
 
 
 class PDXblender_3setup_ui(Panel):
