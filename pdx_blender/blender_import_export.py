@@ -75,6 +75,16 @@ def clean_imported_name(name):
     return clean_name
 
 
+def set_local_axis_display(state, data_type):
+    object_list = [obj for obj in bpy.data.objects if type(obj.data) == data_type]
+
+    for node in object_list:
+        try:
+            node.show_axis = state
+        except Exception:
+            print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
+
+
 def check_mesh_material(blender_obj):
     """
         Object needs at least one of it's materials to be a PDX material if we're going to export it
@@ -240,14 +250,58 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     return mesh_dict, vert_id_list
 
 
-def set_local_axis_display(state, data_type):
-    object_list = [obj for obj in bpy.data.objects if type(obj.data) == data_type]
+def get_mesh_skin_info(blender_obj, vertex_ids=None):
+    # bpy.ops.object.vertex_group_limit_total(group_select_mode='', limit=4)
 
-    for node in object_list:
-        try:
-            node.show_axis = state
-        except Exception:
-            print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
+    skin_mod = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
+    if not skin_mod:
+        return None
+
+    # a mesh can only be connected to one armature modifier
+    skin = skin_mod[0]
+    # get the armature referenced by the modifier
+    rig = skin.object
+    if rig is None:
+        return None
+
+    # build a dictionary of skin information for the exporter
+    skin_dict = {x: [] for x in ['bones', 'ix', 'w']}
+
+    # set number of joint influences per vert
+    skin_dict['bones'].append(PDX_MAXSKININFS)
+
+    # find influence bones
+    # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
+    bones = rig.data.bones
+
+    # parse all verts in order if we didn't supply a subset of vert ids
+    mesh = blender_obj.data
+    if vertex_ids is None:
+        vertex_ids = range(len(mesh.vertices))
+
+    # iterate over influences to find weights, per vertex
+    vert_weights = {v: {} for v in vertex_ids}
+    for i, vtx in enumerate(mesh.vertices):
+        for vtx_grp in vtx.groups:
+            # FIXME: index here is vert group idx, used as bone idx ...
+            # may be wrong if some bones do not have a vert group, or if vert group ordering != bone ordering
+            index = vtx_grp.group
+            if index < len(blender_obj.vertex_groups):
+                weight = vtx_grp.weight
+                if weight != 0.0:
+                    vert_weights[i][index] = vtx_grp.weight
+
+    # collect data from the weights dict into the skin dict
+    for vtx in vertex_ids:
+        for influence, weight in vert_weights[vtx].iteritems():
+            skin_dict['ix'].append(influence)
+            skin_dict['w'].append(weight)
+        if len(vert_weights[vtx]) < PDX_MAXSKININFS:    # pad out with null data to fill container
+            padding = PDX_MAXSKININFS - len(vert_weights[vtx])
+            skin_dict['ix'].extend([-1]*padding)
+            skin_dict['w'].extend([0.0]*padding)
+
+    return skin_dict
 
 
 def swap_coord_space(data):
@@ -524,7 +578,7 @@ def create_skin(PDX_skin, obj, rig, max_infs=None):
         # normalise joint weights
         try:
             norm_weights = [float(w)/sum(weights) for w in weights]
-        except:
+        except Exception:
             norm_weights = weights
         # strip zero weight entries
         joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
@@ -746,6 +800,15 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 mat_texture_dict = get_material_textures(blender_mat)
                 for slot, texture in mat_texture_dict.items():
                     materialnode_xml.set(slot, [os.path.split(texture)[1]])
+
+                # create parent element for skin data, if the mesh is skinned
+                skin_info_dict = get_mesh_skin_info(obj, vert_ids)
+                if exp_skel and skin_info_dict:
+                    print("[io_pdx_mesh] writing skinning data -")
+                    skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
+                    for key in ['bones', 'ix', 'w']:
+                        if key in skin_info_dict and skin_info_dict[key]:
+                            skinnode_xml.set(key, skin_info_dict[key])
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
