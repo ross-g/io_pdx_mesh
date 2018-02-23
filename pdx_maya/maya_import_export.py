@@ -1130,7 +1130,7 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
     pmc.playbackOptions(e=True, playbackSpeed=1.0)
     pmc.playbackOptions(e=True, animationStartTime=0.0)
 
-    print "[io_pdx_mesh] setting playback range - ({},{})".format(timestart,(timestart+framecount))
+    print "[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart+framecount))
     if progress_fn:
         progress.update(1, 'setting playback range')
     pmc.playbackOptions(e=True, minTime=timestart)
