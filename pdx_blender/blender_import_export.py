@@ -270,9 +270,10 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
     # set number of joint influences per vert
     skin_dict['bones'].append(PDX_MAXSKININFS)
 
-    # find influence bones
-    # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
-    bones = rig.data.bones
+    # find bone/vertex-group influences
+    # TODO: skip bone/group if bone has the PDX_IGNOREJOINT attribute
+    bone_names = [bone.name for bone in rig.data.bones]
+    group_names = [group.name for group in blender_obj.vertex_groups]
 
     # parse all verts in order if we didn't supply a subset of vert ids
     mesh = blender_obj.data
@@ -282,24 +283,33 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
     for i, vtx in enumerate(mesh.vertices):
-        for vtx_grp in vtx.groups:
-            # FIXME: index here is vert group idx, used as bone idx ...
-            # may be wrong if some bones do not have a vert group, or if vert group ordering != bone ordering
-            index = vtx_grp.group
-            if index < len(blender_obj.vertex_groups):
-                weight = vtx_grp.weight
+        for vtx_group in vtx.groups:
+            group_index = vtx_group.group
+            # get bone index by group name lookup, as it's not guaranteed that group indices and bone indices line up
+            try:
+                bone_idx = bone_names.index(group_names[group_index])
+            except ValueError:
+                raise RuntimeError("Vertex is skinned to a group ({}) with no corresponding armature bone!".format(
+                    group_names[group_index]
+                ))
+            if group_index < len(blender_obj.vertex_groups):
+                weight = vtx_group.weight
                 if weight != 0.0:
-                    vert_weights[i][index] = vtx_grp.weight
+                    vert_weights[i][bone_idx] = vtx_group.weight
 
     # collect data from the weights dict into the skin dict
     for vtx in vertex_ids:
-        for influence, weight in vert_weights[vtx].iteritems():
+        for influence, weight in vert_weights[vtx].items():
             skin_dict['ix'].append(influence)
             skin_dict['w'].append(weight)
-        if len(vert_weights[vtx]) < PDX_MAXSKININFS:    # pad out with null data to fill container
+        if len(vert_weights[vtx]) <= PDX_MAXSKININFS:
+            # pad out with null data to fill the maximum influence count
             padding = PDX_MAXSKININFS - len(vert_weights[vtx])
             skin_dict['ix'].extend([-1]*padding)
             skin_dict['w'].extend([0.0]*padding)
+        else:
+            raise RuntimeError("Vertex is skinned to more than {} groups! This is not supported. "
+                               "Use 'Weight Tools > Limit Total' to reduce influence count.".format(PDX_MAXSKININFS))
 
     return skin_dict
 
