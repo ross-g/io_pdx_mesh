@@ -20,12 +20,12 @@ bl_info = {
     'category': 'Import-Export'
 }
 
-app = os.path.splitext(os.path.split(sys.executable)[1])[0]
+app = os.path.split(sys.executable)[1]
 print('[io_pdx_mesh] __init__ (running from {})'.format(app))
 
 
 # check if running in Blender
-if app == 'blender':
+if 'blender' in app.lower():
     import bpy
 
     try:
@@ -36,7 +36,7 @@ if app == 'blender':
         raise e
 
 # otherwise running in Maya
-if app == 'maya':
+if 'maya' in app.lower():
     import maya.cmds
 
     try:
