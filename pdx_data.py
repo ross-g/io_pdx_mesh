@@ -4,7 +4,7 @@
     This is designed to be compatible with both Python 2 and Python 3 (so code can be shared across Maya and Blender)
     Critically, the way strings and binary data are handled must now be done with care, see...
         http://python-future.org/compatible_idioms.html#byte-string-literals
-    
+
     author : ross-g
 """
 
@@ -19,6 +19,12 @@ try:
     import xml.etree.cElementTree as Xml
 except ImportError:
     import xml.etree.ElementTree as Xml
+
+# Py2, Py3 compatibility
+try:
+  basestring
+except NameError:
+  basestring = str
 
 
 """ ====================================================================================================================
@@ -103,7 +109,7 @@ def parseObject(bdata, pos):
     while struct.unpack_from('b', bdata, offset=pos)[0] != 0:
         obj_name += struct.unpack_from('c', bdata, offset=pos)[0].decode()
         pos += 1
-    
+
     # skip the ending zero byte
     pos += 1
 
@@ -150,7 +156,7 @@ def parseData(bdata, pos):
         # count
         size = struct.unpack_from('i', bdata, offset=pos)[0]
         pos += 4
-        
+
         # values
         for i in range(0, size):
             val = struct.unpack_from('f', bdata, offset=pos)[0]
@@ -298,7 +304,7 @@ def writeString(string):
     datastring = b''
 
     string = str(string)    # struct.pack cannot handle unicode strings in Python 2
-    
+
     for x in string:
         datastring += struct.pack('c', x.encode())
 
@@ -317,7 +323,7 @@ def writeData(data_array):
     else:
         raise NotImplementedError("Mixed data type encountered. {} - {}".format(types, data_array))
 
-    if datatype == int:
+    if all(isinstance(d, int) for d in data_array):
         # write integer data
         datastring += struct.pack('c', 'i'.encode())
 
@@ -328,7 +334,7 @@ def writeData(data_array):
         # write the data values
         datastring += struct.pack('i'*size, *data_array)
 
-    elif datatype == float:
+    elif all(isinstance(d, float) for d in data_array):
         # write float data
         datastring += struct.pack('c', 'f'.encode())
 
@@ -339,7 +345,7 @@ def writeData(data_array):
         # values
         datastring += struct.pack('f'*size, *data_array)
 
-    elif datatype == str or datatype == unicode:
+    elif all(isinstance(d, basestring) for d in data_array):
         # write string data
         datastring += struct.pack('c', 's'.encode())
 
