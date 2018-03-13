@@ -314,6 +314,45 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
     return skin_dict
 
 
+def get_mesh_skeleton_info(blender_obj):
+    skin_mod = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
+    if not skin_mod:
+        return []
+
+    # a mesh can only be connected to one armature modifier
+    skin = skin_mod[0]
+    # get the armature referenced by the modifier
+    rig = skin.object
+    if rig is None:
+        return []
+
+    # find influence bones
+    bones = [bone for bone in rig.data.bones]
+
+    # build a list of bone information dictionaries for the exporter
+    bone_list = [{'name': x.name} for x in bones]
+    for i, bone in enumerate(bones):
+        # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
+        # bone index
+        bone_list[i]['ix'] = [i]
+
+        # bone parent index
+        if bone.parent:
+            bone_list[i]['pa'] = [bones.index(bone.parent)]
+
+        # bone inverse world-space transform
+        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted()
+        mat.transpose()
+        mat = [i for vector in mat for i in vector]     # flatten matrix to list
+        bone_list[i]['tx'] = []
+        bone_list[i]['tx'].extend(mat[0:3])
+        bone_list[i]['tx'].extend(mat[4:7])
+        bone_list[i]['tx'].extend(mat[8:11])
+        bone_list[i]['tx'].extend(mat[12:15])
+
+    return bone_list
+
+
 def swap_coord_space(data):
     """
         Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
@@ -325,17 +364,17 @@ def swap_coord_space(data):
         (0, 0, 0, 1)
     ))
 
-    # vector
-    if type(data) == Vector or len(data) == 3:
-        vec = Vector(data)
-        return vec * space_matrix
     # matrix
-    elif type(data) == Matrix:
+    if type(data) == Matrix:
         return space_matrix * data * space_matrix.inverted()
     # quaternion
     elif type(data) == Quaternion:
         mat = data.to_matrix()
         return (space_matrix * mat.to_4x4() * space_matrix.inverted()).to_quaternion()
+    # vector
+    elif type(data) == Vector or len(data) == 3:
+        vec = Vector(data)
+        return vec * space_matrix
     # uv coordinate
     elif len(data) == 2:
         return data[0], 1 - data[1]
@@ -482,7 +521,7 @@ def create_skeleton(PDX_bone_list):
     # create the armature datablock
     armt = bpy.data.armatures.new('armature')
     armt.name = 'imported_armature'
-    armt.draw_type = 'STICK'
+    armt.draw_type = 'OCTAHEDRAL'
 
     # create the object and link to the scene
     new_rig = bpy.data.objects.new(tmp_rig_name, armt)
@@ -512,32 +551,35 @@ def create_skeleton(PDX_bone_list):
             new_bone.parent = parent_bone
             new_bone.use_connect = False
 
-        # set head transform
+        # determine bone head transform
         mat = Matrix((
             (transform[0], transform[3], transform[6], transform[9]),
             (transform[1], transform[4], transform[7], transform[10]),
             (transform[2], transform[5], transform[8], transform[11]),
             (0.0, 0.0, 0.0, 1.0)
         ))
-        # set matrix directly as this includes bone roll
-        new_bone.matrix = swap_coord_space(mat.inverted_safe())                        # convert coords to Blender space
 
-        # set tail transform (based on possible children)
+        # set bone tail offset first, based on avg distance to any children
+        avg_dist = 0.0
         bone_children = [b for b in PDX_bone_list if getattr(b, 'pa', [None]) == bone.ix]
-        if bone_children:
-            # use the first childs position as the tail
-            child_transform = bone_children[0].tx
+        for child in bone_children:
+            child_transform = child.tx
             c_mat = Matrix((
                 (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
                 (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
                 (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
                 (0.0, 0.0, 0.0, 1.0)
             ))
-            new_bone.tail = swap_coord_space(c_mat.inverted_safe().to_translation())   # convert coords to Blender space
-
+            c_dist = c_mat.to_translation() - mat.to_translation()
+            avg_dist += math.sqrt(c_dist.x**2 + c_dist.y**2 + c_dist.z**2)
+        if avg_dist != 0:
+            avg_dist /= len(bone_children)
         else:
-            # leaf node bone, use an arbitrary extension of the parent bone vector (as zero length bones are culled)
-            new_bone.tail = new_bone.head + (new_bone.parent.vector / new_bone.parent.length) * 0.1
+            avg_dist = 10
+        new_bone.tail = Vector((0.0, 0.0, 0.1)) * avg_dist
+
+        # set matrix directly as this includes bone roll/rotation
+        new_bone.matrix = swap_coord_space(mat.inverted_safe())                        # convert coords to Blender space
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
@@ -547,10 +589,6 @@ def create_skeleton(PDX_bone_list):
             if bone_parent.head == bone_parent.tail:
                 bone_parent.tail += Vector((0, 0, 0.01))
                 continue
-
-            # set "use_connect" for bones whos parent has exactly 1 child bone (provided we didn't nudge their tail)
-            if len(bone_parent.children) == 1:
-                bone.use_connect = True
 
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.scene.update()
@@ -819,6 +857,19 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                     for key in ['bones', 'ix', 'w']:
                         if key in skin_info_dict and skin_info_dict[key]:
                             skinnode_xml.set(key, skin_info_dict[key])
+
+        # create parent element for skeleton data, if the mesh is skinned
+        bone_info_list = get_mesh_skeleton_info(obj)
+        if exp_skel and bone_info_list:
+            print("[io_pdx_mesh] writing skeleton -")
+            skeletonnode_xml = Xml.SubElement(objnode_xml, 'skeleton')
+
+            # create sub-elements for each bone, populate bone attributes
+            for bone_info_dict in bone_info_list:
+                bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict['name'])
+                for key in ['ix', 'pa', 'tx']:
+                    if key in bone_info_dict and bone_info_dict[key]:
+                        bonenode_xml.set(key, bone_info_dict[key])
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
