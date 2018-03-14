@@ -242,12 +242,21 @@ class import_mesh(Operator, ImportHelper):
     )
 
     def execute(self, context):
-        import_meshfile(
-            self.filepath,
-            imp_mesh=self.chk_mesh,
-            imp_skel=self.chk_skel,
-            imp_locs=self.chk_locs
-        )
+        try:
+            import_meshfile(
+                self.filepath,
+                imp_mesh=self.chk_mesh,
+                imp_skel=self.chk_skel,
+                imp_locs=self.chk_locs
+            )
+            self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
+        except Exception as err:
+            msg = "[io_pdx_mesh] FAILED to import {}".format(self.filepath)
+            self.report({'ERROR'}, msg)
+            print(msg)
+            print(err)
+            raise
+
         return {'FINISHED'}
 
 
@@ -287,13 +296,22 @@ class export_mesh(Operator, ExportHelper):
     )
 
     def execute(self, context):
-        export_meshfile(
-            self.filepath,
-            exp_mesh=self.chk_mesh,
-            exp_skel=self.chk_skel,
-            exp_locs=self.chk_locs,
-            merge_verts=self.chk_merge
-        )
+        try:
+            export_meshfile(
+                self.filepath,
+                exp_mesh=self.chk_mesh,
+                exp_skel=self.chk_skel,
+                exp_locs=self.chk_locs,
+                merge_verts=self.chk_merge
+            )
+            self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
+        except Exception as err:
+            msg = "[io_pdx_mesh] FAILED to export {}".format(self.filepath)
+            self.report({'ERROR'}, msg)
+            print(msg)
+            print(err)
+            raise
+
         return {'FINISHED'}
 
 
@@ -373,7 +391,7 @@ class PDXblender_2tools_ui(Panel):
         col.label('PDX materials:')
         row = col.row(align=True)
         row.operator('io_pdx_mesh.material_create_popup', icon='MATERIAL', text='Create ...')
-        row.operator('io_pdx_mesh.material_edit_popup', icon='TEXTURE_SHADED', text='Edit')
+        row.operator('io_pdx_mesh.popup_message', icon='TEXTURE_SHADED', text='Edit')
         col.separator()
 
         col.label('Animation clips:')
