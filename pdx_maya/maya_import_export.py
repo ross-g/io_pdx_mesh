@@ -9,7 +9,7 @@
 
 import os
 import time
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -191,22 +191,9 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     else:
         raise NotImplementedError("Unsupported mesh type encountered. {}".format(type(maya_mesh)))
 
-    # we need to test vertices for equality based on their attributes
+    # we will need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
-    class UniqueVertex(object):
-        __slots__ = ['id', 'p', 'n', 'u0']
-
-        def __init__(self, vert_id, position, normal, uv_dict):
-            self.id = vert_id
-            self.p = position
-            self.n = normal
-            self.u0 = uv_dict
-
-        def __eq__(self, other):
-            return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0
-        
-        def __ne__(self, other):
-            return not self == other
+    UniqueVertex = namedtuple('UniqueVertex', ['id', 'p', 'n', 'uv'])
 
     # API mesh function set
     mesh_obj = get_MObject(mesh.name())
@@ -281,22 +268,23 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
 
                 # check if this tri vert is new and unique, or can just reference an existing vertex
                 new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
-
-                # new unique vertex, collect it and add the vert data to the dict
-                if new_vert not in unique_verts or skip_merge_vertices:
+                # test if we have already stored this vertex
+                try:
+                    # no data needs to be added to the dict, the tri can just reference an existing vertex
+                    i = unique_verts.index(new_vert)
+                except ValueError:
+                    i = None
+                if i is None or skip_merge_vertices:
+                    # new unique vertex, collect it and add the vert data to the dict
                     unique_verts.append(new_vert)
                     mesh_dict['p'].extend(_position)
                     mesh_dict['n'].extend(_normal)
                     for i, uv_set in enumerate(uv_setnames):
                         mesh_dict['u' + str(i)].extend(_uv_coords[i])
-                    if uv_setnames and _tangent:
+                    if uv_setnames:
                         mesh_dict['ta'].extend(_tangent)
                         mesh_dict['ta'].append(1.0)
                     i = len(unique_verts) - 1           # the tri will reference the last added vertex
-
-                # we have already stored this vertex, no data needs to be added to the dict
-                else:
-                    i = unique_verts.index(new_vert)    # the tri can just reference an existing vertex
 
                 # store the tri vert reference
                 dict_vert_idx.append(i)
