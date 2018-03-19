@@ -180,6 +180,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
         exported separately!
     """
+    start = time.time()
     # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
         meshfaces = maya_mesh
@@ -193,6 +194,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     # we need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
     class UniqueVertex(object):
+        __slots__ = ['id', 'p', 'n', 'u0']
 
         def __init__(self, vert_id, position, normal, uv_dict):
             self.id = vert_id
@@ -202,6 +204,9 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
 
         def __eq__(self, other):
             return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0
+        
+        def __ne__(self, other):
+            return not self == other
 
     # API mesh function set
     mesh_obj = get_MObject(mesh.name())
@@ -311,6 +316,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in unique_verts]
 
+    print "[debug] {} ({})".format(mesh.name(), time.time() - start)
     return mesh_dict, vert_id_list
 
 
@@ -993,9 +999,13 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
         progress.finished()
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, progress_fn=None):
     start = time.time()
     print "[io_pdx_mesh] exporting {}".format(meshpath)
+
+    progress = None
+    if progress_fn:
+        progress = progress_fn('Exporting', 10)
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
@@ -1008,6 +1018,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
     for shape in maya_meshes:
         print "[io_pdx_mesh] writing node - {}".format(shape.name())
+        if progress_fn:
+            progress.update(1, 'writing node')
         shapenode_xml = Xml.SubElement(object_xml, shape.name())
 
         # one shape can have multiple materials on a per meshface basis
@@ -1023,6 +1035,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
                 # create parent element for this mesh (mesh here being geometry sharing a material, within one shape)
                 print "[io_pdx_mesh] writing mesh -"
+                if progress_fn:
+                    progress.update(1, 'writing mesh')
                 meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
 
                 # check which faces are using this shading group
@@ -1045,6 +1059,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
                 # create parent element for material data
                 print "[io_pdx_mesh] writing material -"
+                if progress_fn:
+                    progress.update(1, 'writing material')
                 materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
                 # populate material attributes
                 materialnode_xml.set('shader', [get_material_shader(maya_mat)])
@@ -1056,6 +1072,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 skin_info_dict = get_mesh_skin_info(shape, vert_ids)
                 if exp_skel and skin_info_dict:
                     print "[io_pdx_mesh] writing skinning data -"
+                    if progress_fn:
+                        progress.update(1, 'writing skinning data')
                     skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
                     for key in ['bones', 'ix', 'w']:
                         if key in skin_info_dict and skin_info_dict[key]:
@@ -1065,6 +1083,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
         bone_info_list = get_mesh_skeleton_info(shape)
         if exp_skel and bone_info_list:
             print "[io_pdx_mesh] writing skeleton -"
+            if progress_fn:
+                progress.update(1, 'writing skeleton')
             skeletonnode_xml = Xml.SubElement(shapenode_xml, 'skeleton')
 
             # create sub-elements for each bone, populate bone attributes
@@ -1078,9 +1098,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     locator_xml = Xml.SubElement(root_xml, 'locator')
     maya_locators = [pmc.listRelatives(loc, type='transform', parent=True)[0] for loc in pmc.ls(type=pmc.nt.Locator)]
     if exp_locs and maya_locators:
+        print "[io_pdx_mesh] writing locators -"
+        if progress_fn:
+            progress.update(1, 'writing locators')
         for loc in maya_locators:
             # create sub-elements for each locator, populate locator attributes
-            print "[io_pdx_mesh] writing locators -"
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
             # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
             locnode_xml.set('p', list(swap_coord_space(loc.getTranslation())))
@@ -1093,6 +1115,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     pmc.select(None)
     print "[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time()-start)
+    if progress_fn:
+        progress.finished()
 
 
 def import_animfile(animpath, timestart=1.0, progress_fn=None):

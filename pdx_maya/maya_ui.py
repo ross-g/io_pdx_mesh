@@ -253,7 +253,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 exp_mesh=export_opts.chk_mesh.isChecked(),
                 exp_skel=export_opts.chk_skeleton.isChecked(),
                 exp_locs=export_opts.chk_locators.isChecked(),
-                merge_verts=export_opts.chk_merge_vtx.isChecked()
+                merge_verts=export_opts.chk_merge_vtx.isChecked(),
+                progress_fn=MayaProgress
             )
             QtWidgets.QMessageBox.information(self, 'Success', 'Mesh export finished!\n\n{}'.format(meshpath))
 
