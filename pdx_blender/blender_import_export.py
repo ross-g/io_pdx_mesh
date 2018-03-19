@@ -126,6 +126,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
         exported separately!
     """
+    start = time.time()
     # get mesh and Bmesh data structures for this mesh
     mesh = blender_obj.data     # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.calc_normals_split()
@@ -143,6 +144,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     # we need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
     class UniqueVertex(object):
+        __slots__ = ['id', 'p', 'n', 'u0'] 
 
         def __init__(self, vert_id, position, normal, uv_dict):
             self.id = vert_id
@@ -151,7 +153,10 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             self.u0 = uv_dict
 
         def __eq__(self, other):
-            return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0
+            return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0 
+         
+        def __ne__(self, other): 
+            return not self == other
 
     # cache some mesh data
     uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)]
@@ -247,6 +252,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     mesh.free_tangents()
     mesh.free_normals_split()
 
+    print("[debug] {} ({})".format(blender_obj.name, time.time() - start))
     return mesh_dict, vert_id_list
 
 
@@ -875,9 +881,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     locator_xml = Xml.SubElement(root_xml, 'locator')
     blender_empties = [obj for obj in bpy.data.objects if obj.data is None]
     if exp_locs and blender_empties:
+        print("[io_pdx_mesh] writing locators -")
         for loc in blender_empties:
             # create sub-elements for each locator, populate locator attributes
-            print("[io_pdx_mesh] writing locators -")
             locnode_xml = Xml.SubElement(locator_xml, loc.name)
             # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
             position = list(swap_coord_space(loc.location))
