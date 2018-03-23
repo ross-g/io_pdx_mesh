@@ -397,18 +397,18 @@ def swap_coord_space(data):
         (0, 0, 0, 1)
     ))
 
-    # vector
-    if type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
-        vec = MVector(data)
-        return vec * space_matrix
     # matrix
-    elif type(data) == MMatrix or type(data) == pmdt.Matrix:
+    if type(data) == MMatrix or type(data) == pmdt.Matrix:
         mat = MMatrix(data)
         return space_matrix * mat * space_matrix.inverse()
     # quaternion
     elif type(data) == MQuaternion or type(data) == pmdt.Quaternion:
         mat = MMatrix(data.asMatrix())
         return MTransformationMatrix(space_matrix * mat * space_matrix.inverse()).rotation(asQuaternion=True)
+    # vector
+    elif type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
+        vec = MVector(data)
+        return vec * space_matrix
     # uv coordinate
     elif len(data) == 2:
         return data[0], 1 - data[1]
@@ -833,7 +833,7 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_scale_data = OpenMaya.MDoubleArray()
 
         for scale_data in key_dict['s']:
-            # mirror in Z
+            # convert to Game space
             x_scale_data.append(scale_data[0])
             y_scale_data.append(scale_data[0])
             z_scale_data.append(scale_data[0])
@@ -857,10 +857,10 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_rot_data = OpenMaya.MDoubleArray()
 
         for quat_data in key_dict['q']:
-            # mirror in Z
-            q = [quat_data[0], quat_data[1], -quat_data[2], -quat_data[3]]
+            # convert to Game space
+            q = swap_coord_space(MQuaternion(*quat_data))
             # convert from quaternion to euler, this gives values in radians (which Maya uses internally)
-            euler_data = OpenMaya.MQuaternion(*q).asEulerRotation()
+            euler_data = q.asEulerRotation()
             x_rot_data.append(euler_data.x)
             y_rot_data.append(euler_data.y)
             z_rot_data.append(euler_data.z)
@@ -884,8 +884,8 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_trans_data = OpenMaya.MDoubleArray()
 
         for trans_data in key_dict['t']:
-            # mirror in Z
-            t = [trans_data[0], trans_data[1], -trans_data[2]]
+            # convert to Game space
+            t = swap_coord_space(MVector(*trans_data))
             x_trans_data.append(t[0])
             y_trans_data.append(t[1])
             z_trans_data.append(t[2])
@@ -1168,17 +1168,17 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
 
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
         if bone_joint:
-            bone_joint.setScale(
-                [bone.attrib['s'][0], bone.attrib['s'][0], bone.attrib['s'][0]]
-            )
-            bone_joint.setRotation(
-                # mirror in Z
-                [bone.attrib['q'][0], bone.attrib['q'][1], -bone.attrib['q'][2], -bone.attrib['q'][3]]
-            )
-            bone_joint.setTranslation(
-                # mirror in Z
-                [bone.attrib['t'][0], bone.attrib['t'][1], -bone.attrib['t'][2]]
-            )
+            # compose transform parts
+            _scale = [bone.attrib['s'][0], bone.attrib['s'][0], bone.attrib['s'][0]]
+            _rotation = MQuaternion(*bone.attrib['q'])
+            _translation = MVector(*bone.attrib['t'])
+
+            # convert to Game space
+            bone_joint.setScale(_scale)
+            bone_joint.setRotation(swap_coord_space(_rotation))
+            bone_joint.setTranslation(swap_coord_space(_translation))
+
+            # zero out joint orientation
             bone_joint.jointOrient.set(0.0, 0.0, 0.0)
 
     # break on bone errors
