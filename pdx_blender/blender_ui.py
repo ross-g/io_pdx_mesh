@@ -315,6 +315,43 @@ class export_mesh(Operator, ExportHelper):
         return {'FINISHED'}
 
 
+class import_anim(Operator, ImportHelper):
+    bl_idname = 'io_pdx_mesh.import_anim'
+    bl_label = 'Import PDX animation'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # ImportHelper mixin class uses these
+    filename_ext = '.anim'
+    filter_glob = StringProperty(
+        default='*.anim',
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    # list of operator properties
+    int_start = IntProperty(
+        name='Start frame',
+        description='Start frame',
+        default=1,
+    )
+
+    def execute(self, context):
+        try:
+            import_animfile(
+                self.filepath,
+                timestart=self.int_start
+            )
+            self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
+        except Exception as err:
+            msg = "[io_pdx_mesh] FAILED to import {}".format(self.filepath)
+            self.report({'ERROR'}, msg)
+            print(msg)
+            print(err)
+            raise
+
+        return {'FINISHED'}
+
+
 class show_axis(Operator):
     bl_idname = 'io_pdx_mesh.show_axis'
     bl_label = 'Show local axis'
@@ -357,7 +394,7 @@ class PDXblender_1file_ui(Panel):
         self.layout.label('Import:', icon='IMPORT')
         row = self.layout.row(align=True)
         row.operator('io_pdx_mesh.import_mesh', icon='MESH_CUBE', text='Load mesh ...')
-        row.operator('io_pdx_mesh.popup_message', icon='RENDER_ANIMATION', text='Load anim ...')
+        row.operator('io_pdx_mesh.import_anim', icon='RENDER_ANIMATION', text='Load anim ...')
 
         self.layout.label('Export:', icon='EXPORT')
         row = self.layout.row(align=True)

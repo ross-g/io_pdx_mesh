@@ -81,7 +81,7 @@ def set_local_axis_display(state, data_type):
     for node in object_list:
         try:
             node.show_axis = state
-        except Exception:
+        except Exception as err:
             print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
 
 
@@ -338,7 +338,7 @@ def get_mesh_skeleton_info(blender_obj):
             bone_list[i]['pa'] = [bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted()
+        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted()                  # convert to Game space
         mat.transpose()
         mat = [i for vector in mat for i in vector]     # flatten matrix to list
         bone_list[i]['tx'] = []
@@ -495,7 +495,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     bpy.context.scene.update()
 
-    # apply parent transform (must be multipled in transposed form, then re-transpoed before being applied)
+    # apply parent transform (must be multiplied in transposed form, then re-transposed before being applied)
     new_loc.matrix_world = (new_loc.matrix_world.transposed() * parent_Xform.inverted_safe().transposed()).transposed()
 
     # convert to Blender space
@@ -518,7 +518,7 @@ def create_skeleton(PDX_bone_list):
     # create the armature datablock
     armt = bpy.data.armatures.new('armature')
     armt.name = 'imported_armature'
-    armt.draw_type = 'OCTAHEDRAL'
+    armt.draw_type = 'STICK'
 
     # create the object and link to the scene
     new_rig = bpy.data.objects.new(tmp_rig_name, armt)
@@ -555,10 +555,16 @@ def create_skeleton(PDX_bone_list):
             (transform[2], transform[5], transform[8], transform[11]),
             (0.0, 0.0, 0.0, 1.0)
         ))
+        # rescale or recompose matrix so we always import bones at 1.0 scale
+        loc, rot, scale = mat.decompose()
+        try:
+            safemat = Matrix.Scale(1.0/scale[0], 4) * mat
+        except ZeroDivisionError:       # guard against zero scale bones...
+            safemat = Matrix.Translation(loc) * rot.to_matrix().to_4x4() * Matrix.Scale(1.0, 4)
 
-        # set bone tail offset first, based on avg distance to any children
-        avg_dist = 0.0
+        # determine avg distance to any children
         bone_children = [b for b in PDX_bone_list if getattr(b, 'pa', [None]) == bone.ix]
+        bone_dists = []
         for child in bone_children:
             child_transform = child.tx
             c_mat = Matrix((
@@ -567,25 +573,25 @@ def create_skeleton(PDX_bone_list):
                 (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
                 (0.0, 0.0, 0.0, 1.0)
             ))
-            c_dist = c_mat.to_translation() - mat.to_translation()
-            avg_dist += math.sqrt(c_dist.x**2 + c_dist.y**2 + c_dist.z**2)
-        if avg_dist != 0:
-            avg_dist /= len(bone_children)
-        else:
-            avg_dist = 10
-        new_bone.tail = Vector((0.0, 0.0, 0.1)) * avg_dist
+            c_dist = c_mat.to_translation() - safemat.to_translation()
+            bone_dists.append(math.sqrt(c_dist.x**2 + c_dist.y**2 + c_dist.z**2))
 
+        avg_dist = 5.0
+        if bone_children:
+            avg_dist = sum(bone_dists) / len(bone_dists)
+        avg_dist = min(max(1.0, avg_dist), 10.0)
+
+        # set bone tail offset first
+        new_bone.tail = Vector((0.0, 0.0, 0.1 * avg_dist))
         # set matrix directly as this includes bone roll/rotation
-        new_bone.matrix = swap_coord_space(mat.inverted_safe())                        # convert coords to Blender space
+        new_bone.matrix = swap_coord_space(safemat.inverted_safe())                           # convert to Blender space
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
-        bone_parent = bone.parent
-        if bone_parent:
-            # Blender culls zero length bones, nudge the tail to ensure we don't create any
-            if bone_parent.head == bone_parent.tail:
-                bone_parent.tail += Vector((0, 0, 0.01))
-                continue
+        # Blender culls zero length bones, nudge the tail to ensure we don't create any
+        if bone.length == 0:
+            # FIXME: is this safe? this would affect bone rotation
+            bone.tail += Vector((0, 0, 0.1))
 
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.scene.update()
@@ -593,7 +599,7 @@ def create_skeleton(PDX_bone_list):
     return new_rig
 
 
-def create_skin(PDX_skin, obj, rig, max_infs=None):
+def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
     if max_infs is None:
         max_infs = PDX_MAXSKININFS
 
@@ -617,13 +623,12 @@ def create_skin(PDX_skin, obj, rig, max_infs=None):
 
     # set all skin weights
     for v in range(len(skin_dict.keys())):
-        # FIXME: this will break if we have failed to create any bones (due to zero length etc)
-        joints = [armt_bones[j].name for j in skin_dict[v]['joints']]
+        joints = [PDX_bones[j].name for j in skin_dict[v]['joints']]
         weights = skin_dict[v]['weights']
         # normalise joint weights
         try:
             norm_weights = [float(w)/sum(weights) for w in weights]
-        except Exception:
+        except Exception as err:
             norm_weights = weights
         # strip zero weight entries
         joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
@@ -662,7 +667,7 @@ def create_mesh(PDX_mesh, name=None):
     # vertices
     vertexArray = []   # array of points
     for i in range(0, len(verts), 3):
-        v = swap_coord_space([verts[i], verts[i+1], verts[i+2]])                       # convert coords to Blender space
+        v = swap_coord_space([verts[i], verts[i+1], verts[i+2]])                              # convert to Blender space
         vertexArray.append(v)
 
     # faces
@@ -689,7 +694,7 @@ def create_mesh(PDX_mesh, name=None):
     if norms:
         normals = []
         for i in range(0, len(norms), 3):
-            n = swap_coord_space([norms[i], norms[i+1], norms[i+2]])                   # convert vector to Blender space
+            n = swap_coord_space([norms[i], norms[i+1], norms[i+2]])                          # convert to Blender space
             normals.append(n)
 
         new_mesh.polygons.foreach_set('use_smooth', [True] * len(new_mesh.polygons))
@@ -725,6 +730,98 @@ def create_mesh(PDX_mesh, name=None):
     new_obj.select = True
 
     return new_mesh, new_obj
+
+
+def create_anim_keys(joint_name, key_dict, timestart):
+    # jnt_obj = get_MObject(joint_name)
+
+    # calculate start and end frames
+    timestart = int(timestart)
+    timeend = timestart + len(max(key_dict.values(), key=len))
+
+    # # create a time array
+    # time_array = OpenMaya.MTimeArray()
+    # for t in xrange(timestart, timeend):
+    #     time_array.append(OpenMaya.MTime(t, OpenMaya.MTime.uiUnit()))
+
+    # # define anim curve tangent
+    # k_Tangent = OpenMayaAnim.MFnAnimCurve.kTangentLinear
+
+    # if 's' in key_dict:     # scale data
+    #     animated_attrs = dict(scaleX=None, scaleY=None, scaleZ=None)
+
+    #     for attrib in animated_attrs:
+    #         # create the curve and API function set
+    #         anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
+    #         animated_attrs[attrib] = mFn_AnimCurve
+
+    #     # create data arrays per animating attribute
+    #     x_scale_data = OpenMaya.MDoubleArray()
+    #     y_scale_data = OpenMaya.MDoubleArray()
+    #     z_scale_data = OpenMaya.MDoubleArray()
+
+    #     for scale_data in key_dict['s']:
+    #         # convert to Game space
+    #         x_scale_data.append(scale_data[0])
+    #         y_scale_data.append(scale_data[0])
+    #         z_scale_data.append(scale_data[0])
+
+    #     # add keys to the new curves
+    #     for attrib, data_array in zip(animated_attrs, [x_scale_data, y_scale_data, z_scale_data]):
+    #         mFn_AnimCurve = animated_attrs[attrib]
+    #         mFn_AnimCurve.addKeys(time_array, data_array, k_Tangent, k_Tangent)
+
+    # if 'q' in key_dict:     # quaternion data
+    #     animated_attrs = dict(rotateX=None, rotateY=None, rotateZ=None)
+
+    #     for attrib in animated_attrs:
+    #         # create the curve and API function set
+    #         anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
+    #         animated_attrs[attrib] = mFn_AnimCurve
+
+    #     # create data arrays per animating attribute
+    #     x_rot_data = OpenMaya.MDoubleArray()
+    #     y_rot_data = OpenMaya.MDoubleArray()
+    #     z_rot_data = OpenMaya.MDoubleArray()
+
+    #     for quat_data in key_dict['q']:
+    #         # convert to Game space
+    #         q = swap_coord_space(MQuaternion(*quat_data))
+    #         # convert from quaternion to euler, this gives values in radians (which Maya uses internally)
+    #         euler_data = q.asEulerRotation()
+    #         x_rot_data.append(euler_data.x)
+    #         y_rot_data.append(euler_data.y)
+    #         z_rot_data.append(euler_data.z)
+
+    #     # add keys to the new curves
+    #     for attrib, data_array in zip(animated_attrs, [x_rot_data, y_rot_data, z_rot_data]):
+    #         mFn_AnimCurve = animated_attrs[attrib]
+    #         mFn_AnimCurve.addKeys(time_array, data_array, k_Tangent, k_Tangent)
+
+    # if 't' in key_dict:     # translation data
+    #     animated_attrs = dict(translateX=None, translateY=None, translateZ=None)
+
+    #     for attrib in animated_attrs:
+    #         # create the curve and API function set
+    #         anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
+    #         animated_attrs[attrib] = mFn_AnimCurve
+
+    #     # create data arrays per animating attribute
+    #     x_trans_data = OpenMaya.MDoubleArray()
+    #     y_trans_data = OpenMaya.MDoubleArray()
+    #     z_trans_data = OpenMaya.MDoubleArray()
+
+    #     for trans_data in key_dict['t']:
+    #         # convert to Game space
+    #         t = swap_coord_space(MVector(*trans_data))
+    #         x_trans_data.append(t[0])
+    #         y_trans_data.append(t[1])
+    #         z_trans_data.append(t[2])
+
+    #     # add keys to the new curves
+    #     for attrib, data_array in zip(animated_attrs, [x_trans_data, y_trans_data, z_trans_data]):
+    #         mFn_AnimCurve = animated_attrs[attrib]
+    #         mFn_AnimCurve.addKeys(time_array, data_array, k_Tangent, k_Tangent)
 
 
 """ ====================================================================================================================
@@ -785,7 +882,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
                 # create the vertex group skin
                 if rig and pdx_skin:
                     print("[io_pdx_mesh] creating skinning data -")
-                    create_skin(pdx_skin, obj, rig)
+                    create_skin(pdx_skin, pdx_bone_list, obj, rig)
 
     # go through locators
     if imp_locs and locators:
@@ -892,4 +989,113 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
 
 def import_animfile(animpath, timestart=1.0):
-    pass
+    start = time.time()
+    print("[io_pdx_mesh] Importing {}".format(animpath))
+
+    # read the file into an XML structure
+    asset_elem = pdx_data.read_meshfile(animpath)
+
+    # find animation info and samples
+    info = asset_elem.find('info')
+    samples = asset_elem.find('samples')
+    framecount = info.attrib['sa'][0]
+
+    # set scene animation and playback settings
+    fps = int(info.attrib['fps'][0])
+    print("[io_pdx_mesh] setting playback speed - {}".format(fps))
+    try:
+        bpy.context.scene.render.fps = fps
+    except Exception as err:
+        raise NotImplementedError("Unsupported animation speed. {}".format(fps))
+    bpy.context.scene.render.fps_base = 1.0
+
+    print("[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart + framecount)))
+    bpy.context.scene.frame_start = timestart
+    bpy.context.scene.frame_end = (timestart + framecount)
+    bpy.context.scene.frame_current = timestart
+
+    # find armature and bones being animated in the scene
+    print("[io_pdx_mesh] finding armature and bones -")
+    matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.tag)) for bone in info]
+    matching_rigs = list(set(rig for rig in matching_rigs if rig))
+    if len(matching_rigs) != 1:
+        raise RuntimeError("Missing unique armature required for animation:\n{}".format(matching_rigs))
+    rig = matching_rigs[0]
+
+    # clear any current pose before attempting to load the animation
+    bpy.context.scene.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    bpy.ops.pose.select_all(action='SELECT')
+    bpy.ops.pose.transforms_clear()
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # check armature has all required bones
+    bone_errors = []
+    for bone in info:
+        pose_bone, edit_bone = None, None
+        bone_name = clean_imported_name(bone.tag)
+        try:
+            pose_bone = rig.pose.bones[bone_name]
+            edit_bone = pose_bone.bone  # rig.data.bones[bone_name]
+        except KeyError:
+            bone_errors.append(bone_name)
+            print("[io_pdx_mesh] failed to find bone {}".format(bone_name))
+
+        # and set initial transform
+        if pose_bone and edit_bone:
+            pose_bone.rotation_mode = 'QUATERNION'
+
+            # compose transform parts
+            _scale = Matrix.Scale(bone.attrib['s'][0], 4)
+            _rotation = Quaternion(
+                (bone.attrib['q'][3], bone.attrib['q'][0], bone.attrib['q'][1], bone.attrib['q'][2])
+            ).to_matrix().to_4x4()
+            _translation = Matrix.Translation(bone.attrib['t'])
+
+            # this matrix describes offset from parent bone to initial posed location
+            offset_matrix = swap_coord_space(_translation * _rotation * _scale)               # convert to Blender space
+
+            # apply transform
+            parent_matrix = Matrix()
+            if edit_bone.parent:
+                parent_matrix = edit_bone.parent.matrix_local
+            pose_bone.matrix = (offset_matrix.transposed() * parent_matrix.transposed()).transposed()
+
+    # break on bone errors
+    if bone_errors:
+        raise RuntimeError("Missing bones required for animation:\n{}".format(bone_errors))
+
+    # check which transform types are animated on each bone
+    all_bone_keyframes = OrderedDict()
+    for bone in info:
+        bone_name = clean_imported_name(bone.tag)
+        key_data = dict()
+        all_bone_keyframes[bone_name] = key_data
+
+        for sample_type in bone.attrib['sa'][0]:
+            key_data[sample_type] = []
+
+    # then traverse the samples data to store keys per bone
+    s_index, q_index, t_index = 0, 0, 0
+    for f in range(0, framecount):
+        for i, bone_name in enumerate(all_bone_keyframes):
+            bone_key_data = all_bone_keyframes[bone_name]
+
+            if 's' in bone_key_data:
+                bone_key_data['s'].append(samples.attrib['s'][s_index:s_index + 1])
+                s_index += 1
+            if 'q' in bone_key_data:
+                bone_key_data['q'].append(samples.attrib['q'][q_index:q_index + 4])
+                q_index += 4
+            if 't' in bone_key_data:
+                bone_key_data['t'].append(samples.attrib['t'][t_index:t_index + 3])
+                t_index += 3
+
+    for bone_name in all_bone_keyframes:
+        print("[io_pdx_mesh] setting keyframes on bone {}".format(bone_name))
+        keys = all_bone_keyframes[bone_name]
+        # check bone has keyframe values
+        if keys.values():
+            create_anim_keys(bone_name, keys, timestart)
+
+    print("[io_pdx_mesh] import finished! ({} sec)".format(time.time() - start))
