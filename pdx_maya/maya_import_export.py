@@ -1142,11 +1142,11 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
     pmc.playbackOptions(e=True, playbackSpeed=1.0)
     pmc.playbackOptions(e=True, animationStartTime=0.0)
 
-    print "[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart+framecount))
+    print "[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart+framecount-1))
     if progress_fn:
         progress.update(1, 'setting playback range')
     pmc.playbackOptions(e=True, minTime=timestart)
-    pmc.playbackOptions(e=True, maxTime=(timestart+framecount))
+    pmc.playbackOptions(e=True, maxTime=(timestart+framecount-1))
 
     pmc.currentTime(0, edit=True)
 
@@ -1159,10 +1159,11 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
         bone_joint = None
         bone_name = clean_imported_name(bone.tag)
         try:
-            bone_joint = pmc.PyNode(bone_name)  # type: pmc.nodetypes.joint
-        except pmc.MayaObjectError:
+            matching_bones = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)    # type: pmc.nodetypes.joint
+            bone_joint = matching_bones[0]
+        except IndexError:
             bone_errors.append(bone_name)
-            print "[io_pdx_mesh] failed to find bone {}".format(bone_name)
+            print "[io_pdx_mesh] failed to find bone '{}'".format(bone_name)
             if progress_fn:
                 progress.update(1, 'failed to find bone!')
 
@@ -1212,13 +1213,14 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
                 t_index += 3
 
     for bone_name in all_bone_keyframes:
-        print "[io_pdx_mesh] setting keyframes on bone {}".format(bone_name)
-        if progress_fn:
-            progress.update(1, 'setting keyframes on bone')
         keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if keys.values():
-            create_anim_keys(bone_name, keys, timestart)
+            print "[io_pdx_mesh] setting keyframes on bone {}".format(bone_name)
+            if progress_fn:
+                progress.update(1, 'setting keyframes on bone')
+            bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
+            create_anim_keys(bone_long_name, keys, timestart)
 
     pmc.select(None)
     print "[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time()-start)
