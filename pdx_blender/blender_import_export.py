@@ -640,7 +640,7 @@ def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
         joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
 
         for joint, weight in joint_weights:
-            obj.vertex_groups[joint].add([v], weight, 'REPLACE')
+            obj.vertex_groups[clean_imported_name(joint)].add([v], weight, 'REPLACE')
 
     # create an armature modifier for the mesh object
     skin_mod = obj.modifiers.new(rig.name + '_skin', 'ARMATURE')
