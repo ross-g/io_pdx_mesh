@@ -466,46 +466,45 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     bpy.context.scene.objects.link(new_loc)
 
-    # parent locator through a constraint
+    # check for a parent relationship
     parent = getattr(PDX_locator, 'pa', None)
     parent_Xform = Matrix()
 
     if parent is not None:
+        # parent the locator to a bone in the armature
         rig = get_rig_from_bone_name(parent[0])
         if rig:
-            parent_constraint = new_loc.constraints.new('CHILD_OF')
-            parent_constraint.name = 'imported_constraint'
-            parent_constraint.target = rig
-            parent_constraint.subtarget = parent[0]
+            new_loc.parent = rig
+            new_loc.parent_bone = parent[0]
+            new_loc.parent_type = 'BONE'
+            new_loc.matrix_world = Matrix()     # reset transform after parenting
 
-            bone_space = rig.matrix_world * rig.data.bones[parent[0]].matrix.to_4x4()
-            parent_constraint.inverse_matrix = bone_space.inverted()
-        else:
-            # parent bone doesn't exist in scene, build its transform
-            transform = PDX_bone_dict[parent[0]]
-            # note we transpose the matrix on creation
-            parent_Xform = Matrix((
-                (transform[0], transform[3], transform[6], transform[9]),
-                (transform[1], transform[4], transform[7], transform[10]),
-                (transform[2], transform[5], transform[8], transform[11]),
-                (0.0, 0.0, 0.0, 1.0)
-            ))
+        # then determine the locators transform
+        transform = PDX_bone_dict[parent[0]]
+        # note we transpose the matrix on creation
+        parent_Xform = Matrix((
+            (transform[0], transform[3], transform[6], transform[9]),
+            (transform[1], transform[4], transform[7], transform[10]),
+            (transform[2], transform[5], transform[8], transform[11]),
+            (0.0, 0.0, 0.0, 1.0)
+        ))
 
-    # set attributes
-    new_loc.rotation_mode = 'XYZ'
-    # rotation
-    quat = Quaternion([PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2]])
-    new_loc.rotation_euler = quat.to_euler()
-    # translation
-    new_loc.location = (PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
+    # compose transform parts
+    _scale = Matrix.Scale(1, 4)
+    _rotation = Quaternion(
+        (PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])
+    ).to_matrix().to_4x4()
+    _translation = Matrix.Translation(PDX_locator.p)
 
-    bpy.context.scene.update()
+    loc_matrix = _translation * _rotation * _scale
 
     # apply parent transform (must be multiplied in transposed form, then re-transposed before being applied)
-    new_loc.matrix_world = (new_loc.matrix_world.transposed() * parent_Xform.inverted_safe().transposed()).transposed()
+    final_matrix = (loc_matrix.transposed() * parent_Xform.inverted_safe().transposed()).transposed()
 
-    # convert to Blender space
-    new_loc.matrix_world = swap_coord_space(new_loc.matrix_world)
+    new_loc.matrix_world = swap_coord_space(final_matrix)                                     # convert to Blender space
+    new_loc.rotation_mode = 'XYZ'
+
+    bpy.context.scene.update()
 
 
 def create_skeleton(PDX_bone_list):
