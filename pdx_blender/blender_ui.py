@@ -360,10 +360,16 @@ class show_axis(Operator):
     show = BoolProperty(
         default=True
     )
-    obj_type = type(None)   # TODO: can this be a property so we can over-ride it per usage rather than set at class level?
+    data_type = EnumProperty(
+        name='Data type',
+        items=(
+            ('EMPTY', 'Empty', 'Empty', 1),
+            ('ARMATURE', 'Armature', 'Armature', 2)
+        )
+    )
 
     def execute(self, context):
-        set_local_axis_display(self.show, self.obj_type)
+        set_local_axis_display(self.show, self.data_type)
         return {'FINISHED'}
 
 
@@ -414,15 +420,19 @@ class PDXblender_2tools_ui(Panel):
 
         col.label('Display local axes:')
         row = col.row(align=True)
-        op_show_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_OB_ARMATURE', text='Show all')
-        op_show_axis.show = True
-        op_hide_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_ARMATURE', text='Hide all')
-        op_hide_axis.show = False
+        op_show_bone_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_OB_ARMATURE', text='Show all')
+        op_show_bone_axis.show = True
+        op_show_bone_axis.data_type = 'ARMATURE'
+        op_hide_bone_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_ARMATURE', text='Hide all')
+        op_hide_bone_axis.show = False
+        op_hide_bone_axis.data_type = 'ARMATURE'
         row = col.row(align=True)
-        op_show_axis = row.operator('io_pdx_mesh.show_axis', icon='MANIPUL', text='Show all')
-        op_show_axis.show = True
-        op_hide_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_EMPTY', text='Hide all')
-        op_hide_axis.show = False
+        op_show_loc_axis = row.operator('io_pdx_mesh.show_axis', icon='MANIPUL', text='Show all')
+        op_show_loc_axis.show = True
+        op_show_loc_axis.data_type = 'EMPTY'
+        op_hide_loc_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_EMPTY', text='Hide all')
+        op_hide_loc_axis.show = False
+        op_hide_loc_axis.data_type = 'EMPTY'
         col.separator()
 
         col.label('PDX materials:')

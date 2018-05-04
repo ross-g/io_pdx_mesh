@@ -76,11 +76,17 @@ def clean_imported_name(name):
 
 
 def set_local_axis_display(state, data_type):
-    object_list = [obj for obj in bpy.data.objects if type(obj.data) == data_type]
+    type_dict = {
+        'EMPTY': type(None),
+        'ARMATURE': bpy.types.Armature
+    }
+    object_list = [obj for obj in bpy.data.objects if type(obj.data) == type_dict[data_type]]
 
     for node in object_list:
         try:
             node.show_axis = state
+            if node.data:
+                node.data.show_axes = state
         except Exception as err:
             print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
 
