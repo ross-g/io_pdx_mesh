@@ -4,13 +4,6 @@
     author : ross-g
 """
 
-# if 'bpy' in locals():
-#     import importlib
-#     if 'blender_import_export' in locals():
-#         importlib.reload(blender_import_export)
-#     if 'blender_ui' in locals():
-#         importlib.reload(blender_ui)
-
 import inspect
 import importlib
 import bpy
