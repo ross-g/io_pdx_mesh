@@ -22,9 +22,9 @@ except ImportError:
 
 # Py2, Py3 compatibility
 try:
-  basestring
+    basestring
 except NameError:
-  basestring = str
+    basestring = str
 
 
 """ ====================================================================================================================
@@ -38,6 +38,7 @@ class PDXData(object):
         Simple class that turns an XML element hierarchy with attributes into a object for more convenient
         access to attributes.
     """
+
     def __init__(self, element, depth=None):
         # use element tag as object name
         setattr(self, 'name', element.tag)
@@ -57,7 +58,7 @@ class PDXData(object):
 
         # iterate over element children, set these as attributes which nest further PDXData objects
         for child in list(element):
-            child_data = type(self)(child, self.depth+1)
+            child_data = type(self)(child, self.depth + 1)
             setattr(self, child.tag, child_data)
             self.attrdict[child.tag] = child_data
 
@@ -65,10 +66,10 @@ class PDXData(object):
         string = list()
         for _key, _val in self.attrdict.iteritems():
             if type(_val) == type(self):
-                string.append('{}{}:'.format(self.depth*'    ', _key))
+                string.append('{}{}:'.format(self.depth * '    ', _key))
                 string.append('{}'.format(_val))
             else:
-                string.append('{}{}:  {}'.format(self.depth*'    ', _key, len(_val)))
+                string.append('{}{}:  {}'.format(self.depth * '    ', _key, len(_val)))
         return '\n'.join(string)
 
 
@@ -117,7 +118,7 @@ def parseObject(bdata, pos):
 
 
 def parseString(bdata, pos, length):
-    val_tuple = struct.unpack_from('c'*length, bdata, offset=pos)
+    val_tuple = struct.unpack_from('c' * length, bdata, offset=pos)
 
     # turn the resulting tuple into a string of bytes
     string = b''.join(val_tuple).decode()
@@ -198,17 +199,14 @@ def read_meshfile(filepath, to_stdout=False):
 
     # create an XML structure to store the object hierarchy
     file_element = Xml.Element('File')
-    file_element.attrib = dict(
-        name=os.path.split(filepath)[1],
-        path=os.path.split(filepath)[0]
-    )
+    file_element.attrib = dict(name=os.path.split(filepath)[1], path=os.path.split(filepath)[0])
 
     # determine the file length and set initial file read position
     eof = len(fdata)
     pos = 0
 
     # read the file header '@@b@'
-    header = struct.unpack_from('c'*4, fdata, pos)
+    header = struct.unpack_from('c' * 4, fdata, pos)
     if bytes(b''.join(header)) == b'@@b@':
         pos = 4
     else:
@@ -225,7 +223,7 @@ def read_meshfile(filepath, to_stdout=False):
             # check the property type and values
             prop_name, prop_values, pos = parseProperty(fdata, pos)
             if to_stdout:
-                print("  "*current_depth+"  ", prop_name, " (count", len(prop_values), ")")
+                print("  " * current_depth + "  ", prop_name, " (count", len(prop_values), ")")
 
             # assign property values to the parent object
             parent_element.set(prop_name, prop_values)
@@ -235,7 +233,7 @@ def read_meshfile(filepath, to_stdout=False):
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
             if to_stdout:
-                print("  "*depth, obj_name, depth)
+                print("  " * depth, obj_name, depth)
 
             # deeper branch of the tree => current parent valid
             # same or shallower branch of the tree => parent gets redefined back a level
@@ -303,7 +301,7 @@ def writeObject(obj_xml, obj_depth):
 def writeString(string):
     datastring = b''
 
-    string = str(string)    # struct.pack cannot handle unicode strings in Python 2
+    string = str(string)  # struct.pack cannot handle unicode strings in Python 2
 
     for x in string:
         datastring += struct.pack('c', x.encode())
@@ -332,7 +330,7 @@ def writeData(data_array):
         datastring += struct.pack('i', size)
 
         # write the data values
-        datastring += struct.pack('i'*size, *data_array)
+        datastring += struct.pack('i' * size, *data_array)
 
     elif all(isinstance(d, float) for d in data_array):
         # write float data
@@ -343,7 +341,7 @@ def writeData(data_array):
         datastring += struct.pack('i', size)
 
         # values
-        datastring += struct.pack('f'*size, *data_array)
+        datastring += struct.pack('f' * size, *data_array)
 
     elif all(isinstance(d, basestring) for d in data_array):
         # write string data
@@ -356,10 +354,10 @@ def writeData(data_array):
 
         # string length
         str_data_length = len(data_array[0])
-        datastring += struct.pack('i', (str_data_length+1))    # string length + 1 to account for zero-byte ending
+        datastring += struct.pack('i', (str_data_length + 1))  # string length + 1 to account for zero-byte ending
 
         # values
-        datastring += writeString(data_array[0])    # Py2 struct.pack cannot handle unicode strings
+        datastring += writeString(data_array[0])  # Py2 struct.pack cannot handle unicode strings
         # write zero-byte ending
         datastring += struct.pack('x')
 

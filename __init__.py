@@ -17,7 +17,7 @@ bl_info = {
     'warning': 'this add-on is beta',
     'wiki_url': 'https://github.com/ross-g/io_pdx_mesh',
     'support': 'COMMUNITY',
-    'category': 'Import-Export'
+    'category': 'Import-Export',
 }
 
 app = os.path.split(sys.executable)[1]
@@ -42,6 +42,7 @@ if 'maya' in app.lower():
     try:
         # launch the Maya UI
         import pdx_maya.maya_ui
+
         reload(pdx_maya.maya_ui)
         pdx_maya.maya_ui.main()
     except Exception as e:
