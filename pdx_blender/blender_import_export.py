@@ -11,6 +11,7 @@
 import os
 import time
 from collections import OrderedDict, namedtuple
+
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -90,10 +91,7 @@ def clean_imported_name(name):
 
 
 def set_local_axis_display(state, data_type):
-    type_dict = {
-        'EMPTY': type(None),
-        'ARMATURE': bpy.types.Armature
-    }
+    type_dict = {'EMPTY': type(None), 'ARMATURE': bpy.types.Armature}
     object_list = [obj for obj in bpy.data.objects if type(obj.data) == type_dict[data_type]]
 
     for node in object_list:
@@ -148,7 +146,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     """
     start = time.time()
     # get mesh and Bmesh data structures for this mesh
-    mesh = blender_obj.data     # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
+    mesh = blender_obj.data  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.calc_normals_split()
     bm = get_bmesh(mesh)
     bm.transform(blender_obj.matrix_world)
@@ -176,9 +174,9 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     # collect all unique verts in the order that we process them
     unique_verts = []
 
-    for tri in bm.faces:      # all Bmesh faces were triangulated previously
+    for tri in bm.faces:  # all Bmesh faces were triangulated previously
         if tri.material_index != mat_index:
-            continue            # skip this triangle if it has the wrong material index
+            continue  # skip this triangle if it has the wrong material index
 
         dict_vert_idx = []
 
@@ -188,15 +186,15 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
 
             # position
             _position = vert.co
-            _position = list(swap_coord_space(_position))                                        # convert to Game space
+            _position = list(swap_coord_space(_position))  # convert to Game space
             if round_data:
                 _position = util_round(_position, PDX_DECIMALPTS)
 
             # normal
             # FIXME? seems like custom normal per face-vertex is not available through bmesh
             # _normal = loop.calc_normal()
-            _normal = mesh.loops[loop.index].normal             # assumes mesh-loop and bmesh-loop share indices
-            _normal = list(swap_coord_space(_normal))                                            # convert to Game space
+            _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices
+            _normal = list(swap_coord_space(_normal))  # convert to Game space
             if round_data:
                 _normal = util_round(_normal, PDX_DECIMALPTS)
 
@@ -205,7 +203,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             for i, uv_set in enumerate(uv_setnames):
                 uv_layer = bm.loops.layers.uv[uv_set]
                 uv = loop[uv_layer].uv
-                uv = list(swap_coord_space(list(uv)))                                            # convert to Game space
+                uv = list(swap_coord_space(list(uv)))  # convert to Game space
                 if round_data:
                     uv = util_round(uv, PDX_DECIMALPTS)
                 _uv_coords[i] = uv
@@ -213,8 +211,8 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # tangent (omitted if there were no UVs)
             if uv_setnames:
                 # _tangent = loop.calc_tangent()
-                _tangent = mesh.loops[loop.index].tangent       # assumes mesh-loop and bmesh-loop share indices
-                _tangent = list(swap_coord_space(_tangent))                                      # convert to Game space
+                _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices
+                _tangent = list(swap_coord_space(_tangent))  # convert to Game space
                 if round_data:
                     _tangent = util_round(_tangent, PDX_DECIMALPTS)
 
@@ -238,20 +236,20 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
                 if uv_setnames:
                     mesh_dict['ta'].extend(_tangent)
                     mesh_dict['ta'].append(1.0)
-                i = len(unique_verts) - 1           # the tri will reference the last added vertex
+                i = len(unique_verts) - 1  # the tri will reference the last added vertex
 
             # store the tri vert reference
             dict_vert_idx.append(i)
 
         # tri-faces
         mesh_dict['tri'].extend(
-            [dict_vert_idx[0], dict_vert_idx[2], dict_vert_idx[1]]                    # convert handedness to Game space
+            [dict_vert_idx[0], dict_vert_idx[2], dict_vert_idx[1]]  # convert handedness to Game space
         )
 
     # calculate min and max bounds of mesh
     x_VtxPos = set([mesh_dict['p'][i] for i in range(0, len(mesh_dict['p']), 3)])
-    y_VtxPos = set([mesh_dict['p'][i+1] for i in range(0, len(mesh_dict['p']), 3)])
-    z_VtxPos = set([mesh_dict['p'][i+2] for i in range(0, len(mesh_dict['p']), 3)])
+    y_VtxPos = set([mesh_dict['p'][i + 1] for i in range(0, len(mesh_dict['p']), 3)])
+    z_VtxPos = set([mesh_dict['p'][i + 2] for i in range(0, len(mesh_dict['p']), 3)])
     mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
     mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
 
@@ -306,9 +304,11 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
             try:
                 bone_idx = bone_names.index(group_names[group_index])
             except ValueError:
-                raise RuntimeError("Vertex is skinned to a group ({}) with no corresponding armature bone!".format(
-                    group_names[group_index]
-                ))
+                raise RuntimeError(
+                    "Vertex is skinned to a group ({}) with no corresponding armature bone!".format(
+                        group_names[group_index]
+                    )
+                )
             if group_index < len(blender_obj.vertex_groups):
                 weight = vtx_group.weight
                 if weight != 0.0:
@@ -322,11 +322,13 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
         if len(vert_weights[vtx]) <= PDX_MAXSKININFS:
             # pad out with null data to fill the maximum influence count
             padding = PDX_MAXSKININFS - len(vert_weights[vtx])
-            skin_dict['ix'].extend([-1]*padding)
-            skin_dict['w'].extend([0.0]*padding)
+            skin_dict['ix'].extend([-1] * padding)
+            skin_dict['w'].extend([0.0] * padding)
         else:
-            raise RuntimeError("Vertex is skinned to more than {} groups! This is not supported. "
-                               "Use 'Weight Tools > Limit Total' to reduce influence count.".format(PDX_MAXSKININFS))
+            raise RuntimeError(
+                "Vertex is skinned to more than {} groups! This is not supported. "
+                "Use 'Weight Tools > Limit Total' to reduce influence count.".format(PDX_MAXSKININFS)
+            )
 
     return skin_dict
 
@@ -358,9 +360,9 @@ def get_mesh_skeleton_info(blender_obj):
             bone_list[i]['pa'] = [bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted()                  # convert to Game space
+        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted()  # convert to Game space
         mat.transpose()
-        mat = [i for vector in mat for i in vector]     # flatten matrix to list
+        mat = [i for vector in mat for i in vector]  # flatten matrix to list
         bone_list[i]['tx'] = []
         bone_list[i]['tx'].extend(mat[0:3])
         bone_list[i]['tx'].extend(mat[4:7])
@@ -374,6 +376,8 @@ def swap_coord_space(data):
     """
         Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
     """
+    global SPACE_MATRIX
+
     # matrix
     if type(data) == Matrix:
         return SPACE_MATRIX * data * SPACE_MATRIX.inverted()
@@ -484,7 +488,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
             new_loc.parent = rig
             new_loc.parent_bone = parent[0]
             new_loc.parent_type = 'BONE'
-            new_loc.matrix_world = Matrix()     # reset transform after parenting
+            new_loc.matrix_world = Matrix() # reset transform after parenting
 
         # then determine the locators transform
         transform = PDX_bone_dict[parent[0]]
@@ -498,9 +502,9 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     # compose transform parts
     _scale = Matrix.Scale(1, 4)
-    _rotation = Quaternion(
-        (PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])
-    ).to_matrix().to_4x4()
+        _rotation = ( 
+        Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4() 
+    )
     _translation = Matrix.Translation(PDX_locator.p)
 
     loc_matrix = _translation * _rotation * _scale
@@ -508,7 +512,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
     # apply parent transform (must be multiplied in transposed form, then re-transposed before being applied)
     final_matrix = (loc_matrix.transposed() * parent_Xform.inverted_safe().transposed()).transposed()
 
-    new_loc.matrix_world = swap_coord_space(final_matrix)                                     # convert to Blender space
+    new_loc.matrix_world = swap_coord_space(final_matrix)  # convert to Blender space
     new_loc.rotation_mode = 'XYZ'
 
     bpy.context.scene.update()
@@ -571,7 +575,7 @@ def create_skeleton(PDX_bone_list):
         loc, rot, scale = mat.decompose()
         try:
             safemat = Matrix.Scale(1.0 / scale[0], 4) * mat
-        except ZeroDivisionError:       # guard against zero scale bones...
+        except ZeroDivisionError:  # guard against zero scale bones... 
             safemat = Matrix.Translation(loc) * rot.to_matrix().to_4x4() * Matrix.Scale(1.0, 4)
 
         # determine avg distance to any children
@@ -586,7 +590,7 @@ def create_skeleton(PDX_bone_list):
                 (0.0, 0.0, 0.0, 1.0)
             ))
             c_dist = c_mat.to_translation() - safemat.to_translation()
-            bone_dists.append(math.sqrt(c_dist.x**2 + c_dist.y**2 + c_dist.z**2))
+            bone_dists.append(math.sqrt(c_dist.x ** 2 + c_dist.y ** 2 + c_dist.z ** 2))
 
         avg_dist = 5.0
         if bone_children:
@@ -596,7 +600,7 @@ def create_skeleton(PDX_bone_list):
         # set bone tail offset first
         new_bone.tail = Vector((0.0, 0.0, 0.1 * avg_dist))
         # set matrix directly as this includes bone roll/rotation
-        new_bone.matrix = swap_coord_space(safemat.inverted_safe())                           # convert to Blender space
+        new_bone.matrix = swap_coord_space(safemat.inverted_safe())  # convert to Blender space
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
@@ -621,13 +625,13 @@ def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
     num_infs = PDX_skin.bones[0]
     armt_bones = rig.data.bones
 
-    for vtx in range(0, int(len(PDX_skin.ix)/max_infs)):
+    for vtx in range(0, int(len(PDX_skin.ix) / max_infs)):
         skin_dict[vtx] = dict(joints=[], weights=[])
 
     # gather joint index and weighting that each vertex is skinned to
     for vtx, j in enumerate(range(0, len(PDX_skin.ix), max_infs)):
-        skin_dict[vtx]['joints'] = PDX_skin.ix[j:j+num_infs]
-        skin_dict[vtx]['weights'] = PDX_skin.w[j:j+num_infs]
+        skin_dict[vtx]['joints'] = PDX_skin.ix[j : j + num_infs]
+        skin_dict[vtx]['weights'] = PDX_skin.w[j : j + num_infs]
 
     # create skin weight vertex groups
     for bone in armt_bones:
@@ -639,7 +643,7 @@ def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
         weights = skin_dict[v]['weights']
         # normalise joint weights
         try:
-            norm_weights = [float(w)/sum(weights) for w in weights]
+            norm_weights = [float(w) / sum(weights) for w in weights]
         except Exception as err:
             norm_weights = weights
         # strip zero weight entries
@@ -660,32 +664,32 @@ def create_mesh(PDX_mesh, name=None):
     tmp_mesh_name = 'io_pdx_mesh'
 
     # vertices
-    verts = PDX_mesh.p      # flat list of 3d co-ordinates, verts[:2] = vtx[0]
+    verts = PDX_mesh.p  # flat list of 3d co-ordinates, verts[:2] = vtx[0]
 
     # normals
     norms = None
     if hasattr(PDX_mesh, 'n'):
-        norms = PDX_mesh.n      # flat list of vectors, norms[:2] = nrm[0]
+        norms = PDX_mesh.n  # flat list of vectors, norms[:2] = nrm[0]
 
     # triangles
-    tris = PDX_mesh.tri     # flat list of vertex connections, tris[:3] = face[0]
+    tris = PDX_mesh.tri  # flat list of vertex connections, tris[:3] = face[0]
 
     # UVs (channels 0 to 3)
     uv_Ch = dict()
     for i, uv in enumerate(['u0', 'u1', 'u2', 'u3']):
         if hasattr(PDX_mesh, uv):
-            uv_Ch[i] = getattr(PDX_mesh, uv)    # flat list of 2d co-ordinates, u0[:1] = vtx[0]uv0
+            uv_Ch[i] = getattr(PDX_mesh, uv)  # flat list of 2d co-ordinates, u0[:1] = vtx[0]uv0
 
     # vertices
-    vertexArray = []   # array of points
+    vertexArray = []  # array of points
     for i in range(0, len(verts), 3):
-        v = swap_coord_space([verts[i], verts[i+1], verts[i+2]])                              # convert to Blender space
+        v = swap_coord_space([verts[i], verts[i + 1], verts[i + 2]])  # convert to Blender space
         vertexArray.append(v)
 
     # faces
     faceArray = []
     for i in range(0, len(tris), 3):
-        f = [tris[i+2], tris[i+1], tris[i]]                                        # convert handedness to Blender space
+        f = [tris[i + 2], tris[i + 1], tris[i]]  # convert handedness to Blender space
         faceArray.append(f)
 
     # create the mesh datablock
@@ -706,7 +710,7 @@ def create_mesh(PDX_mesh, name=None):
     if norms:
         normals = []
         for i in range(0, len(norms), 3):
-            n = swap_coord_space([norms[i], norms[i+1], norms[i+2]])                          # convert to Blender space
+            n = swap_coord_space([norms[i], norms[i + 1], norms[i + 2]])  # convert to Blender space
             normals.append(n)
 
         new_mesh.polygons.foreach_set('use_smooth', [True] * len(new_mesh.polygons))
@@ -716,13 +720,13 @@ def create_mesh(PDX_mesh, name=None):
 
     # apply the UV data channels
     for idx in uv_Ch:
-        uvSetName = 'map' + str(idx+1)
+        uvSetName = 'map' + str(idx + 1)
         new_mesh.uv_textures.new(uvSetName)
 
         uvArray = []
         uv_data = uv_Ch[idx]
         for i in range(0, len(uv_data), 2):
-            uv = [uv_data[i], 1 - uv_data[i+1]]     # flip the UV coords in V!
+            uv = [uv_data[i], 1 - uv_data[i + 1]]  # flip the UV coords in V!
             uvArray.append(uv)
 
         bm = get_bmesh(new_mesh)
@@ -733,7 +737,7 @@ def create_mesh(PDX_mesh, name=None):
                 i = loop.vert.index
                 loop[uv_layer].uv = uvArray[i]
 
-        bm.to_mesh(new_mesh)    # write the bmesh back to the mesh
+        bm.to_mesh(new_mesh)  # write the bmesh back to the mesh
         bm.free()
 
     # select the object
@@ -807,15 +811,17 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
         # over-ride based on keyed attributes
         if 's' in key_dict:
             _scale = Matrix.Scale(key_dict['s'][k][0], 4)
-            _scale = swap_coord_space(_scale)                                                 # convert to Blender space
+            _scale = swap_coord_space(_scale)  # convert to Blender space
         if 'q' in key_dict:
-            _rotation = Quaternion(
-                (key_dict['q'][k][3], key_dict['q'][k][0], key_dict['q'][k][1], key_dict['q'][k][2])
-            ).to_matrix().to_4x4()
-            _rotation = swap_coord_space(_rotation)                                           # convert to Blender space
+            _rotation = (
+                Quaternion((key_dict['q'][k][3], key_dict['q'][k][0], key_dict['q'][k][1], key_dict['q'][k][2]))
+                .to_matrix()
+                .to_4x4()
+            )
+            _rotation = swap_coord_space(_rotation)  # convert to Blender space
         if 't' in key_dict:
             _translation = Matrix.Translation(key_dict['t'][k])
-            _translation = swap_coord_space(_translation)                                     # convert to Blender space
+            _translation = swap_coord_space(_translation)  # convert to Blender space
 
         # recompose
         offset_matrix = _translation * _rotation * _scale
@@ -899,7 +905,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
             pdx_locator = pdx_data.PDXData(loc)
             create_locator(pdx_locator, scene_bone_dict)
 
-    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time()-start))
+    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
 
 
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
@@ -1019,7 +1025,7 @@ def import_animfile(animpath, timestart=1.0):
 
     print("[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart + framecount - 1)))
     bpy.context.scene.frame_start = timestart
-    bpy.context.scene.frame_end = (timestart + framecount - 1)
+    bpy.context.scene.frame_end = timestart + framecount - 1
     bpy.context.scene.frame_current = timestart
 
     # find armature and bones being animated in the scene
@@ -1045,7 +1051,7 @@ def import_animfile(animpath, timestart=1.0):
         bone_name = clean_imported_name(bone.tag)
         try:
             pose_bone = rig.pose.bones[bone_name]
-            edit_bone = pose_bone.bone      # rig.data.bones[bone_name]
+            edit_bone = pose_bone.bone  # rig.data.bones[bone_name]
         except KeyError:
             bone_errors.append(bone_name)
             print("[io_pdx_mesh] failed to find bone {}".format(bone_name))
@@ -1056,13 +1062,15 @@ def import_animfile(animpath, timestart=1.0):
 
             # compose transform parts
             _scale = Matrix.Scale(bone.attrib['s'][0], 4)
-            _rotation = Quaternion(
-                (bone.attrib['q'][3], bone.attrib['q'][0], bone.attrib['q'][1], bone.attrib['q'][2])
-            ).to_matrix().to_4x4()
+            _rotation = (
+                Quaternion((bone.attrib['q'][3], bone.attrib['q'][0], bone.attrib['q'][1], bone.attrib['q'][2]))
+                .to_matrix()
+                .to_4x4()
+            )
             _translation = Matrix.Translation(bone.attrib['t'])
 
             # this matrix describes the transform from parent bone to initial posed location
-            offset_matrix = swap_coord_space(_translation * _rotation * _scale)               # convert to Blender space
+            offset_matrix = swap_coord_space(_translation * _rotation * _scale)  # convert to Blender space
             # determine if we have a parent matrix
             parent_matrix = Matrix()
             if edit_bone.parent:
@@ -1095,13 +1103,13 @@ def import_animfile(animpath, timestart=1.0):
             bone_key_data = all_bone_keyframes[bone_name]
 
             if 's' in bone_key_data:
-                bone_key_data['s'].append(samples.attrib['s'][s_index:s_index + 1])
+                bone_key_data['s'].append(samples.attrib['s'][s_index : s_index + 1])
                 s_index += 1
             if 'q' in bone_key_data:
-                bone_key_data['q'].append(samples.attrib['q'][q_index:q_index + 4])
+                bone_key_data['q'].append(samples.attrib['q'][q_index : q_index + 4])
                 q_index += 4
             if 't' in bone_key_data:
-                bone_key_data['t'].append(samples.attrib['t'][t_index:t_index + 3])
+                bone_key_data['t'].append(samples.attrib['t'][t_index : t_index + 3])
                 t_index += 3
 
     for bone_name in all_bone_keyframes:
@@ -1113,4 +1121,4 @@ def import_animfile(animpath, timestart=1.0):
 
     bpy.context.scene.update()
 
-    print("[io_pdx_mesh] import finished! ({} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
