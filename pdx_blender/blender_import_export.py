@@ -502,7 +502,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     # compose transform parts
     _scale = Matrix.Scale(1, 4)
-        _rotation = ( 
+    _rotation = ( 
         Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4() 
     )
     _translation = Matrix.Translation(PDX_locator.p)

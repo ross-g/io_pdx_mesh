@@ -1217,14 +1217,14 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
                 t_index += 3
 
     for bone_name in all_bone_keyframes:
-        keys = all_bone_keyframes[bone_name]
+        bone_keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
-        if keys.values():
+        if bone_keys.values():
             print "[io_pdx_mesh] setting {} keyframes on bone '{}'".format(list(bone_keys.keys()), bone_name)
             if progress_fn:
                 progress.update(1, 'setting keyframes on bone')
             bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
-            create_anim_keys(bone_long_name, keys, timestart)
+            create_anim_keys(bone_long_name, bone_keys, timestart)
 
     pmc.select(None)
     print "[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start)
