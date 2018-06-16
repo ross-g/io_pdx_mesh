@@ -9,12 +9,12 @@ import os
 import sys
 
 
-app = os.path.splitext(os.path.split(sys.executable)[1])[0]
+app = os.path.split(sys.executable)[1]
 print('[io_pdx_mesh] __init__ (running from {})'.format(app))
 
 
 # running in Maya
-if app == 'maya':
+if 'maya' in app.lower():
     import maya.cmds
 
     try:

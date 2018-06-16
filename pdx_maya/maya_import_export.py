@@ -3,13 +3,13 @@
 
     As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
     mirror all positions, normals etc along the Z axis and flip texture coordinates in V.
-    
+
     author : ross-g
 """
 
 import os
 import time
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
@@ -85,6 +85,13 @@ def connect_nodeplugs(source_mobject, source_mplug, dest_mobject, dest_mplug):
 """
 
 
+def util_round(data, ndigits=0):
+    """
+        Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed)
+    """
+    return data.__class__(round(x, ndigits) for x in data)
+
+
 def clean_imported_name(name):
     # strip any namespace names, taking the final name only
     clean_name = name.split(':')[-1]
@@ -111,7 +118,7 @@ def set_local_axis_display(state, object_type=None, object_list=None):
             node = pmc.listRelatives(node, parent=True)[0]
         try:
             node.displayLocalAxis.set(state)
-        except:
+        except Exception:
             print "[io_pdx_mesh] node '{}' has no displayLocalAxis property".format(node)
 
 
@@ -121,7 +128,7 @@ def set_ignore_joints(state):
     for joint in joint_list:
         try:
             getattr(joint, PDX_IGNOREJOINT).set(state)
-        except:
+        except Exception:
             pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
             getattr(joint, PDX_IGNOREJOINT).set(state)
 
@@ -173,6 +180,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
         exported separately!
     """
+    start = time.time()
     # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
         meshfaces = maya_mesh
@@ -183,18 +191,9 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     else:
         raise NotImplementedError("Unsupported mesh type encountered. {}".format(type(maya_mesh)))
 
-    # we need to test vertices for equality based on their attributes
+    # we will need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
-    class UniqueVertex(object):
-
-        def __init__(self, vert_id, position, normal, uv_dict):
-            self.id = vert_id
-            self.p = position
-            self.n = normal
-            self.u0 = uv_dict
-
-        def __eq__(self, other):
-            return self.id == other.id and self.p == other.p and self.n == other.n and self.u0 == other.u0
+    UniqueVertex = namedtuple('UniqueVertex', ['id', 'p', 'n', 'uv'])
 
     # API mesh function set
     mesh_obj = get_MObject(mesh.name())
@@ -234,16 +233,16 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
 
                 # position
                 _position = vertices[vert_id]
-                if round_data:
-                    _position = pmc.util.round(_position, PDX_DECIMALPTS)
                 _position = swap_coord_space(_position)                                          # convert to Game space
+                if round_data:
+                    _position = util_round(list(_position), PDX_DECIMALPTS)
 
                 # normal
                 vert_norm_id = face.normalIndex(_local_id)
                 _normal = list(normals[vert_norm_id])
-                if round_data:
-                    _normal = pmc.util.round(_normal, PDX_DECIMALPTS)
                 _normal = swap_coord_space(_normal)                                              # convert to Game space
+                if round_data:
+                    _normal = util_round(list(_normal), PDX_DECIMALPTS)
 
                 # uv
                 _uv_coords = {}
@@ -251,27 +250,32 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     try:
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
                         uv = uv_coords[i][vert_uv_id]
-                        if round_data:
-                            uv = pmc.util.round(uv, PDX_DECIMALPTS)
                         uv = swap_coord_space(uv)                                                # convert to Game space
+                        if round_data:
+                            uv = util_round(list(uv), PDX_DECIMALPTS)
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
                         uv = (0.0, 0.0)
                     _uv_coords[i] = uv
 
                 # tangent (omitted if there were no UVs)
-                if uv_setnames:
+                if uv_setnames and tangents:
                     vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
                     _tangent = list(tangents[vert_tangent_id])
-                    if round_data:
-                        _tangent = pmc.util.round(_tangent, PDX_DECIMALPTS)
                     _tangent = swap_coord_space(_tangent)                                        # convert to Game space
+                    if round_data:
+                        _tangent = util_round(list(_tangent), PDX_DECIMALPTS)
 
                 # check if this tri vert is new and unique, or can just reference an existing vertex
                 new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
-
-                # new unique vertex, collect it and add the vert data to the dict
-                if new_vert not in unique_verts or skip_merge_vertices:
+                # test if we have already stored this vertex
+                try:
+                    # no data needs to be added to the dict, the tri can just reference an existing vertex
+                    i = unique_verts.index(new_vert)
+                except ValueError:
+                    i = None
+                if i is None or skip_merge_vertices:
+                    # new unique vertex, collect it and add the vert data to the dict
                     unique_verts.append(new_vert)
                     mesh_dict['p'].extend(_position)
                     mesh_dict['n'].extend(_normal)
@@ -281,10 +285,6 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                         mesh_dict['ta'].extend(_tangent)
                         mesh_dict['ta'].append(1.0)
                     i = len(unique_verts) - 1           # the tri will reference the last added vertex
-
-                # we have already stored this vertex, no data needs to be added to the dict
-                else:
-                    i = unique_verts.index(new_vert)    # the tri can just reference an existing vertex
 
                 # store the tri vert reference
                 dict_vert_idx.append(i)
@@ -301,9 +301,10 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
     mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
 
-    # create an ordered list of vertex ids that we have gathered into the dict
+    # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in unique_verts]
 
+    print "[debug] {} ({})".format(mesh.name(), time.time() - start)
     return mesh_dict, vert_id_list
 
 
@@ -396,18 +397,18 @@ def swap_coord_space(data):
         (0, 0, 0, 1)
     ))
 
-    # vector
-    if type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
-        vec = MVector(data)
-        return vec * space_matrix
     # matrix
-    elif type(data) == MMatrix or type(data) == pmdt.Matrix:
+    if type(data) == MMatrix or type(data) == pmdt.Matrix:
         mat = MMatrix(data)
         return space_matrix * mat * space_matrix.inverse()
     # quaternion
     elif type(data) == MQuaternion or type(data) == pmdt.Quaternion:
         mat = MMatrix(data.asMatrix())
         return MTransformationMatrix(space_matrix * mat * space_matrix.inverse()).rotation(asQuaternion=True)
+    # vector
+    elif type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
+        vec = MVector(data)
+        return vec * space_matrix
     # uv coordinate
     elif len(data) == 2:
         return data[0], 1 - data[1]
@@ -832,7 +833,7 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_scale_data = OpenMaya.MDoubleArray()
 
         for scale_data in key_dict['s']:
-            # mirror in Z
+            # convert to Game space
             x_scale_data.append(scale_data[0])
             y_scale_data.append(scale_data[0])
             z_scale_data.append(scale_data[0])
@@ -849,17 +850,17 @@ def create_anim_keys(joint_name, key_dict, timestart):
             # create the curve and API function set
             anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
             animated_attrs[attrib] = mFn_AnimCurve
-        
+
         # create data arrays per animating attribute
         x_rot_data = OpenMaya.MDoubleArray()
         y_rot_data = OpenMaya.MDoubleArray()
         z_rot_data = OpenMaya.MDoubleArray()
-        
+
         for quat_data in key_dict['q']:
-            # mirror in Z
-            q = [quat_data[0], quat_data[1], -quat_data[2], -quat_data[3]]
+            # convert to Game space
+            q = swap_coord_space(MQuaternion(*quat_data))
             # convert from quaternion to euler, this gives values in radians (which Maya uses internally)
-            euler_data = OpenMaya.MQuaternion(*q).asEulerRotation()
+            euler_data = q.asEulerRotation()
             x_rot_data.append(euler_data.x)
             y_rot_data.append(euler_data.y)
             z_rot_data.append(euler_data.z)
@@ -876,15 +877,15 @@ def create_anim_keys(joint_name, key_dict, timestart):
             # create the curve and API function set
             anim_curve, mFn_AnimCurve = create_animcurve(jnt_obj, attrib)
             animated_attrs[attrib] = mFn_AnimCurve
-        
+
         # create data arrays per animating attribute
         x_trans_data = OpenMaya.MDoubleArray()
         y_trans_data = OpenMaya.MDoubleArray()
         z_trans_data = OpenMaya.MDoubleArray()
 
         for trans_data in key_dict['t']:
-            # mirror in Z
-            t = [trans_data[0], trans_data[1], -trans_data[2]]
+            # convert to Game space
+            t = swap_coord_space(MVector(*trans_data))
             x_trans_data.append(t[0])
             y_trans_data.append(t[1])
             z_trans_data.append(t[2])
@@ -903,8 +904,9 @@ def create_anim_keys(joint_name, key_dict, timestart):
 
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progress_fn=None):
     start = time.time()
+    print "[io_pdx_mesh] importing {}".format(meshpath)
+
     progress = None
-    print "[io_pdx_mesh] Importing {}".format(meshpath)
     if progress_fn:
         progress = progress_fn('Importing', 10)
 
@@ -980,13 +982,18 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
             create_locator(pdx_locator, complete_bone_dict)
 
     pmc.select(None)
-    print "[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start)
+    print "[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time()-start)
     if progress_fn:
         progress.finished()
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, progress_fn=None):
     start = time.time()
+    print "[io_pdx_mesh] exporting {}".format(meshpath)
+
+    progress = None
+    if progress_fn:
+        progress = progress_fn('Exporting', 10)
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
@@ -999,6 +1006,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
     for shape in maya_meshes:
         print "[io_pdx_mesh] writing node - {}".format(shape.name())
+        if progress_fn:
+            progress.update(1, 'writing node')
         shapenode_xml = Xml.SubElement(object_xml, shape.name())
 
         # one shape can have multiple materials on a per meshface basis
@@ -1007,8 +1016,15 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
         if exp_mesh and shading_groups:
             # this type of ObjectSet associates shaders with geometry
             for group in shading_groups:
+                # validate that this shading group corresponds to a PDX material, skip otherwise
+                maya_mat = group.surfaceShader.connections()[0]
+                if not hasattr(maya_mat, PDX_SHADER):
+                    continue
+
                 # create parent element for this mesh (mesh here being geometry sharing a material, within one shape)
                 print "[io_pdx_mesh] writing mesh -"
+                if progress_fn:
+                    progress.update(1, 'writing mesh')
                 meshnode_xml = Xml.SubElement(shapenode_xml, 'mesh')
 
                 # check which faces are using this shading group
@@ -1016,7 +1032,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 mesh = [m for m in group.members(flatten=True) if m.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts)
+                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts, True)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
@@ -1031,8 +1047,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
                 # create parent element for material data
                 print "[io_pdx_mesh] writing material -"
+                if progress_fn:
+                    progress.update(1, 'writing material')
                 materialnode_xml = Xml.SubElement(meshnode_xml, 'material')
-                maya_mat = group.surfaceShader.connections()[0]
                 # populate material attributes
                 materialnode_xml.set('shader', [get_material_shader(maya_mat)])
                 mat_texture_dict = get_material_textures(maya_mat)
@@ -1043,6 +1060,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 skin_info_dict = get_mesh_skin_info(shape, vert_ids)
                 if exp_skel and skin_info_dict:
                     print "[io_pdx_mesh] writing skinning data -"
+                    if progress_fn:
+                        progress.update(1, 'writing skinning data')
                     skinnode_xml = Xml.SubElement(meshnode_xml, 'skin')
                     for key in ['bones', 'ix', 'w']:
                         if key in skin_info_dict and skin_info_dict[key]:
@@ -1052,6 +1071,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
         bone_info_list = get_mesh_skeleton_info(shape)
         if exp_skel and bone_info_list:
             print "[io_pdx_mesh] writing skeleton -"
+            if progress_fn:
+                progress.update(1, 'writing skeleton')
             skeletonnode_xml = Xml.SubElement(shapenode_xml, 'skeleton')
 
             # create sub-elements for each bone, populate bone attributes
@@ -1065,9 +1086,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     locator_xml = Xml.SubElement(root_xml, 'locator')
     maya_locators = [pmc.listRelatives(loc, type='transform', parent=True)[0] for loc in pmc.ls(type=pmc.nt.Locator)]
     if exp_locs and maya_locators:
+        print "[io_pdx_mesh] writing locators -"
+        if progress_fn:
+            progress.update(1, 'writing locators')
         for loc in maya_locators:
             # create sub-elements for each locator, populate locator attributes
-            print "[io_pdx_mesh] writing locators -"
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
             # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
             locnode_xml.set('p', list(swap_coord_space(loc.getTranslation())))
@@ -1079,13 +1102,16 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     pdx_data.write_meshfile(meshpath, root_xml)
 
     pmc.select(None)
-    print "[io_pdx_mesh] export finished! ({} sec)".format(time.time()-start)
+    print "[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time()-start)
+    if progress_fn:
+        progress.finished()
 
 
 def import_animfile(animpath, timestart=1.0, progress_fn=None):
     start = time.time()
+    print "[io_pdx_mesh] importing {}".format(animpath)
+
     progress = None
-    print "[io_pdx_mesh] Importing {}".format(animpath)
     if progress_fn:
         progress = progress_fn('Importing', 10)
 
@@ -1116,11 +1142,11 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
     pmc.playbackOptions(e=True, playbackSpeed=1.0)
     pmc.playbackOptions(e=True, animationStartTime=0.0)
 
-    print "[io_pdx_mesh] setting playback range - ({},{})".format(timestart,(timestart+framecount))
+    print "[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart+framecount-1))
     if progress_fn:
         progress.update(1, 'setting playback range')
     pmc.playbackOptions(e=True, minTime=timestart)
-    pmc.playbackOptions(e=True, maxTime=(timestart+framecount))
+    pmc.playbackOptions(e=True, maxTime=(timestart+framecount-1))
 
     pmc.currentTime(0, edit=True)
 
@@ -1133,26 +1159,27 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
         bone_joint = None
         bone_name = clean_imported_name(bone.tag)
         try:
-            bone_joint = pmc.PyNode(bone_name)  # type: pmc.nodetypes.joint
-        except pmc.MayaObjectError:
+            matching_bones = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)    # type: pmc.nodetypes.joint
+            bone_joint = matching_bones[0]
+        except IndexError:
             bone_errors.append(bone_name)
-            print "[io_pdx_mesh] failed to find bone {}".format(bone_name)
+            print "[io_pdx_mesh] failed to find bone '{}'".format(bone_name)
             if progress_fn:
                 progress.update(1, 'failed to find bone!')
 
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
         if bone_joint:
-            bone_joint.setScale(
-                [bone.attrib['s'][0], bone.attrib['s'][0], bone.attrib['s'][0]]
-            )
-            bone_joint.setRotation(
-                # mirror in Z
-                [bone.attrib['q'][0], bone.attrib['q'][1], -bone.attrib['q'][2], -bone.attrib['q'][3]]
-            )
-            bone_joint.setTranslation(
-                # mirror in Z
-                [bone.attrib['t'][0], bone.attrib['t'][1], -bone.attrib['t'][2]]
-            )
+            # compose transform parts
+            _scale = [bone.attrib['s'][0], bone.attrib['s'][0], bone.attrib['s'][0]]
+            _rotation = MQuaternion(*bone.attrib['q'])
+            _translation = MVector(*bone.attrib['t'])
+
+            # convert to Game space
+            bone_joint.setScale(_scale)
+            bone_joint.setRotation(swap_coord_space(_rotation))
+            bone_joint.setTranslation(swap_coord_space(_translation))
+
+            # zero out joint orientation
             bone_joint.jointOrient.set(0.0, 0.0, 0.0)
 
     # break on bone errors
@@ -1186,15 +1213,16 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
                 t_index += 3
 
     for bone_name in all_bone_keyframes:
-        print "[io_pdx_mesh] setting keyframes on bone {}".format(bone_name)
-        if progress_fn:
-            progress.update(1, 'setting keyframes on bone')
         keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if keys.values():
-            create_anim_keys(bone_name, keys, timestart)
+            print "[io_pdx_mesh] setting keyframes on bone {}".format(bone_name)
+            if progress_fn:
+                progress.update(1, 'setting keyframes on bone')
+            bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
+            create_anim_keys(bone_long_name, keys, timestart)
 
     pmc.select(None)
-    print "[io_pdx_mesh] import finished! ({} sec)".format(time.time()-start)
+    print "[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time()-start)
     if progress_fn:
         progress.finished()

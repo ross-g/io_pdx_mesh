@@ -1,12 +1,14 @@
 """
     Paradox asset files, Maya import/export interface.
-    
+
     author : ross-g
 """
 
-import webbrowser
-import inspect
 import json
+import inspect
+import webbrowser
+
+import pymel.core as pmc
 import maya.OpenMayaUI as omUI
 
 try:
@@ -33,7 +35,7 @@ def get_mayamainwindow():
     return wrapInstance(long(pointer), QtWidgets.QMainWindow)
 
 
-def h_line():        
+def h_line():
     line = QtWidgets.QFrame()
     line.setFrameShape(QtWidgets.QFrame.HLine)
     line.setFrameShadow(QtWidgets.QFrame.Sunken)
@@ -62,21 +64,21 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.popup = None                       # reference for popup widget
         self.settings = self.load_settings()    # settings from json
         self.create_ui()
-        self.setStyleSheet(#'QWidget {font: 8pt "Sans Serif"}'
-                           'QGroupBox {'
-                           'border: 1px solid;'
-                           'border-color: rgba(0, 0, 0, 64);'
-                           'border-radius: 4px;'
-                           'margin-top: 8px;'
-                           'padding: 5px 2px 2px 2px;'
-                           'background-color: rgb(78, 80, 82);'
-                           '}'
-                           'QGroupBox::title {'
-                           'subcontrol-origin: margin;'
-                           'subcontrol-position: top left;'
-                           'left: 10px;'
-                           '}'
-                           )
+        self.setStyleSheet(
+            'QGroupBox {'
+            'border: 1px solid;'
+            'border-color: rgba(0, 0, 0, 64);'
+            'border-radius: 4px;'
+            'margin-top: 8px;'
+            'padding: 5px 2px 2px 2px;'
+            'background-color: rgb(78, 80, 82);'
+            '}'
+            'QGroupBox::title {'
+            'subcontrol-origin: margin;'
+            'subcontrol-position: top left;'
+            'left: 10px;'
+            '}'
+        )
 
     def create_ui(self):
         # window properties
@@ -141,30 +143,30 @@ class PDXmaya_ui(QtWidgets.QDialog):
         file_menu.addActions([
             file_import_mesh,
             file_import_anim
-            ])
+        ])
         file_menu.addSeparator()
         file_menu.addActions([
             file_export_mesh,
             file_export_anim
-            ])
+        ])
         tools_menu.addActions([
             tool_edit_settings
-            ])
+        ])
         tools_menu.addSeparator()
         tools_menu.addActions([
             tool_ignore_joints,
             tool_unignore_joints
-            ])
+        ])
         tools_menu.addSeparator()
         tools_menu.addActions([
             tool_show_jnt_localaxes,
             tool_hide_jnt_localaxes,
             tool_show_loc_localaxes,
             tool_hide_loc_localaxes
-            ])
+        ])
         help_menu.addActions([
             help_forum, help_code
-            ])
+        ])
 
     def create_controls(self):
         main_layout = QtWidgets.QVBoxLayout()
@@ -245,15 +247,14 @@ class PDXmaya_ui(QtWidgets.QDialog):
             filename += '.mesh'
         meshpath = os.path.join(os.path.normpath(filepath), filename)
 
-        print "[io_pdx_mesh] Exporting {}".format(meshpath)
-
         try:
             export_meshfile(
                 meshpath,
                 exp_mesh=export_opts.chk_mesh.isChecked(),
                 exp_skel=export_opts.chk_skeleton.isChecked(),
                 exp_locs=export_opts.chk_locators.isChecked(),
-                merge_verts=export_opts.chk_merge_vtx.isChecked()
+                merge_verts=export_opts.chk_merge_vtx.isChecked(),
+                progress_fn=MayaProgress
             )
             QtWidgets.QMessageBox.information(self, 'Success', 'Mesh export finished!\n\n{}'.format(meshpath))
 
@@ -313,7 +314,7 @@ class export_controls(QtWidgets.QWidget):
         self.setup_fps = QtWidgets.QDoubleSpinBox()
         self.setup_fps.setMinimum(0.0)
         self.setup_fps.setValue(15.0)
-        
+
         # export options
         self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
         self.chk_skeleton = QtWidgets.QCheckBox('Export skeleton')
@@ -463,7 +464,7 @@ class export_controls(QtWidgets.QWidget):
     def select_mat(self, curr_sel):
         try:
             pmc.select(curr_sel.text())
-        except:
+        except pmc.MayaNodeError:
             self.refresh_mat_list()
 
     def refresh_anim_list(self):
@@ -570,12 +571,12 @@ class import_popup(QtWidgets.QWidget):
         try:
             self.close()
             import_meshfile(
-                self.pdx_file, 
-                imp_mesh=self.chk_mesh.isChecked(), 
-                imp_skel=self.chk_skeleton.isChecked(), 
+                self.pdx_file,
+                imp_mesh=self.chk_mesh.isChecked(),
+                imp_skel=self.chk_skeleton.isChecked(),
                 imp_locs=self.chk_locators.isChecked(),
                 progress_fn=MayaProgress
-                )
+            )
             self.parent.refresh_gui()
         except Exception as err:
             print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
@@ -590,10 +591,10 @@ class import_popup(QtWidgets.QWidget):
         try:
             self.close()
             import_animfile(
-                self.pdx_file, 
+                self.pdx_file,
                 timestart=self.spn_start.value(),
                 progress_fn=MayaProgress
-                )
+            )
             self.parent.refresh_gui()
         except Exception as err:
             print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
@@ -656,7 +657,7 @@ class material_popup(QtWidgets.QWidget):
             mat_name = self.material.text()
             mat_node = pmc.PyNode(mat_name)
             mat_shader = getattr(mat_node, PDX_SHADER).get()
-            
+
             self.mat_name.setText(mat_name)
             if self.mat_type.findText(mat_shader) is not -1:
                 self.mat_type.setCurrentIndex(self.mat_type.findText(mat_shader))
@@ -667,7 +668,7 @@ class material_popup(QtWidgets.QWidget):
         # creating a new material
         else:
             self.btn_okay.setText('Save')
-    
+
     def connect_signals(self):
         self.btn_okay.clicked.connect(self.save_mat)
         self.btn_cancel.clicked.connect(self.close)
@@ -697,7 +698,7 @@ class material_popup(QtWidgets.QWidget):
             )
 
             create_shader(mat_name, mat_pdx, None)
-        
+
         self.parent.export_ctrls.refresh_mat_list()
         self.close()
 
@@ -739,14 +740,14 @@ def main():
     try:
         pdx_tools.close()
         pdx_tools.deleteLater()
-    except:
+    except Exception:
         pass
 
     pdx_tools = PDXmaya_ui()
 
     try:
         pdx_tools.show()
-    except:
+    except Exception:
         pdx_tools.deleteLater()
         pdx_tools = None
         raise
