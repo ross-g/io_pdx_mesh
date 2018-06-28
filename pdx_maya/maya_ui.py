@@ -6,6 +6,7 @@
 
 import json
 import inspect
+import zipfile
 import webbrowser
 
 import pymel.core as pmc
@@ -19,12 +20,12 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from io_pdx_mesh.pdx_data import PDXData
+from ..pdx_data import PDXData
 
 try:
-    import maya_import_export
+    from . import maya_import_export
     reload(maya_import_export)
-    from maya_import_export import *
+    from .maya_import_export import *
 except Exception as err:
     print err
     raise
@@ -268,19 +269,29 @@ class PDXmaya_ui(QtWidgets.QDialog):
         pass
 
     def load_settings(self):
-        with open(self._settings_file, 'rt') as f:
-            try:
-                settings = json.load(f)
-                return settings
-            except Exception as err:
-                QtGui.QMessageBox.critical(self, 'Warning',
-                                           'Your "clausewitz.json" settings file has errors and is unreadable.\n'
-                                           'Check the Maya script output for details.\n\n'
-                                           'Some functions of the tool will not work without these settings.',
-                                           QtGui.QMessageBox.Ok, defaultButton=QtGui.QMessageBox.Ok)
-                print "[io_pdx_mesh] CRITICAL ERROR!"
-                print err
-                return {}
+        # load the JSON settings
+        try:
+            if '.zip' in self._settings_file:
+                zipped = self._settings_file.split('.zip')[0] + '.zip'
+                with zipfile.ZipFile(zipped, 'r') as z:
+                    f = z.open('io_pdx_mesh/clausewitz.json')
+                    settings = json.loads(f.read())
+                    return settings
+
+            else:
+                with open(self._settings_file, 'rt') as f:
+                    settings = json.load(f)
+                    return settings
+
+        except Exception as err:
+            QtGui.QMessageBox.critical(self, 'Warning',
+                                       'Your "clausewitz.json" settings file has errors and is unreadable.\n'
+                                       'Check the Maya script output for details.\n\n'
+                                       'Some functions of the tool will not work without these settings.',
+                                       QtGui.QMessageBox.Ok, defaultButton=QtGui.QMessageBox.Ok)
+            print "[io_pdx_mesh] CRITICAL ERROR!"
+            print err
+            return {}
 
 
 class export_controls(QtWidgets.QWidget):

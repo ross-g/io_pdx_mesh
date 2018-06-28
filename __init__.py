@@ -7,6 +7,7 @@
 
 import os
 import sys
+import inspect
 
 bl_info = {
     'name': 'IO PDX mesh',
@@ -21,8 +22,9 @@ bl_info = {
 }
 
 app = os.path.split(sys.executable)[1]
-print('[io_pdx_mesh] __init__ (running from {})'.format(app))
-
+root_path = os.path.dirname(inspect.getfile(inspect.currentframe()))
+print('[io_pdx_mesh] Running from {}'.format(app))
+print('[io_pdx_mesh] {}'.format(root_path))
 
 # check if running in Blender
 if 'blender' in app.lower():
@@ -41,10 +43,10 @@ if 'maya' in app.lower():
 
     try:
         # launch the Maya UI
-        import pdx_maya.maya_ui
+        from .pdx_maya import maya_ui
 
-        reload(pdx_maya.maya_ui)
-        pdx_maya.maya_ui.main()
+        reload(maya_ui)
+        maya_ui.main()
     except Exception as e:
         print(sys.exc_info())
         raise e

@@ -22,7 +22,7 @@ import maya.OpenMaya as OpenMaya  # Maya Python API 1.0
 import maya.OpenMayaAnim as OpenMayaAnim  # Maya Python API 1.0
 from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion  # Maya Python API 2.0
 
-from io_pdx_mesh import pdx_data
+from .. import pdx_data
 
 
 """ ====================================================================================================================
@@ -469,6 +469,8 @@ def create_shader(shader_name, PDX_material, texture_dir):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
         new_file, _ = create_filetexture(texture_path)
         pmc.connectAttr(new_file.outColor, new_shader.color)
+        if new_file.fileHasAlpha.get():
+            pmc.connectAttr(new_file.outTransparency, new_shader.transparency)
 
     if getattr(PDX_material, 'n', None):
         texture_path = os.path.join(texture_dir, PDX_material.n[0])
