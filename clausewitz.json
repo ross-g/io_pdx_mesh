@@ -14,9 +14,7 @@
             "PdxMeshStandard",
             "PdxMeshTextureAtlas",
             "PdxMeshWater"
-        ],
-        "path": "X:/project/tools/pdx_editor/game",
-        "target_exe": "X:/project/tools/pdx_editor/game/pdx_editor_D.exe"
+        ]
     },
     "europa_universalis": {
         "animation": [
@@ -36,9 +34,7 @@
             "PdxMeshStandard",
             "PdxMeshStandard_NoFoW_NoTI",
             "PdxMeshTextureAtlas"
-        ],
-        "path": "X:/Steam/SteamApps/common/Europa Universalis IV",
-        "target_exe": "X:/Steam/SteamApps/common/Europa Universalis IV/eu4.exe"
+        ]
     },
     "hearts_of_iron": {
         "animation": [
@@ -56,9 +52,7 @@
             "PdxMeshHoI4",
             "PdxMeshSnow",
             "PdxMeshStandard"
-        ],
-        "path": "X:/project/hoi4/game",
-        "target_exe": "X:/project/hoi4/game/hoi4_D.exe"
+        ]
     },
     "stellaris": {
         "animation": [
@@ -98,8 +92,6 @@
             "PdxMeshTerra",
             "PdxMeshTerraAlphaBlend",
             "PdxMeshTerraAlphaTest"
-        ],
-        "path": "X:/Steam/SteamApps/common/Stellaris",
-        "target_exe": "X:/Steam/SteamApps/common/Stellaris/stellaris.exe"
+        ]
     }
 }
