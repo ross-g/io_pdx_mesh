@@ -116,8 +116,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
         file_export_anim.setDisabled(True)
 
         # tools menu
-        tool_edit_settings = QtWidgets.QAction('Edit Clausewitz settings', self)
-        tool_edit_settings.triggered.connect(lambda: os.system(self._settings_file))
         tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
         tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
@@ -150,10 +148,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
             file_export_mesh,
             file_export_anim
         ])
-        tools_menu.addActions([
-            tool_edit_settings
-        ])
-        tools_menu.addSeparator()
         tools_menu.addActions([
             tool_ignore_joints,
             tool_unignore_joints
@@ -257,11 +251,13 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 merge_verts=export_opts.chk_merge_vtx.isChecked(),
                 progress_fn=MayaProgress
             )
-            QtWidgets.QMessageBox.information(self, 'Success', 'Mesh export finished!\n\n{}'.format(meshpath))
+            QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Mesh export finished!\n\n{}'.format(meshpath))
 
         except Exception as err:
             print "[io_pdx_mesh] FAILED to export {}".format(meshpath)
             print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Mesh export failed!\n\n{}'.format(err))
+            MayaProgress.finished()
             raise
 
     @QtCore.Slot()
@@ -284,7 +280,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                     return settings
 
         except Exception as err:
-            QtGui.QMessageBox.critical(self, 'Warning',
+            QtGui.QMessageBox.critical(self, 'WARNING',
                                        'Your "clausewitz.json" settings file has errors and is unreadable.\n'
                                        'Check the Maya script output for details.\n\n'
                                        'Some functions of the tool will not work without these settings.',
