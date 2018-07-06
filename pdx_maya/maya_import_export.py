@@ -37,12 +37,12 @@ PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
 
-SPACE_MATRIX = MMatrix(( 
-    (1, 0, 0, 0), 
-    (0, 1, 0, 0), 
-    (0, 0, -1, 0), 
-    (0, 0, 0, 1) 
-)) 
+SPACE_MATRIX = MMatrix((
+    (1, 0, 0, 0),
+    (0, 1, 0, 0),
+    (0, 0, -1, 0),
+    (0, 0, 0, 1)
+))
 
 
 """ ====================================================================================================================
@@ -182,13 +182,39 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
+def get_skeleton_hierarchy(bones_list):
+    root_bone = set()
+
+    for bone in bones_list:
+        root_bone.add(bone.root())
+
+    if len(root_bone) != 1:
+        raise RuntimeError("Unable to resolve a single root bone for the skeleton. {}".format(root_bone))
+
+    root_bone = list(root_bone)[0]
+    valid_bones = [root_bone]
+
+    def get_recursive_children(bone, descendents):
+        children = [
+            jnt for jnt in pmc.listRelatives(bone, children=True, type='joint') if not hasattr(jnt, PDX_IGNOREJOINT)
+        ]
+        descendents.extend(children)
+        for bone in children:
+            get_recursive_children(bone, descendents)
+
+        return descendents
+
+    get_recursive_children(root_bone, valid_bones)
+
+    return valid_bones
+
+
 def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     """
         Returns a dictionary of mesh information neccessary to the exporter.
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
         exported separately!
     """
-    start = time.time()
     # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
         meshfaces = maya_mesh
@@ -197,7 +223,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
         meshfaces = maya_mesh.faces
         mesh = maya_mesh
     else:
-        raise NotImplementedError("Unsupported mesh type encountered. {}".format(type(maya_mesh)))
+        raise RuntimeError("Unsupported mesh type encountered. {}".format(type(maya_mesh)))
 
     # we will need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
@@ -312,7 +338,6 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in unique_verts]
 
-    print "[debug] {} ({})".format(mesh.name(), time.time() - start)
     return mesh_dict, vert_id_list
 
 
@@ -330,9 +355,9 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
     # set number of joint influences per vert
     skin_dict['bones'].append(skin.getMaximumInfluences())
 
-    # find influence bones
-    # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
-    bones = skin.getInfluence()
+    # find all bones in hierarchy
+    skin_bones = skin.influenceObjects()
+    all_bones = get_skeleton_hierarchy(skin_bones)
 
     # parse all verts in order if we didn't supply a subset of vert ids
     if vertex_ids is None:
@@ -340,21 +365,31 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
 
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
-    for bone_index in xrange(len(bones)):
-        # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
-        vert_id = 0
-        for weight in skin.getWeights(maya_mesh, influenceIndex=bone_index):
-            # store any non-zero weights, by influence, per vertex
-            if weight != 0.0:
-                vert_weights[vert_id][bone_index] = weight
-            vert_id += 1
+    for bone in skin_bones:
+        try:
+            bone_index = all_bones.index(bone)
+        except ValueError:
+            raise RuntimeError(
+                "A skinned bone ({}) is being excluded from export, check all bones using the '{}' property.".format(
+                    bone, PDX_IGNOREJOINT
+                )
+            )
+
+        inf_index = skin.indexForInfluenceObject(bone)
+        for vert_id, weight in enumerate(skin.getWeights(maya_mesh, influenceIndex=inf_index)):
+            # check we actually want this vertex (in case of material split meshes)
+            if vert_id in vertex_ids:
+                # store any non-zero weights, by influence, per vertex
+                if weight != 0.0:
+                    vert_weights[vert_id][bone_index] = weight
 
     # collect data from the weights dict into the skin dict
     for vtx in vertex_ids:
         for influence, weight in vert_weights[vtx].iteritems():
             skin_dict['ix'].append(influence)
             skin_dict['w'].append(weight)
-        if len(vert_weights[vtx]) < PDX_MAXSKININFS:  # pad out with null data to fill container
+        if len(vert_weights[vtx]) < PDX_MAXSKININFS:
+            # pad out with null data to fill container
             padding = PDX_MAXSKININFS - len(vert_weights[vtx])
             skin_dict['ix'].extend([-1] * padding)
             skin_dict['w'].extend([0.0] * padding)
@@ -369,19 +404,18 @@ def get_mesh_skeleton_info(maya_mesh):
 
     # a mesh can only be connected to one skin cluster
     skin = skinclusters[0]
-    # find influence bones
-    bones = skin.getInfluence()
+    # find all bones in hierarchy
+    all_bones = get_skeleton_hierarchy(skin.influenceObjects())
 
     # build a list of bone information dictionaries for the exporter
-    bone_list = [{'name': x.name()} for x in bones]
-    for i, bone in enumerate(bones):
-        # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
+    bone_list = [{'name': x.name()} for x in all_bones]
+    for i, bone in enumerate(all_bones):
         # bone index
         bone_list[i]['ix'] = [i]
 
         # bone parent index
         if bone.getParent():
-            bone_list[i]['pa'] = [bones.index(bone.getParent())]
+            bone_list[i]['pa'] = [all_bones.index(bone.getParent())]
 
         # bone inverse world-space transform
         mat = list(swap_coord_space(bone.getMatrix(worldSpace=True)).inverse())
@@ -1140,7 +1174,7 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
         elif fps == 30:
             pmc.currentUnit(time='ntsc')
         else:
-            raise NotImplementedError("Unsupported animation speed. {}".format(fps))
+            raise RuntimeError("Unsupported animation speed. {}".format(fps))
 
     print "[io_pdx_mesh] setting playback speed - {}".format(fps)
     if progress_fn:
