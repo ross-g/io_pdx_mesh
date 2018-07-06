@@ -240,6 +240,20 @@ class import_mesh(Operator, ImportHelper):
         description='Import locators',
         default=True,
     )
+    chk_bonespace = BoolProperty(
+        name='Convert bone orientation - WARNING',
+        description='Convert bone orientation - WARNING: this re-orients bones authored in Maya, but will break ALL '
+                    'existing animations. Only use this option if you are going to re-animate the model.',
+        default=False,
+    )
+
+    def draw(self, context):
+        box = self.layout.box()
+        box.label('Settings:', icon='IMPORT')
+        box.prop(self, 'chk_mesh')
+        box.prop(self, 'chk_skel')
+        box.prop(self, 'chk_locs')
+        box.prop(self, 'chk_bonespace')
 
     def execute(self, context):
         try:
@@ -247,7 +261,8 @@ class import_mesh(Operator, ImportHelper):
                 self.filepath,
                 imp_mesh=self.chk_mesh,
                 imp_skel=self.chk_skel,
-                imp_locs=self.chk_locs
+                imp_locs=self.chk_locs,
+                bonespace=self.chk_bonespace
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
         except Exception as err:
@@ -295,6 +310,14 @@ class export_mesh(Operator, ExportHelper):
         default=True,
     )
 
+    def draw(self, context):
+        box = self.layout.box()
+        box.label('Settings:', icon='EXPORT')
+        box.prop(self, 'chk_mesh')
+        box.prop(self, 'chk_skel')
+        box.prop(self, 'chk_locs')
+        box.prop(self, 'chk_merge')
+
     def execute(self, context):
         try:
             export_meshfile(
@@ -335,6 +358,11 @@ class import_anim(Operator, ImportHelper):
         default=1,
     )
 
+    def draw(self, context):
+        box = self.layout.box()
+        box.label('Settings:', icon='IMPORT')
+        box.prop(self, 'int_start')
+
     def execute(self, context):
         try:
             import_animfile(
@@ -370,16 +398,6 @@ class show_axis(Operator):
 
     def execute(self, context):
         set_local_axis_display(self.show, self.data_type)
-        return {'FINISHED'}
-
-
-class edit_settings(Operator):
-    bl_idname = 'io_pdx_mesh.edit_settings'
-    bl_label = 'Edit Clausewitz settings'
-    bl_options = {'REGISTER'}
-
-    def execute(self, context):
-        os.startfile(settings_file)
         return {'FINISHED'}
 
 
@@ -463,7 +481,6 @@ class PDXblender_3setup_ui(Panel):
         row = box.row()
         row.label('Animation')
         row.prop(settings, 'setup_fps', text='fps')
-        self.layout.operator('io_pdx_mesh.edit_settings', icon='FILE_TEXT', text='Edit Clausewitz settings')
 
 
 class PDXblender_4help_ui(Panel):

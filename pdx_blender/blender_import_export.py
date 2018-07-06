@@ -103,6 +103,13 @@ def set_local_axis_display(state, data_type):
             print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
 
 
+def set_ignore_joints(state):
+    bone_list = [posebone.bone for posebone in bpy.context.selected_pose_bones]
+
+    for bone in bone_list:
+        bone[PDX_IGNOREJOINT] = state
+
+
 def check_mesh_material(blender_obj):
     """
         Object needs at least one of it's materials to be a PDX material if we're going to export it
@@ -297,7 +304,7 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
 
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
-    for i, vtx in enumerate(mesh.vertices):
+    for vert_id, vtx in enumerate(mesh.vertices):
         for vtx_group in vtx.groups:
             group_index = vtx_group.group
             # get bone index by group name lookup, as it's not guaranteed that group indices and bone indices line up
@@ -310,9 +317,12 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
                     )
                 )
             if group_index < len(blender_obj.vertex_groups):
-                weight = vtx_group.weight
-                if weight != 0.0:
-                    vert_weights[i][bone_idx] = vtx_group.weight
+                # check we actually want this vertex (in case of material split meshes)
+                if vert_id in vertex_ids:
+                    # store any non-zero weights, by influence, per vertex
+                    weight = vtx_group.weight
+                    if weight != 0.0:
+                        vert_weights[vert_id][bone_idx] = vtx_group.weight
 
     # collect data from the weights dict into the skin dict
     for vtx in vertex_ids:
@@ -502,8 +512,8 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     # compose transform parts
     _scale = Matrix.Scale(1, 4)
-    _rotation = ( 
-        Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4() 
+    _rotation = (
+        Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4()
     )
     _translation = Matrix.Translation(PDX_locator.p)
 
@@ -518,7 +528,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
     bpy.context.scene.update()
 
 
-def create_skeleton(PDX_bone_list):
+def create_skeleton(PDX_bone_list, convert_bonespace=False):
     # keep track of bones as we create them
     bone_list = [None for _ in range(0, len(PDX_bone_list))]
 
@@ -575,7 +585,7 @@ def create_skeleton(PDX_bone_list):
         loc, rot, scale = mat.decompose()
         try:
             safemat = Matrix.Scale(1.0 / scale[0], 4) * mat
-        except ZeroDivisionError:  # guard against zero scale bones... 
+        except ZeroDivisionError:  # guard against zero scale bones...
             safemat = Matrix.Translation(loc) * rot.to_matrix().to_4x4() * Matrix.Scale(1.0, 4)
 
         # determine avg distance to any children
@@ -601,6 +611,8 @@ def create_skeleton(PDX_bone_list):
         new_bone.tail = Vector((0.0, 0.0, 0.1 * avg_dist))
         # set matrix directly as this includes bone roll/rotation
         new_bone.matrix = swap_coord_space(safemat.inverted_safe())  # convert to Blender space
+        if convert_bonespace:
+            new_bone.matrix = swap_coord_space(safemat.inverted_safe()) * BONESPACE_MATRIX  # convert to Blender space
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
@@ -844,7 +856,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
 """
 
 
-def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
+def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bonespace=False):
     start = time.time()
     print("[io_pdx_mesh] Importing {}".format(meshpath))
 
@@ -874,7 +886,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
             if imp_skel:
                 print("[io_pdx_mesh] creating skeleton -")
-                rig = create_skeleton(pdx_bone_list)
+                rig = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -1020,7 +1032,7 @@ def import_animfile(animpath, timestart=1.0):
     try:
         bpy.context.scene.render.fps = fps
     except Exception as err:
-        raise NotImplementedError("Unsupported animation speed. {}".format(fps))
+        raise RuntimeError("Unsupported animation speed. {}".format(fps))
     bpy.context.scene.render.fps_base = 1.0
 
     print("[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart + framecount - 1)))
