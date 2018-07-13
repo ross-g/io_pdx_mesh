@@ -37,12 +37,14 @@ PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
 
+# fmt: off
 SPACE_MATRIX = MMatrix((
     (1, 0, 0, 0),
     (0, 1, 0, 0),
     (0, 0, -1, 0),
     (0, 0, 0, 1)
 ))
+# fmt: on
 
 
 """ ====================================================================================================================
@@ -426,6 +428,17 @@ def get_mesh_skeleton_info(maya_mesh):
         bone_list[i]['tx'].extend(mat[12:15])
 
     return bone_list
+
+
+def get_animation_fps():
+    time_unit = pmc.currentUnit(query=True, time=True)
+
+    if time_unit == 'game':
+        return 15
+    elif time_unit == 'ntsc':
+        return 30
+    else:
+        raise RuntimeError("Unsupported animation speed. {}".format(time_unit))
 
 
 def swap_coord_space(data):
@@ -1266,3 +1279,28 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
     print "[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start)
     if progress_fn:
         progress.finished()
+
+
+def export_animfile(animpath, timestart=1.0, timeend=10.0, progress_fn=None):
+    start = time.time()
+    print("[io_pdx_mesh] Exporting {}".format(animpath))
+
+    # create an XML structure to store the object hierarchy
+    root_xml = Xml.Element('File')
+    root_xml.set('pdxasset', [1, 0])
+
+    # create root element for animation info
+    info_xml = Xml.SubElement(root_xml, 'info')
+
+    # fill in animation info and initial pose
+    print("[io_pdx_mesh] writing animation info -")
+    fps = get_animation_fps()
+    info_xml.set('fps', fps)
+
+    frame_samples = timestart - timeend
+    info_xml.set('sa', frame_samples)
+
+    # create root element for animation keyframe data
+    samples_xml = Xml.SubElement(root_xml, 'samples')
+
+    print("[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time() - start))
