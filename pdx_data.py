@@ -369,7 +369,7 @@ def writeData(data_array):
 
 def write_meshfile(filepath, root_xml):
     """
-        Iterates over an XML element and writes the hierarchical element structure back into a binary file.
+        Iterates over an XML element and writes the element structure back into a binary file as mesh data.
     """
     datastring = b''
 
@@ -387,7 +387,7 @@ def write_meshfile(filepath, root_xml):
     # TODO: writing properties would be easier if order was irrelevant, you should test this
     # write objects root
     object_xml = root_xml.find('object')
-    if object_xml:
+    if object_xml is not None:
         current_depth = 1
         datastring += writeObject(object_xml, current_depth)
 
@@ -444,7 +444,7 @@ def write_meshfile(filepath, root_xml):
 
     # write locators root
     locator_xml = root_xml.find('locator')
-    if locator_xml:
+    if locator_xml is not None:
         current_depth = 1
         datastring += writeObject(locator_xml, current_depth)
 
@@ -457,6 +457,60 @@ def write_meshfile(filepath, root_xml):
             for prop in ['p', 'q', 'pa']:
                 if locnode_xml.get(prop) is not None:
                     datastring += writeProperty(prop, locnode_xml.get(prop))
+
+    # write the data
+    with open(filepath, 'wb') as fp:
+        fp.write(datastring)
+
+
+def write_animfile(filepath, root_xml):
+    """
+        Iterates over an XML element and writes the element structure back into a binary file as animation data.
+    """
+    datastring = b''
+
+    # write the file header '@@b@'
+    header = '@@b@'
+    for x in header:
+        datastring += struct.pack('c', x.encode())
+
+    # write the file properties
+    if root_xml.tag == 'File':
+        datastring += writeProperty('pdxasset', root_xml.get('pdxasset'))
+    else:
+        raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
+
+    # write info root
+    info_xml = root_xml.find('info')
+    if info_xml is not None:
+        current_depth = 1
+        datastring += writeObject(info_xml, current_depth)
+
+        # write info properties
+        for prop in ['fps', 'sa', 'j']:
+            if info_xml.get(prop) is not None:
+                datastring += writeProperty(prop, info_xml.get(prop))
+
+        # write each bone
+        for bone_xml in info_xml:
+            current_depth = 2
+            datastring += writeObject(bone_xml, current_depth)
+
+            # write bone properties
+            for prop in ['sa', 't', 'q', 's']:
+                if bone_xml.get(prop) is not None:
+                    datastring += writeProperty(prop, bone_xml.get(prop))
+
+    # write samples root
+    samples_xml = root_xml.find('samples')
+    if samples_xml is not None:
+        current_depth = 1
+        datastring += writeObject(samples_xml, current_depth)
+
+        # write sample properties
+        for prop in ['t', 'q', 's']:
+            if samples_xml.get(prop) is not None:
+                datastring += writeProperty(prop, samples_xml.get(prop))
 
     # write the data
     with open(filepath, 'wb') as fp:
@@ -543,22 +597,20 @@ General binary format is:
     header    (@@b@ for binary, @@t@ for text)
     pdxasset    (int)  number of assets?
         info    (object)
-            sa    (int)  num keyframes
-            j    (int)  num bones 
             fps    (float)  anim speed
+            sa    (int)  num keyframes
+            j    (int)  num bones
             bone    (object)
                 ...  multiple bones, not all may be animated based on 'sa' attribute
             bone    (object)
                 ...
             bone    (object)
-                q    (float)  initial rotation as quaternion
-                s    (float)  initial scale as single float
                 sa    (string)  animation curve types, combination of 's', 't', 'q'
                 t    (float)  initial translation as vector
+                q    (float)  initial rotation as quaternion
+                s    (float)  initial scale as single float
         samples    (object)
-            s    
-            q    
-            t    
-
-
+            t
+            q
+            s
 """
