@@ -31,6 +31,16 @@ except Exception as err:
     raise
 
 
+""" ====================================================================================================================
+    Variables and Helper functions.
+========================================================================================================================
+"""
+
+
+_script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
+
+
 def get_mayamainwindow():
     pointer = omUI.MQtUtil.mainWindow()
     return wrapInstance(long(pointer), QtWidgets.QMainWindow)
@@ -53,8 +63,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
     """
         Main tool window.
     """
-    _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-    _settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
 
     def __init__(self, parent=None):
         # parent to the Maya main window.
@@ -111,9 +119,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         file_import_anim.triggered.connect(self.do_import_anim)
         file_export_mesh = QtWidgets.QAction('Export mesh ...', self)
         file_export_mesh.triggered.connect(self.do_export_mesh)
-        file_export_anim = QtWidgets.QAction('Export anim ...', self)
+        file_export_anim = QtWidgets.QAction('Export animation ...', self)
         file_export_anim.triggered.connect(self.do_export_anim)
-        file_export_anim.setDisabled(True)
 
         # tools menu
         tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
@@ -262,20 +269,34 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def do_export_anim(self):
-        pass
+        try:
+            export_animfile(
+                animpath,
+                timestart=1.0,
+                timeend=10.0,
+                progress_fn=MayaProgress
+            )
+            QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Animation export finished!\n\n{}'.format(animpath))
+
+        except Exception as err:
+            print "[io_pdx_mesh] FAILED to export {}".format(meshpath)
+            print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Animation export failed!\n\n{}'.format(err))
+            MayaProgress.finished()
+            raise
 
     def load_settings(self):
         # load the JSON settings
         try:
-            if '.zip' in self._settings_file:
-                zipped = self._settings_file.split('.zip')[0] + '.zip'
+            if '.zip' in settings_file:
+                zipped = settings_file.split('.zip')[0] + '.zip'
                 with zipfile.ZipFile(zipped, 'r') as z:
                     f = z.open('io_pdx_mesh/clausewitz.json')
                     settings = json.loads(f.read())
                     return settings
 
             else:
-                with open(self._settings_file, 'rt') as f:
+                with open(settings_file, 'rt') as f:
                     settings = json.load(f)
                     return settings
 
