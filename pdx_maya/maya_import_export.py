@@ -184,33 +184,6 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def get_skeleton_hierarchy(bones_list):
-    root_bone = set()
-
-    for bone in bones_list:
-        root_bone.add(bone.root())
-
-    if len(root_bone) != 1:
-        raise RuntimeError("Unable to resolve a single root bone for the skeleton. {}".format(root_bone))
-
-    root_bone = list(root_bone)[0]
-    valid_bones = [root_bone]
-
-    def get_recursive_children(bone, descendents):
-        children = [
-            jnt for jnt in pmc.listRelatives(bone, children=True, type='joint') if not hasattr(jnt, PDX_IGNOREJOINT)
-        ]
-        descendents.extend(children)
-        for bone in children:
-            get_recursive_children(bone, descendents)
-
-        return descendents
-
-    get_recursive_children(root_bone, valid_bones)
-
-    return valid_bones
-
-
 def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     """
         Returns a dictionary of mesh information neccessary to the exporter.
@@ -406,7 +379,8 @@ def get_mesh_skeleton_info(maya_mesh):
 
     # a mesh can only be connected to one skin cluster
     skin = skinclusters[0]
-    # find all bones in hierarchy
+
+    # find all bones in hierarchy to be exported
     all_bones = get_skeleton_hierarchy(skin.influenceObjects())
 
     # build a list of bone information dictionaries for the exporter
@@ -428,6 +402,33 @@ def get_mesh_skeleton_info(maya_mesh):
         bone_list[i]['tx'].extend(mat[12:15])
 
     return bone_list
+
+
+def get_skeleton_hierarchy(bones_list):
+    root_bone = set()
+
+    for bone in bones_list:
+        root_bone.add(bone.root())
+
+    if len(root_bone) != 1:
+        raise RuntimeError("Unable to resolve a single root bone for the skeleton. {}".format(list(root_bone)))
+
+    root_bone = list(root_bone)[0]
+    valid_bones = [root_bone]
+
+    def get_recursive_children(bone, descendents):
+        children = [
+            jnt for jnt in pmc.listRelatives(bone, children=True, type='joint') if not (hasattr(jnt, PDX_IGNOREJOINT) and getattr(jnt, PDX_IGNOREJOINT).get())
+        ]
+        descendents.extend(children)
+        for bone in children:
+            get_recursive_children(bone, descendents)
+
+        return descendents
+
+    get_recursive_children(root_bone, valid_bones)
+
+    return valid_bones
 
 
 def get_animation_fps():
@@ -634,7 +635,7 @@ def create_skeleton(PDX_bone_list):
             transform[9], transform[10], transform[11], 1.0
         )
         # convert to Maya space
-        new_bone.setMatrix(swap_coord_space(mat.inverse()), worldSpace=True)    # set to matrix inverse in world-space
+        new_bone.setMatrix(swap_coord_space(mat.inverse()), worldSpace=True)  # set to matrix inverse in world-space
         pmc.select(clear=True)
 
         # connect to parent
@@ -1295,12 +1296,36 @@ def export_animfile(animpath, timestart=1.0, timeend=10.0, progress_fn=None):
     # fill in animation info and initial pose
     print("[io_pdx_mesh] writing animation info -")
     fps = get_animation_fps()
-    info_xml.set('fps', fps)
+    info_xml.set('fps', [float(fps)])
 
     frame_samples = timestart - timeend
-    info_xml.set('sa', frame_samples)
+    info_xml.set('sa', [frame_samples])
+
+    # populate bone data, assume that the skeleton to be exported is selected
+    _bones = pmc.selected()
+    export_bones = get_skeleton_hierarchy(_bones)
+    info_xml.set('j', [len(export_bones)])
+
+    # for each bone, write sample types and describe the initial offset from parent
+    for bone_joint in export_bones:
+        print("[io_pdx_mesh] writing bone - {}".format(bone_joint.name()))
+        bone_xml = Xml.SubElement(info_xml, bone_joint.name())
+        bone_xml.set('sa', 'tqs')
+
+        # convert to Game space
+        _translation = swap_coord_space(bone_joint.getTranslation())
+        _rotation = swap_coord_space(bone_joint.getRotation(quaternion=True))
+        _scale = bone_joint.getScale()
+
+        bone_xml.set('t', list(_translation))
+        bone_xml.set('q', list(_rotation))
+        bone_xml.set('s', list(_scale))
 
     # create root element for animation keyframe data
     samples_xml = Xml.SubElement(root_xml, 'samples')
+    print("[io_pdx_mesh] writing keyframes -")
+
+    # write the binary file from our XML structure
+    pdx_data.write_animfile(animpath, root_xml)
 
     print("[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time() - start))

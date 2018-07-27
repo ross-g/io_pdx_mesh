@@ -232,7 +232,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         # validate directory
         if filepath == '':
-            export_opts.select_export_path()
+            export_opts.select_export_path(filter_text='PDX Mesh files (*.mesh)')
             filepath, filename = export_opts.get_export_path()
         if not os.path.isdir(filepath):
             reply = QtWidgets.QMessageBox.warning(self, 'WRITE ERROR',
@@ -269,6 +269,28 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def do_export_anim(self):
+        export_opts = self.export_ctrls
+        filepath, filename = export_opts.get_export_path()
+
+        # validate directory
+        if filepath == '':
+            export_opts.select_export_path(filter_text='PDX Animation files (*.anim)')
+            filepath, filename = export_opts.get_export_path()
+        if not os.path.isdir(filepath):
+            reply = QtWidgets.QMessageBox.warning(self, 'WRITE ERROR',
+                                                  'Unable to export content. The filepath ... '
+                                                  '\n\n\t{}'
+                                                  '\n ... is not a valid location!'.format(filepath),
+                                                  QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+            if reply == QtWidgets.QMessageBox.Ok:
+                print "[io_pdx_mesh] Nothing to export."
+            return
+
+        # determine the output mesh path
+        if not os.path.splitext(filename)[1] == '.anim':
+            filename += '.anim'
+        animpath = os.path.join(os.path.normpath(filepath), filename)
+
         try:
             export_animfile(
                 animpath,
@@ -279,7 +301,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Animation export finished!\n\n{}'.format(animpath))
 
         except Exception as err:
-            print "[io_pdx_mesh] FAILED to export {}".format(meshpath)
+            print "[io_pdx_mesh] FAILED to export {}".format(animpath)
             print err
             QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Animation export failed!\n\n{}'.format(err))
             MayaProgress.finished()
@@ -507,9 +529,9 @@ class export_controls(QtWidgets.QWidget):
 
         self.list_animations.sortItems()
 
-    def select_export_path(self):
+    def select_export_path(self, filter_text='All files (*.*)'):
         filepath, filefilter = QtWidgets.QFileDialog.getSaveFileName(self, caption='Select export folder',
-                                                                     filter='PDX Mesh files (*.mesh)')
+                                                                     filter=filter_text)
         path, name = os.path.split(filepath)
 
         if filepath != '' and os.path.isdir(path):
