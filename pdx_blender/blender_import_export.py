@@ -1183,11 +1183,15 @@ def export_animfile(animpath, timestart=1.0, timeend=10.0):
 
     # populate bone data, assume that the rig to be exported is selected
     rig = bpy.context.scene.objects.active
-    bone_count = len(rig.pose.bones)
-    info_xml.set('j', [bone_count])
+    export_bones = get_skeleton_hierarchy(rig)
+    info_xml.set('j', [len(export_bones)])
 
     # for each bone, write sample types and describe the initial offset from parent
     for pose_bone in rig.pose.bones:
+        # skip pose bones that we're not exporting
+        if pose_bone.bone not in export_bones:
+            continue
+
         print("[io_pdx_mesh] writing bone - {}".format(pose_bone.name))
         bone_xml = Xml.SubElement(info_xml, pose_bone.name)
         bone_xml.set('sa', 'tqs')
