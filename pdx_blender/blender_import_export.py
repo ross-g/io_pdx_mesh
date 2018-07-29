@@ -153,7 +153,7 @@ def get_material_textures(blender_material):
     return texture_dict
 
 
-def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=False):
+def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=True):
     """
         Returns a dictionary of mesh information neccessary for the exporter.
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
@@ -299,7 +299,6 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
     skin_dict['bones'].append(PDX_MAXSKININFS)
 
     # find bone/vertex-group influences
-    # TODO: skip bone/group if bone has the PDX_IGNOREJOINT attribute
     bone_names = [bone.name for bone in get_skeleton_hierarchy(rig)]
     group_names = [group.name for group in blender_obj.vertex_groups]
 
@@ -387,8 +386,6 @@ def get_mesh_skeleton_info(blender_obj):
 
 
 def get_skeleton_hierarchy(rig):
-    valid_bones = [bone for bone in rig.data.bones if not bone.get(PDX_IGNOREJOINT)]
-
     root_bone = rig.data.bones[0]
     valid_bones = [root_bone]
 
@@ -1018,7 +1015,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 meshnode_xml = Xml.SubElement(objnode_xml, 'mesh')
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts, True)
+                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts, False)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:

@@ -1252,8 +1252,8 @@ def import_animfile(animpath, timestart=1.0, progress_fn=None):
 
     # then traverse the samples data to store keys per bone
     s_index, q_index, t_index = 0, 0, 0
-    for f in range(0, framecount):
-        for i, bone_name in enumerate(all_bone_keyframes):
+    for _ in range(0, framecount):
+        for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
 
             if 's' in bone_key_data:
