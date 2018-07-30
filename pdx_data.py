@@ -64,12 +64,12 @@ class PDXData(object):
 
     def __str__(self):
         string = list()
-        for _key, _val in self.attrdict.iteritems():
+        for _key, _val in self.attrdict.items():
             if type(_val) == type(self):
                 string.append('{}{}:'.format(self.depth * '    ', _key))
                 string.append('{}'.format(_val))
             else:
-                string.append('{}{}:  {}'.format(self.depth * '    ', _key, len(_val)))
+                string.append('{}{}: {}  {}'.format(self.depth * '    ', _key, len(_val), _val))
         return '\n'.join(string)
 
 
@@ -183,7 +183,9 @@ def parseData(bdata, pos):
         pos += str_data_length
 
     else:
-        raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
+        raise NotImplementedError(
+            "Unknown data type encountered. {} at position {}\n{}".format(datatype, pos, bdata[pos - 10 : pos + 10])
+        )
 
     return datavalues, pos
 
@@ -362,7 +364,7 @@ def writeData(data_array):
         datastring += struct.pack('x')
 
     else:
-        raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
+        raise NotImplementedError("Unknown data type encountered. {}\n{}".format(datatype, data_array))
 
     return datastring
 
@@ -527,19 +529,14 @@ if __name__ == '__main__':
     """
        When called from the command line we just print the structure and contents of the .mesh or .anim file to stdout
     """
-    clear = lambda: os.system('cls')
-    clear()
-
     if len(sys.argv) > 1:
-        a_file = sys.argv[1]
-        a_data = read_meshfile(a_file)
+        os.system('cls')
+        _file = sys.argv[1]
+        _data = read_meshfile(_file)
 
-        for elem in a_data.iter():
-            print('object', elem.tag)
-            for k, v in elem.items():
-                print('    property', k, '({})'.format(len(v)))
-                print(v)
-            print()
+        pdx_data = PDXData(_data)
+        print(pdx_data)
+        print()
 
 
 """
