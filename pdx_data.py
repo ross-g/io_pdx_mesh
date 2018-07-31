@@ -535,8 +535,13 @@ if __name__ == '__main__':
         _data = read_meshfile(_file)
 
         pdx_data = PDXData(_data)
-        print(pdx_data)
-        print()
+
+        if sys.argv[2]:
+            with open(sys.argv[2], 'wt') as fp:
+                fp.write(str(pdx_data))
+        else:
+            print(pdx_data)
+            print()
 
 
 """
