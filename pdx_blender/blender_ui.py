@@ -394,11 +394,6 @@ class export_anim(Operator, ExportHelper):
     )
 
     # list of operator properties
-    chk_range = BoolProperty(
-        name='Custom range',
-        description='Custom range',
-        default=False,
-    )
     int_start = IntProperty(
         name='Start frame',
         description='Start frame',
@@ -407,23 +402,36 @@ class export_anim(Operator, ExportHelper):
     int_end = IntProperty(
         name='End frame',
         description='End frame',
-        default=10,
+        default=100,
     )
 
     def draw(self, context):
+        settings = context.scene.io_pdx_export
+
         box = self.layout.box()
         box.label('Settings:', icon='EXPORT')
-        box.prop(self, 'chk_range')
-        box.prop(self, 'int_start')
-        box.prop(self, 'int_end')
+        box.prop(settings, 'custom_range')
+        col = box.column()
+        col.enabled = settings.custom_range
+        col.prop(self, 'int_start')
+        col.prop(self, 'int_end')
 
     def execute(self, context):
+        settings = context.scene.io_pdx_export
+
         try:
-            export_animfile(
-                self.filepath,
-                timestart=self.int_start,
-                timeend=self.int_end
-            )
+            if settings.custom_range:
+                export_animfile(
+                    self.filepath,
+                    timestart=self.int_start,
+                    timeend=self.int_end
+                )
+            else:
+                export_animfile(
+                    self.filepath,
+                    timestart=context.scene.frame_start,
+                    timeend=context.scene.frame_end
+                )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
         except Exception as err:
             msg = "[io_pdx_mesh] FAILED to export {}".format(self.filepath)
