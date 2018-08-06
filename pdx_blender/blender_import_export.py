@@ -387,16 +387,17 @@ def get_mesh_skeleton_info(blender_obj):
 
 def get_skeleton_hierarchy(rig):
     root_bone = rig.data.bones[0]
-    valid_bones = [root_bone]
 
-    def get_recursive_children(bone, descendents):
+    def get_recursive_children(bone, hierarchy):
+        hierarchy.append(bone)
         children = [jnt for jnt in bone.children if not jnt.get(PDX_IGNOREJOINT)]
-        descendents.extend(children)
+
         for bone in children:
-            get_recursive_children(bone, descendents)
+            get_recursive_children(bone, hierarchy)
 
-        return descendents
+        return hierarchy
 
+    valid_bones = []
     get_recursive_children(root_bone, valid_bones)
 
     return valid_bones

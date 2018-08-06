@@ -414,18 +414,20 @@ def get_skeleton_hierarchy(bones_list):
         raise RuntimeError("Unable to resolve a single root bone for the skeleton. {}".format(list(root_bone)))
 
     root_bone = list(root_bone)[0]
-    valid_bones = [root_bone]
 
-    def get_recursive_children(bone, descendents):
+    def get_recursive_children(bone, hierarchy):
+        hierarchy.append(bone)
         children = [
-            jnt for jnt in pmc.listRelatives(bone, children=True, type='joint') if not (hasattr(jnt, PDX_IGNOREJOINT) and getattr(jnt, PDX_IGNOREJOINT).get())
+            jnt for jnt in pmc.listRelatives(bone, children=True, type='joint')
+            if not (hasattr(jnt, PDX_IGNOREJOINT) and getattr(jnt, PDX_IGNOREJOINT).get())
         ]
-        descendents.extend(children)
+
         for bone in children:
-            get_recursive_children(bone, descendents)
+            get_recursive_children(bone, hierarchy)
 
-        return descendents
+        return hierarchy
 
+    valid_bones = []
     get_recursive_children(root_bone, valid_bones)
 
     return valid_bones
