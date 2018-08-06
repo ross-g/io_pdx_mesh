@@ -36,7 +36,7 @@ PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
-PDX_ROUND_ROT = 5
+PDX_ROUND_ROT = 4
 PDX_ROUND_TRANS = 3
 PDX_ROUND_SCALE = 2
 
@@ -415,11 +415,12 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
             # build a matrix describing the transform from parent bone
             parent_matrix = Matrix()
             if pose_bone.parent:
-                parent_matrix = pose_bone.parent.matrix
+                parent_matrix = pose_bone.parent.matrix.copy()
 
-            offset_matrix = parent_matrix.inverted() * pose_bone.matrix
+            offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
+            _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # Convert to Game space
 
-            frames_data[bone.name].append(swap_coord_space(offset_matrix))  # Convert to Game space
+            frames_data[bone.name].append((_translation, _rotation, _scale))
 
     # create an ordered dictionary of all animated bones to store sample data
     all_bone_keyframes = OrderedDict()
@@ -428,17 +429,23 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
 
     # determine if any transform attributes were animated over this frame range for each bone
     for bone in export_bones:
-        decomposed_transforms = [mat.decompose() for mat in frames_data[bone.name]]
-        t_list, q_list, s_list = zip(*decomposed_transforms)
+        # convert data from list of tuples [(t,q,s)] to three nested lists [t][q][s]
+        t_list, q_list, s_list = zip(*frames_data[bone.name])
 
         if round_data:
-            t_list = [util_round(x, PDX_ROUND_TRANS) for x in t_list]
-            q_list = [util_round(x, PDX_ROUND_ROT) for x in q_list]
-            s_list = [util_round(x, PDX_ROUND_SCALE) for x in s_list]
+            t_list = [util_round(t, PDX_ROUND_TRANS) for t in t_list]
+            q_list = [util_round(q, PDX_ROUND_ROT) for q in q_list]
+            s_list = [util_round(s, PDX_ROUND_SCALE) for s in s_list]
+        else:
+            t_list = [t.freeze() for t in t_list]  # call freeze so Blender data can be hashed into a set
+            q_list = [q.freeze() for q in q_list]
+            s_list = [s.freeze() for s in s_list]
+
+        # convert quaternions from wxyz to xyzw
+        q_list = [(q[1], q[2], q[3], q[0]) for q in q_list]
 
         # store any animated transform samples per attribute
         for attr, attr_list in zip(['t', 'q', 's'], [t_list, q_list, s_list]):
-            # attr_list = [x.freeze() for x in attr_list]  # freeze so Blender data can be hashed into a set()
             if len(set(attr_list)) != 1:
                 all_bone_keyframes[bone.name][attr] = attr_list
 
@@ -893,6 +900,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
         if 's' in key_dict:
             _scale = Matrix.Scale(key_dict['s'][k][0], 4)
             _scale = swap_coord_space(_scale)  # convert to Blender space
+
         if 'q' in key_dict:
             _rotation = (
                 Quaternion((key_dict['q'][k][3], key_dict['q'][k][0], key_dict['q'][k][1], key_dict['q'][k][2]))
@@ -900,6 +908,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
                 .to_4x4()
             )
             _rotation = swap_coord_space(_rotation)  # convert to Blender space
+
         if 't' in key_dict:
             _translation = Matrix.Translation(key_dict['t'][k])
             _translation = swap_coord_space(_translation)  # convert to Blender space
@@ -1200,6 +1209,7 @@ def import_animfile(animpath, timestart=1):
             print("[io_pdx_mesh] setting {} keyframes on bone '{}'".format(list(bone_keys.keys()), bone_name))
             create_anim_keys(rig, bone_name, bone_keys, timestart, initial_pose)
 
+    bpy.context.scene.frame_set(timestart)
     bpy.context.scene.update()
 
     print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
@@ -1208,6 +1218,8 @@ def import_animfile(animpath, timestart=1):
 def export_animfile(animpath, timestart=1, timeend=10):
     start = time.time()
     print("[io_pdx_mesh] Exporting {}".format(animpath))
+
+    curr_frame = bpy.context.scene.frame_start
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
@@ -1221,7 +1233,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     fps = bpy.context.scene.render.fps
     info_xml.set('fps', [float(fps)])
 
-    frame_samples = timestart - timeend
+    frame_samples = (timeend + 1) - timestart
     info_xml.set('sa', [frame_samples])
 
     # populate bone data, assume that the rig to be exported is selected
@@ -1233,15 +1245,18 @@ def export_animfile(animpath, timestart=1, timeend=10):
     all_bone_keyframes = get_scene_animdata(rig, export_bones, timestart, timeend)
 
     # for each bone, write sample types and describe the initial offset from parent
-    for pose_bone in rig.pose.bones:
-        # skip pose bones that we're not exporting
-        if pose_bone.bone not in export_bones:
-            continue
-        bone_name = pose_bone.name
+    print("[io_pdx_mesh] writing initial bone transforms -")
+    bpy.context.scene.frame_set(timestart)
+    for bone in export_bones:
+        pose_bone = rig.pose.bones[bone.name]
+        bone_xml = Xml.SubElement(info_xml, pose_bone.name)
 
-        print("[io_pdx_mesh] writing bone - {}".format(bone_name))
-        bone_xml = Xml.SubElement(info_xml, bone_name)
-        bone_xml.set('sa', ''.join(all_bone_keyframes[bone_name].keys()))
+        # check sample types
+        sample_types = ''
+        for attr in ['t', 'q', 's']:
+            if attr in all_bone_keyframes[pose_bone.name]:
+                sample_types += attr
+        bone_xml.set('sa', [sample_types])
 
         # determine if we have a parent matrix
         parent_matrix = Matrix()
@@ -1252,15 +1267,43 @@ def export_animfile(animpath, timestart=1, timeend=10):
         offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
         _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # convert to Game space
 
-        bone_xml.set('t', list(_translation))
-        bone_xml.set('q', [list(_rotation)[1], list(_rotation)[2], list(_rotation)[3], list(_rotation)[0]])
-        bone_xml.set('s', list(_scale))
+        _rotation = [list(_rotation)[1], list(_rotation)[2], list(_rotation)[3], list(_rotation)[0]]
+        _scale = [_scale[0]]  # support uniform scale only
+
+        # round to required precisions and set attribute
+        bone_xml.set('t', util_round(_translation, PDX_ROUND_TRANS))
+        bone_xml.set('q', util_round(_rotation, PDX_ROUND_ROT))
+        bone_xml.set('s', util_round(_scale, PDX_ROUND_SCALE))
 
     # create root element for animation keyframe data
     samples_xml = Xml.SubElement(root_xml, 'samples')
     print("[io_pdx_mesh] writing keyframes -")
+    for bone_name in all_bone_keyframes:
+        bone_keys = all_bone_keyframes[bone_name]
+        if bone_keys:
+            print("[io_pdx_mesh] writing {} keyframes for bone '{}'".format(list(bone_keys.keys()), bone_name))
+
+    # pack all scene animation data into flat keyframe lists
+    t_packed, q_packed, s_packed = [], [], []
+    for i in range(frame_samples):
+        for bone in all_bone_keyframes:
+            if 't' in all_bone_keyframes[bone]:
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))   # TODO : pop first item is slow?
+            if 'q' in all_bone_keyframes[bone]:
+                q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
+            if 's' in all_bone_keyframes[bone]:
+                s_packed.append(all_bone_keyframes[bone]['s'].pop(0)[0])  # support uniform scale only
+
+    if t_packed:
+        samples_xml.set('t', t_packed)
+    if q_packed:
+        samples_xml.set('q', q_packed)
+    if s_packed:
+        samples_xml.set('s', s_packed)
 
     # write the binary file from our XML structure
     pdx_data.write_animfile(animpath, root_xml)
+
+    bpy.context.scene.frame_set(curr_frame)
 
     print("[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time() - start))
