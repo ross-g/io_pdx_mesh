@@ -294,8 +294,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         try:
             export_animfile(
                 animpath,
-                timestart=1.0,
-                timeend=10.0,
+                timestart=pmc.playbackOptions(query=True, minTime=True),
+                timeend=pmc.playbackOptions(query=True, maxTime=True),
                 progress_fn=MayaProgress
             )
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Animation export finished!\n\n{}'.format(animpath))
