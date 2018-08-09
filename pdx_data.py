@@ -190,7 +190,7 @@ def parseData(bdata, pos):
     return datavalues, pos
 
 
-def read_meshfile(filepath, to_stdout=False):
+def read_meshfile(filepath):
     """
         Reads through a .mesh file and gathers all the data into hierarchical element structure.
         The resulting XML is not natively writable to string as it contains Python data types.
@@ -224,8 +224,6 @@ def read_meshfile(filepath, to_stdout=False):
         if struct.unpack_from('c', fdata, offset=pos)[0].decode() == '!':
             # check the property type and values
             prop_name, prop_values, pos = parseProperty(fdata, pos)
-            if to_stdout:
-                print("  " * current_depth + "  ", prop_name, " (count", len(prop_values), ")")
 
             # assign property values to the parent object
             parent_element.set(prop_name, prop_values)
@@ -234,8 +232,6 @@ def read_meshfile(filepath, to_stdout=False):
         elif struct.unpack_from('c', fdata, offset=pos)[0].decode() == '[':
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
-            if to_stdout:
-                print("  " * depth, obj_name, depth)
 
             # deeper branch of the tree => current parent valid
             # same or shallower branch of the tree => parent gets redefined back a level
