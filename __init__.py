@@ -8,6 +8,7 @@
 import os
 import sys
 import inspect
+import logging
 
 bl_info = {
     'name': 'IO PDX mesh',
@@ -21,10 +22,19 @@ bl_info = {
     'category': 'Import-Export',
 }
 
+# setup module logging
+IO_PDX_LOG = logging.getLogger('io_pdx_mesh')
+IO_PDX_LOG.propagate = False
+if not IO_PDX_LOG.handlers:
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.DEBUG)
+    console.setFormatter(logging.Formatter('[%(name)s] %(levelname)s:  %(message)s'))
+    IO_PDX_LOG.addHandler(console)
+
 app = os.path.split(sys.executable)[1]
 root_path = os.path.dirname(inspect.getfile(inspect.currentframe()))
-print('[io_pdx_mesh] Running from {}'.format(app))
-print('[io_pdx_mesh] {}'.format(root_path))
+IO_PDX_LOG.info("Running from {0}".format(app))
+IO_PDX_LOG.info(root_path)
 
 # check if running in Blender
 if 'blender' in app.lower():
