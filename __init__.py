@@ -9,6 +9,7 @@ import os
 import sys
 import inspect
 import logging
+import traceback
 
 bl_info = {
     'name': 'IO PDX mesh',
@@ -44,7 +45,7 @@ if 'blender' in app.lower():
         # register the Blender addon
         from .pdx_blender import register, unregister
     except Exception as e:
-        print(sys.exc_info())
+        traceback.print_exc()
         raise e
 
 # otherwise running in Maya
@@ -58,5 +59,5 @@ if 'maya' in app.lower():
         reload(maya_ui)
         maya_ui.main()
     except Exception as e:
-        print(sys.exc_info())
+        traceback.print_exc()
         raise e
