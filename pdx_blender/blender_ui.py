@@ -242,8 +242,8 @@ class import_mesh(Operator, ImportHelper):
     )
     chk_bonespace = BoolProperty(
         name='Convert bone orientation - WARNING',
-        description='Convert bone orientation - WARNING: this re-orients bones authored in Maya, but will break ALL '
-                    'existing animations. Only use this option if you are going to re-animate the model.',
+        description='Convert bone orientation - WARNING: this re-orients bones authored in Maya, but will BREAK ALL '
+                    'EXISTING ANIMATIONS. Only use this option if you are going to re-animate the model.',
         default=False,
     )
 
@@ -253,7 +253,7 @@ class import_mesh(Operator, ImportHelper):
         box.prop(self, 'chk_mesh')
         box.prop(self, 'chk_skel')
         box.prop(self, 'chk_locs')
-        box.prop(self, 'chk_bonespace')
+        # box.prop(self, 'chk_bonespace')  # TODO: works but overcomplicates things, disabled for now
 
     def execute(self, context):
         try:
@@ -576,6 +576,9 @@ class PDXblender_4help_ui(Panel):
     bl_region_type = 'TOOLS'
 
     def draw(self, context):
+        self.layout.operator(
+            'wm.url_open', icon='QUESTION', text='Tool Wiki'
+        ).url = 'https://github.com/ross-g/io_pdx_mesh/wiki'
         self.layout.operator(
             'wm.url_open', icon='QUESTION', text='Paradox forums'
         ).url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'

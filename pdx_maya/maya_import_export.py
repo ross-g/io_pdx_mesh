@@ -1356,7 +1356,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     # fill in animation info and initial pose
     IO_PDX_LOG.info("writing animation info -")
-    fps = get_animation_fps()
+    fps = get_animation_fps()  # pmc.mel.currentTimeUnitToFPS()
     info_xml.set('fps', [float(fps)])
 
     frame_samples = (timeend + 1) - timestart

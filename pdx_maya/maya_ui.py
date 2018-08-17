@@ -138,42 +138,27 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_hide_loc_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='locator'))
 
         # help menu
+        help_wiki = QtWidgets.QAction('Tool Wiki', self)
+        help_wiki.triggered.connect(lambda: webbrowser.open(
+            'https://github.com/ross-g/io_pdx_mesh/wiki'
+        ))
         help_forum = QtWidgets.QAction('Paradox forums', self)
-        help_forum.triggered.connect(
-            lambda: webbrowser.open(
-                'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
-            )
-        )
+        help_forum.triggered.connect(lambda: webbrowser.open(
+            'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
+        ))
         help_code = QtWidgets.QAction('Source code', self)
-        help_code.triggered.connect(
-            lambda: webbrowser.open(
-                'https://github.com/ross-g/io_pdx_mesh'
-            )
-        )
+        help_code.triggered.connect(lambda: webbrowser.open(
+            'https://github.com/ross-g/io_pdx_mesh'
+        ))
 
-        file_menu.addActions([
-            file_import_mesh,
-            file_import_anim
-        ])
+        file_menu.addActions([file_import_mesh, file_import_anim])
         file_menu.addSeparator()
-        file_menu.addActions([
-            file_export_mesh,
-            file_export_anim
-        ])
-        tools_menu.addActions([
-            tool_ignore_joints,
-            tool_unignore_joints
-        ])
+        file_menu.addActions([file_export_mesh, file_export_anim])
+        tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
         tools_menu.addSeparator()
-        tools_menu.addActions([
-            tool_show_jnt_localaxes,
-            tool_hide_jnt_localaxes,
-            tool_show_loc_localaxes,
-            tool_hide_loc_localaxes
-        ])
-        help_menu.addActions([
-            help_forum, help_code
-        ])
+        tools_menu.addActions([tool_show_jnt_localaxes, tool_hide_jnt_localaxes])
+        tools_menu.addActions([tool_show_loc_localaxes, tool_hide_loc_localaxes])
+        help_menu.addActions([help_wiki, help_forum, help_code])
 
     def create_controls(self):
         main_layout = QtWidgets.QVBoxLayout()
@@ -386,13 +371,12 @@ class export_controls(QtWidgets.QWidget):
         self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
         self.chk_skeleton = QtWidgets.QCheckBox('Export skeleton')
         self.chk_locators = QtWidgets.QCheckBox('Export locators')
-        self.chk_animation = QtWidgets.QCheckBox('Export animations')
         self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
         self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
+        self.chk_animation = QtWidgets.QCheckBox('Export selected animations')
+        self.chk_create_extra = QtWidgets.QCheckBox('Create .gfx and .asset')
         for ctrl in [self.chk_mesh, self.chk_skeleton, self.chk_locators, self.chk_merge_vtx]:
             ctrl.setChecked(True)
-        # self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
-        # self.chk_preview = QtWidgets.QCheckBox('Preview on export')
 
         # output settings
         lbl_path = QtWidgets.QLabel('Output path:')
@@ -405,11 +389,8 @@ class export_controls(QtWidgets.QWidget):
         self.txt_file.setPlaceholderText('placeholder_name.mesh')
         self.btn_export = QtWidgets.QPushButton('Export ...', self)
 
-        # TODO: re-enable these once export is working
-        self.btn_anim_refresh.setDisabled(True)
-        self.btn_anim_create.setDisabled(True)
-        self.btn_anim_edit.setDisabled(True)
-        self.chk_animation.setDisabled(True)
+        # TODO: re-enable these once supported
+        self.chk_create_extra.setDisabled(True)
         self.chk_merge_obj.setDisabled(True)
 
         # create layouts
@@ -437,7 +418,9 @@ class export_controls(QtWidgets.QWidget):
         grp_scene_layout.setContentsMargins(4, 4, 4, 4)
         grp_scene_layout.setVerticalSpacing(5)
         grp_export = QtWidgets.QGroupBox('Export settings')
-        grp_export_layout = QtWidgets.QVBoxLayout()
+        grp_export_layout = QtWidgets.QGridLayout()
+        grp_export_layout.setVerticalSpacing(5)
+        grp_export_layout.setHorizontalSpacing(4)
         grp_export_layout.setContentsMargins(4, 4, 4, 4)
         grp_export_fields_layout = QtWidgets.QGridLayout()
         grp_export_fields_layout.setVerticalSpacing(5)
@@ -477,24 +460,23 @@ class export_controls(QtWidgets.QWidget):
 
         right_layout.addWidget(grp_export)
         grp_export.setLayout(grp_export_layout)
-        grp_export_layout.addWidget(self.chk_mesh)
-        grp_export_layout.addWidget(self.chk_skeleton)
-        grp_export_layout.addWidget(self.chk_locators)
-        grp_export_layout.addWidget(self.chk_animation)
-        grp_export_layout.addWidget(h_line())
-        grp_export_layout.addWidget(self.chk_merge_vtx)
-        grp_export_layout.addWidget(self.chk_merge_obj)
-        grp_export_layout.addWidget(h_line())
-        # grp_export_layout.addWidget(self.chk_create)
-        # grp_export_layout.addWidget(self.chk_preview)
-        # grp_export_layout.addWidget(h_line())
-        grp_export_layout.addLayout(grp_export_fields_layout)
+        grp_export_layout.addWidget(self.chk_mesh, 1, 1)
+        grp_export_layout.addWidget(self.chk_skeleton, 2, 1)
+        grp_export_layout.addWidget(self.chk_locators, 3, 1)
+        grp_export_layout.addWidget(self.chk_merge_vtx, 1, 2)
+        grp_export_layout.addWidget(self.chk_merge_obj, 2, 2)
+        grp_export_layout.addWidget(h_line(), 4, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_animation, 5, 1, 1, 2)
+        grp_export_layout.addWidget(h_line(), 6, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_create_extra, 7, 1, 1, 2)
+        grp_export_layout.addWidget(h_line(), 8, 1, 1, 2)
+        grp_export_layout.addLayout(grp_export_fields_layout, 9, 1, 1, 2)
         grp_export_fields_layout.addWidget(lbl_path, 1, 1)
         grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
         grp_export_fields_layout.addWidget(self.btn_path, 1, 3)
         grp_export_fields_layout.addWidget(lbl_file, 2, 1)
         grp_export_fields_layout.addWidget(self.txt_file, 2, 2, 1, 2)
-        grp_export_layout.addWidget(self.btn_export)
+        grp_export_layout.addWidget(self.btn_export, 10, 1, 1, 2)
 
     def connect_signals(self):
         self.list_materials.itemClicked.connect(self.select_mat)
@@ -546,6 +528,15 @@ class export_controls(QtWidgets.QWidget):
 
         self.list_animations.sortItems()
 
+    def edit_selected_anim(self):
+        pass
+
+    def create_new_anim(self):
+        pass
+
+    def select_anim(self, curr_sel):
+        pass
+
     def select_export_path(self, filter_text='All files (*.*)'):
         filepath, filefilter = QtWidgets.QFileDialog.getSaveFileName(
             self, caption='Select export folder', filter=filter_text
@@ -565,6 +556,9 @@ class export_controls(QtWidgets.QWidget):
     def do_export(self):
         if self.chk_mesh.isChecked() or self.chk_skeleton.isChecked() or self.chk_locators.isChecked():
             self.parent.do_export_mesh()
+
+        if self.chk_animation.isChecked():
+            pass
 
 
 class import_popup(QtWidgets.QWidget):

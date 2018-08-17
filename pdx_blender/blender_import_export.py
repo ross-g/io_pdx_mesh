@@ -1267,8 +1267,10 @@ def export_animfile(animpath, timestart=1, timeend=10):
         offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
         _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # convert to Game space
 
+        # convert quaternions from wxyz to xyzw
         _rotation = [list(_rotation)[1], list(_rotation)[2], list(_rotation)[3], list(_rotation)[0]]
-        _scale = [_scale[0]]  # support uniform scale only
+        # animation supports uniform scale only
+        _scale = [_scale[0]]
 
         # round to required precisions and set attribute
         bone_xml.set('t', util_round(_translation, PDX_ROUND_TRANS))
@@ -1288,7 +1290,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     for i in range(frame_samples):
         for bone in all_bone_keyframes:
             if 't' in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))   # TODO : pop first item is slow?
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO: pop first item is slow?
             if 'q' in all_bone_keyframes[bone]:
                 q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
             if 's' in all_bone_keyframes[bone]:
