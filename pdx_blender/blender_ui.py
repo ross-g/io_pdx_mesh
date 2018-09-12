@@ -149,6 +149,9 @@ class material_create_popup(material_popup, Operator):
         create_material(mat_pdx, None, mat_name=mat_name)
         return {'FINISHED'}
 
+    def check(self, context):
+        return True
+
     def invoke(self, context, event):
         self.mat_name = ''
         self.mat_type = '__NONE__'
@@ -162,7 +165,8 @@ class material_create_popup(material_popup, Operator):
         box.prop(self, 'mat_type')
         row = box.split(0.33)
         row.prop(self, 'use_custom')
-        row.prop(self, 'custom_type', text='')
+        if self.use_custom:
+            row.prop(self, 'custom_type', text='')
         self.layout.separator()
 
 
@@ -176,7 +180,6 @@ class material_edit_popup(material_popup, Operator):
         curr_mat = context.scene.io_pdx_material
         curr_mat.mat_name = mat.name
         curr_mat.mat_type = mat[PDX_SHADER]
-        print("updated curr_mat:", mat.name, mat[PDX_SHADER])
 
     scene_mats = EnumProperty(
         name='Selected material',
@@ -191,15 +194,20 @@ class material_edit_popup(material_popup, Operator):
         mat[PDX_SHADER] = curr_mat.mat_type
         return {'FINISHED'}
 
+    def check(self, context):
+        return True
+
     def invoke(self, context, event):
-        self.mat_select(context)
-        mat = bpy.data.materials[self.scene_mats]
-        self.mat_name = mat.name
-        self.custom_type = mat[PDX_SHADER]
-        return context.window_manager.invoke_props_dialog(self, width=350)
+        if self.scene_mats in bpy.data.materials:
+            self.mat_select(context)
+            mat = bpy.data.materials[self.scene_mats]
+            self.mat_name = mat.name
+            self.custom_type = mat[PDX_SHADER]
+            return context.window_manager.invoke_props_dialog(self, width=350)
+        else:
+            return {'CANCELLED'}
 
     def draw(self, context):
-        print("draw")
         curr_mat = context.scene.io_pdx_material
 
         self.layout.prop(self, 'scene_mats')
@@ -533,7 +541,7 @@ class PDXblender_2tools_ui(Panel):
         col.label('PDX materials:')
         row = col.row(align=True)
         row.operator('io_pdx_mesh.material_create_popup', icon='MATERIAL', text='Create ...')
-        row.operator('io_pdx_mesh.popup_message', icon='TEXTURE_SHADED', text='Edit')
+        row.operator('io_pdx_mesh.material_edit_popup', icon='TEXTURE_SHADED', text='Edit')
         col.separator()
 
         col.label('PDX bones:')
