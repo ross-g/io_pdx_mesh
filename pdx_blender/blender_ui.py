@@ -14,6 +14,7 @@ from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from ..pdx_data import PDXData
+from .. import bl_info
 
 try:
     from . import blender_import_export
@@ -584,6 +585,7 @@ class PDXblender_4help_ui(Panel):
     bl_region_type = 'TOOLS'
 
     def draw(self, context):
+        self.layout.label('version {}'.format(bl_info['version']))
         self.layout.operator(
             'wm.url_open', icon='QUESTION', text='Tool Wiki'
         ).url = 'https://github.com/ross-g/io_pdx_mesh/wiki'

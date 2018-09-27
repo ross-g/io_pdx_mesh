@@ -14,13 +14,15 @@ import traceback
 bl_info = {
     'name': 'IO PDX mesh',
     'author': 'ross-g',
-    'blender': (2, 78, 0),
-    'location': '3D View > Toolbox',
     'description': 'Import/Export Paradox asset files for the Clausewitz game engine.',
+    'blender': (2, 78, 0),
+    'maya': (2012),
+    'category': 'Import-Export',
+    'location': '3D View > Toolbox',
+    'support': 'COMMUNITY',
+    'version': '0.6',
     'warning': 'this add-on is beta',
     'wiki_url': 'https://github.com/ross-g/io_pdx_mesh',
-    'support': 'COMMUNITY',
-    'category': 'Import-Export',
 }
 
 # setup module logging

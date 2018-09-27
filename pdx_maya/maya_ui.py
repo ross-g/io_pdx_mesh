@@ -22,6 +22,7 @@ except ImportError:
 
 from .. import pdx_data
 from .. import IO_PDX_LOG
+from .. import bl_info
 
 try:
     from . import maya_import_export
@@ -150,6 +151,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         help_code.triggered.connect(lambda: webbrowser.open(
             'https://github.com/ross-g/io_pdx_mesh'
         ))
+        help_version = QtWidgets.QAction('version {}'.format(bl_info['version']), self)
+        help_version.setDisabled(True)
 
         file_menu.addActions([file_import_mesh, file_import_anim])
         file_menu.addSeparator()
@@ -158,6 +161,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tools_menu.addSeparator()
         tools_menu.addActions([tool_show_jnt_localaxes, tool_hide_jnt_localaxes])
         tools_menu.addActions([tool_show_loc_localaxes, tool_hide_loc_localaxes])
+        help_menu.addActions([help_version])
+        help_menu.addSeparator()
         help_menu.addActions([help_wiki, help_forum, help_code])
 
     def create_controls(self):
