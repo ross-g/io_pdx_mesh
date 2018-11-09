@@ -600,6 +600,8 @@ class import_popup(QtWidgets.QWidget):
         lbl_starttime = QtWidgets.QLabel('start time:')
         lbl_starttime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.spn_start = QtWidgets.QSpinBox()
+        self.spn_start.setMaximum(9999)
+        self.spn_start.setMinimum(-9999)
         self.spn_start.setMaximumWidth(50)
         self.spn_start.setValue(1)
 
