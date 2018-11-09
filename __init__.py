@@ -41,18 +41,18 @@ IO_PDX_LOG.info(root_path)
 
 # check if running in Blender
 if 'blender' in app.lower():
-    import bpy
+    import bpy  # noqa
 
     try:
         # register the Blender addon
-        from .pdx_blender import register, unregister
+        from .pdx_blender import register, unregister  # noqa
     except Exception as e:
         traceback.print_exc()
         raise e
 
 # otherwise running in Maya
 if 'maya' in app.lower():
-    import maya.cmds
+    import maya.cmds  # noqa
 
     try:
         # launch the Maya UI
