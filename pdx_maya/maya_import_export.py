@@ -893,13 +893,21 @@ def create_animcurve(joint, attr):
     anim_curve = mFn_AnimCurve.create(plug_type)
     mFn_AnimCurve.setName('{0}_{1}'.format(OpenMaya.MFnDependencyNode(joint).name(), attr))
 
-    # check for and remove any existing connections
+    # check for and remove any existing animation curve
     if in_plug.isConnected():
         mplugs = OpenMaya.MPlugArray()
         in_plug.connectedTo(mplugs, True, False)
         for i in range(0, mplugs.length()):
             m_DGMod = OpenMaya.MDGModifier()
             m_DGMod.deleteNode(mplugs[i].node())
+    # check for and return any existing animation curve
+    # if in_plug.isConnected():
+    #     mplugs = OpenMaya.MPlugArray()
+    #     in_plug.connectedTo(mplugs, True, False)
+    #     for i in range(0, mplugs.length()):
+    #         mObj = mplugs[i].node()
+    #         if mObj.hasFn(OpenMaya.MFn.kAnimCurve):
+    #             return None, OpenMayaAnim.MFnAnimCurve(mObj)
 
     # connect the new animation curve to the attribute on the joint
     connect_nodeplugs(anim_curve, 'output', joint, attr)
@@ -1107,6 +1115,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     # populate object data
     maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
+    # sort meshes for export by transform name
+    maya_meshes.sort(key=lambda mesh: mesh.getParent().name())
     for shape in maya_meshes:
         IO_PDX_LOG.info("writing node - {0}".format(shape.name()))
         if progress_fn:
@@ -1342,7 +1352,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     curr_frame = pmc.currentTime(query=True)
     if timestart != int(timestart) or timeend != int(timeend):
         raise RuntimeError(
-            "Invalid animation range selected ({0},{1}). Export only supports whole frames.".format([timestart, timeend])
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format([timestart, timeend])
         )
     timestart = int(timestart)
     timeend = int(timeend)

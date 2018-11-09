@@ -1220,6 +1220,12 @@ def export_animfile(animpath, timestart=1, timeend=10):
     print("[io_pdx_mesh] Exporting {}".format(animpath))
 
     curr_frame = bpy.context.scene.frame_start
+    if timestart != int(timestart) or timeend != int(timeend):
+        raise RuntimeError(
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format([timestart, timeend])
+        )
+    timestart = int(timestart)
+    timeend = int(timeend)
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
