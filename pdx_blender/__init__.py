@@ -25,14 +25,14 @@ class PDXBlender_settings(PropertyGroup):
     setup_engine = EnumProperty(
         name='Engine',
         description='Engine',
-        items=blender_ui.get_engine_list
+        items=blender_ui.get_engine_list,
     )
     setup_fps = IntProperty(
         name='Animation fps',
         description='Animation fps',
         min=1,
         default=15,
-        update=blender_ui.set_animation_fps
+        update=blender_ui.set_animation_fps,
     )
 
 
@@ -40,12 +40,20 @@ class PDXMaterial_settings(PropertyGroup):
     mat_name = StringProperty(
         name='Material name',
         description='Material name',
-        default=''
+        default='',
     )
     mat_type = StringProperty(
         name='Shader type',
         description='Shader type',
-        default=''
+        default='',
+    )
+
+
+class PDXExport_settings(PropertyGroup):
+    custom_range = BoolProperty(
+        name='Custom range',
+        description='Custom range',
+        default=False,
     )
 
 
@@ -55,7 +63,7 @@ class PDXMaterial_settings(PropertyGroup):
 """
 
 
-classes = [PDXBlender_settings, PDXMaterial_settings]
+classes = [PDXBlender_settings, PDXMaterial_settings, PDXExport_settings]
 
 # Append classes dynamically from submodules
 for name, obj in inspect.getmembers(blender_ui, inspect.isclass):
@@ -81,6 +89,7 @@ def register():
     # initialise tool properties to scene
     bpy.types.Scene.io_pdx_settings = PointerProperty(type=PDXBlender_settings)
     bpy.types.Scene.io_pdx_material = PointerProperty(type=PDXMaterial_settings)
+    bpy.types.Scene.io_pdx_export = PointerProperty(type=PDXExport_settings)
 
 
 def unregister():

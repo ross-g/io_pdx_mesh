@@ -14,6 +14,7 @@ from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from ..pdx_data import PDXData
+from .. import bl_info
 
 try:
     from . import blender_import_export
@@ -51,7 +52,7 @@ def load_settings():
 def get_engine_list(self, context):
     global engine_list
 
-    settings = load_settings()     # settings from json
+    settings = load_settings()  # settings from json
     engine_list = ((engine, engine, engine) for engine in sorted(settings.keys()))
 
     return engine_list
@@ -60,7 +61,7 @@ def get_engine_list(self, context):
 def get_material_list(self, context):
     sel_engine = context.scene.io_pdx_settings.setup_engine
 
-    settings = load_settings()     # settings from json
+    settings = load_settings()  # settings from json
     material_list = [(material, material, material) for material in settings[sel_engine]['material']]
     material_list.insert(0, ('__NONE__', '', ''))
 
@@ -149,6 +150,9 @@ class material_create_popup(material_popup, Operator):
         create_material(mat_pdx, None, mat_name=mat_name)
         return {'FINISHED'}
 
+    def check(self, context):
+        return True
+
     def invoke(self, context, event):
         self.mat_name = ''
         self.mat_type = '__NONE__'
@@ -162,7 +166,8 @@ class material_create_popup(material_popup, Operator):
         box.prop(self, 'mat_type')
         row = box.split(0.33)
         row.prop(self, 'use_custom')
-        row.prop(self, 'custom_type', text='')
+        if self.use_custom:
+            row.prop(self, 'custom_type', text='')
         self.layout.separator()
 
 
@@ -176,7 +181,6 @@ class material_edit_popup(material_popup, Operator):
         curr_mat = context.scene.io_pdx_material
         curr_mat.mat_name = mat.name
         curr_mat.mat_type = mat[PDX_SHADER]
-        print("updated curr_mat:", mat.name, mat[PDX_SHADER])
 
     scene_mats = EnumProperty(
         name='Selected material',
@@ -191,15 +195,20 @@ class material_edit_popup(material_popup, Operator):
         mat[PDX_SHADER] = curr_mat.mat_type
         return {'FINISHED'}
 
+    def check(self, context):
+        return True
+
     def invoke(self, context, event):
-        self.mat_select(context)
-        mat = bpy.data.materials[self.scene_mats]
-        self.mat_name = mat.name
-        self.custom_type = mat[PDX_SHADER]
-        return context.window_manager.invoke_props_dialog(self, width=350)
+        if self.scene_mats in bpy.data.materials:
+            self.mat_select(context)
+            mat = bpy.data.materials[self.scene_mats]
+            self.mat_name = mat.name
+            self.custom_type = mat[PDX_SHADER]
+            return context.window_manager.invoke_props_dialog(self, width=350)
+        else:
+            return {'CANCELLED'}
 
     def draw(self, context):
-        print("draw")
         curr_mat = context.scene.io_pdx_material
 
         self.layout.prop(self, 'scene_mats')
@@ -242,8 +251,8 @@ class import_mesh(Operator, ImportHelper):
     )
     chk_bonespace = BoolProperty(
         name='Convert bone orientation - WARNING',
-        description='Convert bone orientation - WARNING: this re-orients bones authored in Maya, but will break ALL '
-                    'existing animations. Only use this option if you are going to re-animate the model.',
+        description='Convert bone orientation - WARNING: this re-orients bones authored in Maya, but will BREAK ALL '
+                    'EXISTING ANIMATIONS. Only use this option if you are going to re-animate the model.',
         default=False,
     )
 
@@ -253,7 +262,7 @@ class import_mesh(Operator, ImportHelper):
         box.prop(self, 'chk_mesh')
         box.prop(self, 'chk_skel')
         box.prop(self, 'chk_locs')
-        box.prop(self, 'chk_bonespace')
+        # box.prop(self, 'chk_bonespace')  # TODO: works but overcomplicates things, disabled for now
 
     def execute(self, context):
         try:
@@ -380,6 +389,69 @@ class import_anim(Operator, ImportHelper):
         return {'FINISHED'}
 
 
+class export_anim(Operator, ExportHelper):
+    bl_idname = 'io_pdx_mesh.export_anim'
+    bl_label = 'Export PDX animation'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # ExportHelper mixin class uses these
+    filename_ext = '.anim'
+    filter_glob = StringProperty(
+        default='*.anim',
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    # list of operator properties
+    int_start = IntProperty(
+        name='Start frame',
+        description='Start frame',
+        default=1,
+    )
+    int_end = IntProperty(
+        name='End frame',
+        description='End frame',
+        default=100,
+    )
+
+    def draw(self, context):
+        settings = context.scene.io_pdx_export
+
+        box = self.layout.box()
+        box.label('Settings:', icon='EXPORT')
+        box.prop(settings, 'custom_range')
+        col = box.column()
+        col.enabled = settings.custom_range
+        col.prop(self, 'int_start')
+        col.prop(self, 'int_end')
+
+    def execute(self, context):
+        settings = context.scene.io_pdx_export
+
+        try:
+            if settings.custom_range:
+                export_animfile(
+                    self.filepath,
+                    timestart=self.int_start,
+                    timeend=self.int_end
+                )
+            else:
+                export_animfile(
+                    self.filepath,
+                    timestart=context.scene.frame_start,
+                    timeend=context.scene.frame_end
+                )
+            self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
+        except Exception as err:
+            msg = "[io_pdx_mesh] FAILED to export {}".format(self.filepath)
+            self.report({'ERROR'}, msg)
+            print(msg)
+            print(err)
+            raise
+
+        return {'FINISHED'}
+
+
 class show_axis(Operator):
     bl_idname = 'io_pdx_mesh.show_axis'
     bl_label = 'Show local axis'
@@ -398,6 +470,20 @@ class show_axis(Operator):
 
     def execute(self, context):
         set_local_axis_display(self.show, self.data_type)
+        return {'FINISHED'}
+
+
+class ignore_bone(Operator):
+    bl_idname = 'io_pdx_mesh.ignore_bone'
+    bl_label = 'Ignore selected bones'
+    bl_options = {'REGISTER'}
+
+    state = BoolProperty(
+        default=False
+    )
+
+    def execute(self, context):
+        set_ignore_joints(self.state)
         return {'FINISHED'}
 
 
@@ -423,7 +509,7 @@ class PDXblender_1file_ui(Panel):
         self.layout.label('Export:', icon='EXPORT')
         row = self.layout.row(align=True)
         row.operator('io_pdx_mesh.export_mesh', icon='MESH_CUBE', text='Save mesh ...')
-        row.operator('io_pdx_mesh.popup_message', icon='RENDER_ANIMATION', text='Save anim ...')
+        row.operator('io_pdx_mesh.export_anim', icon='RENDER_ANIMATION', text='Save anim ...')
 
 
 class PDXblender_2tools_ui(Panel):
@@ -456,10 +542,18 @@ class PDXblender_2tools_ui(Panel):
         col.label('PDX materials:')
         row = col.row(align=True)
         row.operator('io_pdx_mesh.material_create_popup', icon='MATERIAL', text='Create ...')
-        row.operator('io_pdx_mesh.popup_message', icon='TEXTURE_SHADED', text='Edit')
+        row.operator('io_pdx_mesh.material_edit_popup', icon='TEXTURE_SHADED', text='Edit')
         col.separator()
 
-        col.label('Animation clips:')
+        col.label('PDX bones:')
+        row = col.row(align=True)
+        op_ignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='OUTLINER_DATA_POSE', text='Ignore bones')
+        op_ignore_bone.state = True
+        op_unignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='POSE_HLT', text='Un-ignore bones')
+        op_unignore_bone.state = False
+        col.separator()
+
+        col.label('PDX animations:')
         row = col.row(align=True)
         row.operator('io_pdx_mesh.popup_message', icon='IPO_BEZIER', text='Create ...')
         row.operator('io_pdx_mesh.popup_message', icon='NORMALIZE_FCURVES', text='Edit')
@@ -489,7 +583,16 @@ class PDXblender_4help_ui(Panel):
     bl_category = 'PDX Blender Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
-        self.layout.operator('wm.url_open', icon='QUESTION', text='Paradox forums').url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
-        self.layout.operator('wm.url_open', icon='QUESTION', text='Source code').url = 'https://github.com/ross-g/io_pdx_mesh'
+        self.layout.label('version {}'.format(bl_info['version']))
+        self.layout.operator(
+            'wm.url_open', icon='QUESTION', text='Tool Wiki'
+        ).url = 'https://github.com/ross-g/io_pdx_mesh/wiki'
+        self.layout.operator(
+            'wm.url_open', icon='QUESTION', text='Paradox forums'
+        ).url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
+        self.layout.operator(
+            'wm.url_open', icon='QUESTION', text='Source code'
+        ).url = 'https://github.com/ross-g/io_pdx_mesh'
