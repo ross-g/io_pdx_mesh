@@ -583,6 +583,7 @@ class PDXblender_4help_ui(Panel):
     bl_category = 'PDX Blender Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         self.layout.label('version {}'.format(bl_info['version']))
