@@ -35,6 +35,7 @@ PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 PDX_MAXSKININFS = 4
+PDX_MESHINDEX = 'meshindex'
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4
@@ -145,6 +146,13 @@ def set_ignore_joints(state):
         except Exception:
             pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
             getattr(joint, PDX_IGNOREJOINT).set(state)
+
+
+def get_mesh_index(maya_mesh):
+    if hasattr(maya_mesh, PDX_MESHINDEX):
+        return getattr(maya_mesh, PDX_MESHINDEX).get()
+    else:
+        return 255
 
 
 def check_mesh_material(maya_mesh):
@@ -553,7 +561,7 @@ def create_shader(shader_name, PDX_material, texture_dir):
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
 
     # add the game shader attribute, PDX tool uses ENUM attr to store but writes as a string
-    pmc.addAttr(longName=PDX_SHADER, dataType='string')
+    pmc.addAttr(new_shader, longName=PDX_SHADER, dataType='string')
     getattr(new_shader, PDX_SHADER).set(PDX_material.shader[0])
 
     if getattr(PDX_material, 'diff', None):
@@ -775,13 +783,8 @@ def create_mesh(PDX_mesh, name=None):
         if hasattr(PDX_mesh, uv):
             uv_Ch[i] = getattr(PDX_mesh, uv)  # flat list of 2d co-ordinates, u0[:1] = vtx[0]uv0
 
-    # create the data structures for mesh and transform
-    mFn_Mesh = OpenMaya.MFnMesh()
-    m_DagMod = OpenMaya.MDagModifier()
-    new_object = m_DagMod.createNode('transform')
-
     # build the following arguments for the MFnMesh.create() function
-    # numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object
+    # numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_transform
 
     # vertices
     numVertices = 0
@@ -815,19 +818,30 @@ def create_mesh(PDX_mesh, name=None):
             vArray.append(1 - uv_data[i + 1])  # flip the UV coords in V!
 
     """ ================================================================================================================
-        create the new mesh """
-    mFn_Mesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_object)
-    mFn_Mesh.setName(tmp_mesh_name)
+        Create the new mesh """
+
+    # create the data structures for mesh and transform
+    mFn_Mesh = OpenMaya.MFnMesh()
+    m_DagMod = OpenMaya.MDagModifier()
+    new_transform = m_DagMod.createNode('transform')
+
+    mFn_Mesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_transform)
+
     # set up the transform parent to the new mesh (linking it to the scene)
     m_DagMod.doIt()
 
     # PyNode for the mesh
+    mFn_Mesh.setName(tmp_mesh_name)
     new_mesh = pmc.PyNode(tmp_mesh_name)
 
     # name and namespace
     if name is not None:
         mesh_name = clean_imported_name(name)
+        # set shape name
         pmc.rename(new_mesh, mesh_name)
+        # set transform name
+        mFn_Transform = OpenMaya.MFnTransform(new_transform)
+        mFn_Transform.setName(mesh_name.replace('Shape', ''))
 
     # apply the vertex normal data
     if norms:
@@ -1032,7 +1046,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
     complete_bone_dict = dict()
 
     # go through shapes
-    for node in shapes:
+    for i, node in enumerate(shapes):
         IO_PDX_LOG.info("creating node - {0}".format(node.tag))
         if progress_fn:
             progress.update(1, 'creating node')
@@ -1056,7 +1070,6 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
         # then create all the meshes
         meshes = node.findall('mesh')
         if imp_mesh and meshes:
-            pdx_mesh_list = list()
             for m in meshes:
                 IO_PDX_LOG.info("creating mesh -")
                 if progress_fn:
@@ -1067,7 +1080,10 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
                 # create the geometry
                 mesh = create_mesh(pdx_mesh, name=node.tag)
-                pdx_mesh_list.append(mesh)
+
+                # set mesh index from source file
+                pmc.addAttr(mesh, longName=PDX_MESHINDEX, attributeType='byte')
+                getattr(mesh, PDX_MESHINDEX).set(i)
 
                 # create the material
                 if pdx_material:
@@ -1115,8 +1131,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     # populate object data
     maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
-    # sort meshes for export by transform name
-    maya_meshes.sort(key=lambda mesh: mesh.getParent().name())
+    # sort meshes for export by index
+    maya_meshes.sort(key=lambda mesh: get_mesh_index(mesh))
+
     for shape in maya_meshes:
         IO_PDX_LOG.info("writing node - {0}".format(shape.name()))
         if progress_fn:

@@ -34,6 +34,7 @@ PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
 PDX_MAXSKININFS = 4
+PDX_MESHINDEX = 'meshindex'
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4
@@ -789,10 +790,14 @@ def create_mesh(PDX_mesh, name=None):
 
     # create the object and link to the scene
     if name is None:
-        name = tmp_mesh_name
-    new_obj = bpy.data.objects.new(clean_imported_name(name), new_mesh)
+        mesh_name = tmp_mesh_name
+    else:
+        mesh_name = clean_imported_name(name)
+
+    new_obj = bpy.data.objects.new(mesh_name, new_mesh)
     bpy.context.scene.objects.link(new_obj)
-    new_mesh.name = name
+    new_mesh.name = mesh_name
+    new_obj.name = mesh_name.replace('Shape', '')
 
     # apply the vertex normal data
     if norms:
@@ -949,7 +954,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
     scene_bone_dict = dict()
 
     # go through shapes
-    for node in shapes:
+    for i, node in enumerate(shapes):
         print("[io_pdx_mesh] creating node - {}".format(node.tag))
 
         # create the skeleton first, so we can skin the mesh to it
@@ -977,6 +982,9 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
                 # create the geometry
                 mesh, obj = create_mesh(pdx_mesh, name=node.tag)
+
+                # set mesh index from source file
+                mesh[PDX_MESHINDEX] = i
 
                 # create the material
                 if pdx_material:
@@ -1011,9 +1019,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     # populate object data
     blender_meshes = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
+    # sort meshes for export by index
+    blender_meshes.sort(key=lambda mesh: mesh.data.get(PDX_MESHINDEX, 255))
+
     for obj in blender_meshes:
-        print("[io_pdx_mesh] writing node - {}".format(obj.name))
-        objnode_xml = Xml.SubElement(object_xml, obj.name)
+        print("[io_pdx_mesh] writing node - {}".format(obj.data.name))
+        objnode_xml = Xml.SubElement(object_xml, obj.data.name)
 
         # one object can have multiple materials on a per face basis
         materials = list(obj.data.materials)
