@@ -199,13 +199,18 @@ class material_edit_popup(material_popup, Operator):
         return True
 
     def invoke(self, context, event):
-        if self.scene_mats in bpy.data.materials:
-            self.mat_select(context)
-            mat = bpy.data.materials[self.scene_mats]
-            self.mat_name = mat.name
-            self.custom_type = mat[PDX_SHADER]
-            return context.window_manager.invoke_props_dialog(self, width=350)
+        pdx_scene_materials = get_scene_material_list(self, context)
+        if pdx_scene_materials:
+            if self.scene_mats in bpy.data.materials:
+                self.mat_select(context)
+                mat = bpy.data.materials[self.scene_mats]
+                self.mat_name = mat.name
+                self.custom_type = mat[PDX_SHADER]
+                return context.window_manager.invoke_props_dialog(self, width=350)
+            else:
+                return {'CANCELLED'}
         else:
+            bpy.ops.io_pdx_mesh.popup_message('INVOKE_DEFAULT', msg_text='NO PDX MATERIALS FOUND IN THE SCENE!')
             return {'CANCELLED'}
 
     def draw(self, context):
