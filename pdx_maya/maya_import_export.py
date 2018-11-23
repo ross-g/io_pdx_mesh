@@ -362,7 +362,9 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
                 )
             )
 
-        inf_index = skin.indexForInfluenceObject(bone)
+        # do not use skin.indexForInfluenceObject (bones can be plugged into the cluster but are not influence objects)
+        inf_index = skin_bones.index(bone)
+
         for vert_id, weight in enumerate(skin.getWeights(maya_mesh, influenceIndex=inf_index)):
             # check we actually want this vertex (in case of material split meshes)
             if vert_id in vertex_ids:
