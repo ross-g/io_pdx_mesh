@@ -984,6 +984,8 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
                 mesh, obj = create_mesh(pdx_mesh, name=node.tag)
 
                 # set mesh index from source file
+                mesh["_RNA_UI"] = {}
+                mesh["_RNA_UI"][PDX_MESHINDEX] = {"min": 0, "max": 255, "soft_min": 0, "soft_max": 255, "step": 1}
                 mesh[PDX_MESHINDEX] = i
 
                 # create the material
