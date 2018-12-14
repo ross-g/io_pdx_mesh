@@ -354,14 +354,17 @@ class export_controls(QtWidgets.QWidget):
         # create controls
         # materials
         self.list_materials = QtWidgets.QListWidget()
-        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
         self.btn_mat_create = QtWidgets.QPushButton('Create ...', self)
         self.btn_mat_edit = QtWidgets.QPushButton('Edit', self)
+        self.btn_mat_delete = QtWidgets.QPushButton('Delete', self)
+        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
         # animations
         self.list_animations = QtWidgets.QListWidget()
-        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
+        self.list_animations.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.btn_anim_create = QtWidgets.QPushButton('Create ...', self)
         self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
+        self.btn_anim_delete = QtWidgets.QPushButton('Delete', self)
+        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
 
         # settings
         lbl_engine = QtWidgets.QLabel('Game engine:')
@@ -378,7 +381,8 @@ class export_controls(QtWidgets.QWidget):
         self.chk_locators = QtWidgets.QCheckBox('Export locators')
         self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
         self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
-        self.chk_animation = QtWidgets.QCheckBox('Export selected animations')
+        self.chk_timeline = QtWidgets.QCheckBox('Export current timeline')
+        self.chk_animation = QtWidgets.QCheckBox('Export all selected animations')
         self.chk_create_extra = QtWidgets.QCheckBox('Create .gfx and .asset')
         for ctrl in [self.chk_mesh, self.chk_skeleton, self.chk_locators, self.chk_merge_vtx]:
             ctrl.setChecked(True)
@@ -444,17 +448,21 @@ class export_controls(QtWidgets.QWidget):
         grp_mats.setLayout(grp_mats_layout)
         grp_mats_layout.addWidget(self.list_materials)
         grp_mats_layout.addLayout(grp_mats_button_layout)
-        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
         grp_mats_button_layout.addWidget(self.btn_mat_create)
         grp_mats_button_layout.addWidget(self.btn_mat_edit)
+        grp_mats_button_layout.addWidget(self.btn_mat_delete)
+        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
+        grp_mats_button_layout.setSpacing(3)
 
         left_layout.addWidget(grp_anims)
         grp_anims.setLayout(grp_anims_layout)
         grp_anims_layout.addWidget(self.list_animations)
         grp_anims_layout.addLayout(grp_anims_button_layout)
-        grp_anims_button_layout.addWidget(self.btn_anim_refresh)
         grp_anims_button_layout.addWidget(self.btn_anim_create)
         grp_anims_button_layout.addWidget(self.btn_anim_edit)
+        grp_anims_button_layout.addWidget(self.btn_anim_delete)
+        grp_anims_button_layout.addWidget(self.btn_anim_refresh)
+        grp_anims_button_layout.setSpacing(3)
 
         right_layout.addWidget(grp_scene)
         grp_scene.setLayout(grp_scene_layout)
@@ -471,27 +479,52 @@ class export_controls(QtWidgets.QWidget):
         grp_export_layout.addWidget(self.chk_merge_vtx, 1, 2)
         grp_export_layout.addWidget(self.chk_merge_obj, 2, 2)
         grp_export_layout.addWidget(h_line(), 4, 1, 1, 2)
-        grp_export_layout.addWidget(self.chk_animation, 5, 1, 1, 2)
-        grp_export_layout.addWidget(h_line(), 6, 1, 1, 2)
-        grp_export_layout.addWidget(self.chk_create_extra, 7, 1, 1, 2)
-        grp_export_layout.addWidget(h_line(), 8, 1, 1, 2)
-        grp_export_layout.addLayout(grp_export_fields_layout, 9, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_timeline, 5, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_animation, 6, 1, 1, 2)
+        grp_export_layout.addWidget(h_line(), 7, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_create_extra, 8, 1, 1, 2)
+        grp_export_layout.addWidget(h_line(), 9, 1, 1, 2)
+        grp_export_layout.addLayout(grp_export_fields_layout, 10, 1, 1, 2)
         grp_export_fields_layout.addWidget(lbl_path, 1, 1)
         grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
         grp_export_fields_layout.addWidget(self.btn_path, 1, 3)
         grp_export_fields_layout.addWidget(lbl_file, 2, 1)
         grp_export_fields_layout.addWidget(self.txt_file, 2, 2, 1, 2)
-        grp_export_layout.addWidget(self.btn_export, 10, 1, 1, 2)
+        grp_export_layout.addWidget(self.btn_export, 11, 1, 1, 2)
 
     def connect_signals(self):
         self.list_materials.itemClicked.connect(self.select_mat)
         self.list_materials.itemDoubleClicked.connect(self.edit_selected_mat)
-        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
         self.btn_mat_create.clicked.connect(self.create_new_mat)
         self.btn_mat_edit.clicked.connect(self.edit_selected_mat)
+        self.btn_mat_delete.clicked.connect(self.delete_selected_mat)
+        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
+
+        self.list_animations.itemDoubleClicked.connect(self.select_anim)
+        self.btn_anim_create.clicked.connect(self.create_new_anim)
+        self.btn_anim_edit.clicked.connect(self.edit_selected_anim)
+        self.btn_anim_delete.clicked.connect(self.delete_selected_anim)
         self.btn_anim_refresh.clicked.connect(self.refresh_anim_list)
+
         self.btn_path.clicked.connect(self.select_export_path)
         self.btn_export.clicked.connect(self.do_export)
+
+    def create_new_mat(self):
+        self.popup = material_popup(parent=self.parent)
+        self.popup.show()
+
+    def edit_selected_mat(self):
+        if self.list_materials.selectedItems():
+            selected_mat = self.list_materials.selectedItems()[0]
+            self.popup = material_popup(material=selected_mat, parent=self.parent)
+            self.popup.show()
+
+    def delete_selected_mat(self):
+        if self.list_materials.selectedItems():
+            selected_mat = self.list_materials.selectedItems()[0]
+            material_node = pmc.PyNode(selected_mat.text())
+            pmc.delete(material_node)
+            self.refresh_mat_list()
 
     def refresh_mat_list(self):
         self.list_materials.clearSelection()
@@ -505,42 +538,48 @@ class export_controls(QtWidgets.QWidget):
 
         self.list_materials.sortItems()
 
-    def edit_selected_mat(self):
-        if self.list_materials.selectedItems():
-            selected_mat = self.list_materials.selectedItems()[0]
-            self.popup = material_popup(material=selected_mat, parent=self.parent)
-            self.popup.show()
-
-    def create_new_mat(self):
-        self.popup = material_popup(parent=self.parent)
-        self.popup.show()
-
     def select_mat(self, curr_sel):
         try:
             pmc.select(curr_sel.text())
         except pmc.MayaNodeError:
             self.refresh_mat_list()
 
-    def refresh_anim_list(self):
-        self.list_animations.clearSelection()
-        self.list_animations.clear()
-        # pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
-
-        # for mat in pdx_scenemats:
-        #     list_item = QtWidgets.QListWidgetItem()
-        #     list_item.setText(mat)
-        #     self.list_animations.insertItem(self.list_animations.count(), list_item)
-
         self.list_animations.sortItems()
-
-    def edit_selected_anim(self):
-        pass
 
     def create_new_anim(self):
         pass
 
-    def select_anim(self, curr_sel):
+    def edit_selected_anim(self):
         pass
+
+    def delete_selected_anim(self):
+        for selected_clip in self.list_animations.selectedItems():
+            name, start, end = selected_clip.data(QtCore.Qt.UserRole)
+            remove_animation_clip(bone_list, name)
+
+    def refresh_anim_list(self):
+        self.list_animations.clearSelection()
+        self.list_animations.clear()
+        pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
+
+        pdx_sceneanims = []
+        if pdx_scene_rootbones:
+            # allow only one root bone with the animation property
+            pdx_sceneanims = get_animation_clips([pdx_scene_rootbones[0]])
+
+        for clip in pdx_sceneanims:
+            list_item = QtWidgets.QListWidgetItem()
+            list_item.setText('{name}  -  {start},{end}'.format(**clip._asdict()))
+            list_item.setData(QtCore.Qt.UserRole, clip)
+            self.list_animations.insertItem(self.list_animations.count(), list_item)
+
+    def select_anim(self, curr_sel):
+        if self.list_animations.selectedItems():
+            selected_clip = self.list_animations.selectedItems()[0]
+            name, start, end = selected_clip.data(QtCore.Qt.UserRole)
+
+            pmc.playbackOptions(edit=True, minTime=start)
+            pmc.playbackOptions(edit=True, maxTime=end)
 
     def select_export_path(self, filter_text='All files (*.*)'):
         filepath, filefilter = QtWidgets.QFileDialog.getSaveFileName(
@@ -758,9 +797,13 @@ class material_popup(QtWidgets.QWidget):
         else:
             mat_name = self.mat_name.text()
             # create a mock PDXData object for convenience here to pass to the create_shader function
-            mat_pdx = type('Material', (pdx_data.PDXData, object), {'shader': [self.mat_type.currentText()]})
+            mat_pdx = type(
+                'Material',
+                (pdx_data.PDXData, object),
+                {'shader': [self.mat_type.currentText()]}
+            )
 
-            create_shader(mat_name, mat_pdx, None)
+            create_shader(mat_pdx, mat_name, None)
 
         self.parent.export_ctrls.refresh_mat_list()
         self.close()

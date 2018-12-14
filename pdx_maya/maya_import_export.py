@@ -34,8 +34,8 @@ from .. import IO_PDX_LOG
 PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
-PDX_MAXSKININFS = 4
 PDX_MESHINDEX = 'meshindex'
+PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4
@@ -50,6 +50,9 @@ SPACE_MATRIX = MMatrix((
     (0, 0, 0, 1)
 ))
 # fmt: on
+
+# simple datatype for animation clips
+AnimClip = namedtuple('AnimClip', ['name', 'start', 'end'])
 
 
 """ ====================================================================================================================
@@ -121,6 +124,10 @@ def list_scene_materials():
     return [mat for mat in pmc.ls(materials=True)]
 
 
+def list_scene_rootbones():
+    return list(set([bone.root() for bone in pmc.ls(type='joint')]))
+
+
 def set_local_axis_display(state, object_type=None, object_list=None):
     if object_list is None:
         if object_type is None:
@@ -146,6 +153,74 @@ def set_ignore_joints(state):
         except Exception:
             pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType='bool')
             getattr(joint, PDX_IGNOREJOINT).set(state)
+
+
+def get_animation_clips(bone_list):
+    anim_clips = []
+    root_bone = get_skeleton_hierarchy(bone_list)[0]
+
+    # parse the string attribute and produce a list of AnimClip tuples
+    attr_string = None
+    if hasattr(root_bone, PDX_ANIMATION):
+        attr_string = getattr(root_bone, PDX_ANIMATION).get()
+
+    if attr_string is not None:
+        for clip_string in attr_string.split('@'):
+            anim_clip = AnimClip(
+                clip_string.split('~')[0], int(clip_string.split('~')[1]), int(clip_string.split('~')[2])
+            )
+            anim_clips.append(anim_clip)
+
+    # sort clips by start frame
+    anim_clips.sort(key=lambda clip: clip.start)
+
+    return anim_clips
+
+
+def set_animation_clips(bone_list, clips_list):
+    root_bone = get_skeleton_hierarchy(bone_list)[0]
+
+    # sort clips by start frame
+    clips_list.sort(key=lambda clip: clip.start)
+
+    # write the attribute string back to the root bone
+    attr_string = '@'.join(['~'.join([str(getattr(clip, f)) for f in clip._fields]) for clip in clips_list])
+    getattr(root_bone, PDX_ANIMATION).set(attr_string)
+
+
+def edit_animation_clip(bone_list, anim_name, start, end):
+    root_bone = get_skeleton_hierarchy(bone_list)[0]
+
+    if not hasattr(root_bone, PDX_ANIMATION):
+        # add the animation attribute, PDX tool uses ENUM attr and keyframes but we use a string and separators
+        pmc.addAttr(root_bone, longName=PDX_ANIMATION, dataType='string')
+
+    # get all existing animation clips
+    anim_clips = get_animation_clips([root_bone])
+    anim_clips_names = [clip.name for clip in anim_clips]
+
+    new_clip = AnimClip(anim_name, start, end)
+
+    # check if we're editing or adding a clip (names are unique)
+    if new_clip.name in anim_clips_names:
+        i = anim_clips_names.index(new_clip.name)
+        anim_clips[i] = new_clip
+    else:
+        anim_clips.append(new_clip)
+
+    set_animation_clips(bone_list, anim_clips)
+
+
+def remove_animation_clip(bone_list, anim_name):
+    # get all existing animation clips
+    anim_clips = get_animation_clips(bone_list)
+    anim_clips_names = [clip.name for clip in anim_clips]
+
+    # find and remove the existing clip
+    i = anim_clips_names.index(anim_name)
+    anim_clips.pop(i)
+
+    set_animation_clips(bone_list, anim_clips)
 
 
 def get_mesh_index(maya_mesh):
@@ -418,10 +493,10 @@ def get_mesh_skeleton_info(maya_mesh):
     return bone_list
 
 
-def get_skeleton_hierarchy(bones_list):
+def get_skeleton_hierarchy(bone_list):
     root_bone = set()
 
-    for bone in bones_list:
+    for bone in bone_list:
         root_bone.add(bone.root())
 
     if len(root_bone) != 1:
@@ -432,7 +507,8 @@ def get_skeleton_hierarchy(bones_list):
     def get_recursive_children(bone, hierarchy):
         hierarchy.append(bone)
         children = [
-            jnt for jnt in pmc.listRelatives(bone, children=True, type='joint')
+            jnt
+            for jnt in pmc.listRelatives(bone, children=True, type='joint')
             if not (hasattr(jnt, PDX_IGNOREJOINT) and getattr(jnt, PDX_IGNOREJOINT).get())
         ]
 
@@ -522,7 +598,7 @@ def swap_coord_space(data):
 
 
 """ ====================================================================================================================
-    Functions.
+    Creation functions.
 ========================================================================================================================
 """
 
@@ -557,7 +633,7 @@ def create_filetexture(tex_filepath):
     return newFile, new2dTex
 
 
-def create_shader(shader_name, PDX_material, texture_dir):
+def create_shader(PDX_material, shader_name, texture_dir):
     new_shader = pmc.shadingNode('phong', asShader=True, name=shader_name)
     new_shadinggroup = pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name='{0}_SG'.format(shader_name))
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
@@ -592,7 +668,7 @@ def create_shader(shader_name, PDX_material, texture_dir):
 
 def create_material(PDX_material, mesh, texture_path):
     shader_name = 'PDXphong_' + mesh.name()
-    shader, s_group = create_shader(shader_name, PDX_material, texture_path)
+    shader, s_group = create_shader(PDX_material, shader_name, texture_path)
 
     pmc.select(mesh)
     mesh.backfaceCulling.set(1)
@@ -827,7 +903,9 @@ def create_mesh(PDX_mesh, name=None):
     m_DagMod = OpenMaya.MDagModifier()
     new_transform = m_DagMod.createNode('transform')
 
-    mFn_Mesh.create(numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_transform)
+    mFn_Mesh.create(
+        numVertices, numPolygons, vertexArray, polygonCounts, polygonConnects, uArray, vArray, new_transform
+    )
 
     # set up the transform parent to the new mesh (linking it to the scene)
     m_DagMod.doIt()
@@ -1287,6 +1365,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
     if progress_fn:
         progress.update(1, 'finding bones')
     bone_errors = []
+    bone_list = []
     for bone in info:
         bone_joint = None
         bone_name = clean_imported_name(bone.tag)
@@ -1313,6 +1392,8 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
             # zero out joint orientation
             bone_joint.jointOrient.set(0.0, 0.0, 0.0)
+
+            bone_list.append(bone_joint)
 
     # break on bone errors
     if bone_errors:
@@ -1353,6 +1434,9 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
                 progress.update(1, 'setting keyframes on bone')
             bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
             create_anim_keys(bone_long_name, bone_keys, timestart)
+
+    animation_name = os.path.split(os.path.splitext(animpath)[0])[1]
+    edit_animation_clip(bone_list, animation_name, timestart, (timestart + framecount - 1))
 
     pmc.select(None)
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
