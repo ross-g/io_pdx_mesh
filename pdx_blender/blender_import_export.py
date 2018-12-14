@@ -33,8 +33,8 @@ from .. import pdx_data
 PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
-PDX_MAXSKININFS = 4
 PDX_MESHINDEX = 'meshindex'
+PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4
@@ -374,7 +374,7 @@ def get_mesh_skeleton_info(blender_obj):
             bone_list[i]['pa'] = [all_bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted()  # convert to Game space
+        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted_safe()  # convert to Game space
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
         bone_list[i]['tx'] = []
@@ -416,9 +416,12 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
             # build a matrix describing the transform from parent bone
             parent_matrix = Matrix()
             if pose_bone.parent:
-                parent_matrix = pose_bone.parent.matrix.copy()
+                # parent_matrix = pose_bone.parent.matrix.copy()
+                parent_matrix = rig.convert_space(pose_bone.parent, pose_bone.parent.matrix, 'POSE', 'WORLD')
 
-            offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
+            # offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
+            pose_matrix = rig.convert_space(pose_bone, pose_bone.matrix, 'POSE', 'WORLD')
+            offset_matrix = parent_matrix.inverted_safe() * pose_matrix
             _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # Convert to Game space
 
             frames_data[bone.name].append((_translation, _rotation, _scale))
@@ -455,17 +458,17 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
 
 def swap_coord_space(data):
     """
-        Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
+        Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up)
     """
     global SPACE_MATRIX
 
     # matrix
     if type(data) == Matrix:
-        return SPACE_MATRIX * data * SPACE_MATRIX.inverted()
+        return SPACE_MATRIX * data.to_4x4() * SPACE_MATRIX.inverted_safe()
     # quaternion
     elif type(data) == Quaternion:
         mat = data.to_matrix()
-        return (SPACE_MATRIX * mat.to_4x4() * SPACE_MATRIX.inverted()).to_quaternion()
+        return (SPACE_MATRIX * mat.to_4x4() * SPACE_MATRIX.inverted_safe()).to_quaternion()
     # vector
     elif type(data) == Vector or len(data) == 3:
         vec = Vector(data)
@@ -886,7 +889,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
     if pose_bone.parent:
         parent_initial = pose[pose_bone.parent.name]
 
-    parent_to_pose = parent_initial.inverted() * pose_bone_initial
+    parent_to_pose = parent_initial.inverted_safe() * pose_bone_initial
     # decompose (so we can over write with animated components)
     _scale = Matrix.Scale(parent_to_pose.to_scale()[0], 4)
     _rotation = parent_to_pose.to_quaternion().to_matrix().to_4x4()
