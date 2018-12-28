@@ -360,7 +360,7 @@ class export_controls(QtWidgets.QWidget):
         self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
         # animations
         self.list_animations = QtWidgets.QListWidget()
-        self.list_animations.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
+        self.list_animations.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.btn_anim_create = QtWidgets.QPushButton('Create ...', self)
         self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
         self.btn_anim_delete = QtWidgets.QPushButton('Delete', self)
