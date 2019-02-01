@@ -582,7 +582,7 @@ General binary format is:
                     bone    (object)
                         ix    (int)  index
                         pa    (int)  parent index, omitted for root
-                        tx    (float)  transform, 3*4 matrix
+                        tx    (float)  inverse worldspace transform, 3*4 matrix (transforms bone back to scene origin)
         locator    (object)  parent item for all locators
             node    (object)
                 p    (float)  position
@@ -608,7 +608,7 @@ General binary format is:
                 q    (float)  initial rotation as quaternion
                 s    (float)  initial scale as single float
         samples    (object)
-            t   (floats)    list of translations (size 3), by bone, by frame
-            q   (floats)    list of rotations (size 4), by bone, by frame
+            t   (floats)    list of translations (size 3), by bone, by frame (translation is from parent, in parent space)
+            q   (floats)    list of rotations (size 4), by bone, by frame (rotation is from parent, in parent space)
             s   (floats)    list of scales (size 1), by bone, by frame
 """

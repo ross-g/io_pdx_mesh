@@ -2,7 +2,7 @@
     Paradox asset files, Maya import/export.
 
     As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
-    mirror all positions, normals etc along the Z axis and flip texture coordinates in V.
+    mirror all positions, normals etc about the XY plane and flip texture coordinates in V.
 
     author : ross-g
 """
@@ -1295,6 +1295,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
     maya_locators = [pmc.listRelatives(loc, type='transform', parent=True)[0] for loc in pmc.ls(type=pmc.nt.Locator)]
+
     if exp_locs and maya_locators:
         IO_PDX_LOG.info("writing locators -")
         if progress_fn:
@@ -1302,6 +1303,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
         for loc in maya_locators:
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
+
             # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
             locnode_xml.set('p', list(swap_coord_space(loc.getTranslation())))
             locnode_xml.set('q', list(swap_coord_space(loc.getRotation(quaternion=True))))
@@ -1475,8 +1477,18 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     frame_samples = (timeend + 1) - timestart
     info_xml.set('sa', [frame_samples])
 
+    # find the scene root bone with animation property (assume this is unique)
+    pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
+    if len(pdx_scene_rootbones) != 1:
+        raise RuntimeError(
+            "Found {} scene root bones with PDX animation ({}). Please remove extra skeletons before exporting.".format(
+                len(pdx_scene_rootbones), pdx_scene_rootbones
+            )
+        )
+    root_bone = pdx_scene_rootbones[0]
+
     # populate bone data, assume that the skeleton to be exported is selected
-    export_bones = get_skeleton_hierarchy(pmc.selected())
+    export_bones = get_skeleton_hierarchy([root_bone])
     info_xml.set('j', [len(export_bones)])
 
     # parse the scene animation data
