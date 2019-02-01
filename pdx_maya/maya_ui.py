@@ -120,9 +120,9 @@ class PDXmaya_ui(QtWidgets.QDialog):
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
         file_export_mesh = QtWidgets.QAction('Export mesh ...', self)
-        file_export_mesh.triggered.connect(self.do_export_mesh)
+        file_export_mesh.triggered.connect(lambda: self.do_export_mesh(select_path=True))
         file_export_anim = QtWidgets.QAction('Export animation ...', self)
-        file_export_anim.triggered.connect(self.do_export_anim)
+        file_export_anim.triggered.connect(lambda: self.do_export_anim(select_path=True))
 
         # tools menu
         tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
@@ -227,12 +227,12 @@ class PDXmaya_ui(QtWidgets.QDialog):
                     IO_PDX_LOG.info("Nothing to import.")
 
     @QtCore.Slot()
-    def do_export_mesh(self):
+    def do_export_mesh(self, select_path=False):
         export_opts = self.export_ctrls
         filepath, filename = export_opts.get_export_path()
 
         # validate directory
-        if filepath == '':
+        if filepath == '' or select_path:
             export_opts.select_export_path(filter_text='PDX Mesh files (*.mesh)')
             filepath, filename = export_opts.get_export_path()
         if not os.path.isdir(filepath):
@@ -248,8 +248,9 @@ class PDXmaya_ui(QtWidgets.QDialog):
             return
 
         # determine the output mesh path
-        if not os.path.splitext(filename)[1] == '.mesh':
-            filename += '.mesh'
+        name, ext = os.path.splitext(filename)
+        if not ext == '.mesh':
+            filename = name + '.mesh'
         meshpath = os.path.join(os.path.normpath(filepath), filename)
 
         try:
@@ -271,12 +272,12 @@ class PDXmaya_ui(QtWidgets.QDialog):
             raise
 
     @QtCore.Slot()
-    def do_export_anim(self):
+    def do_export_anim(self, select_path=False):
         export_opts = self.export_ctrls
         filepath, filename = export_opts.get_export_path()
 
         # validate directory
-        if filepath == '':
+        if filepath == '' or select_path:
             export_opts.select_export_path(filter_text='PDX Animation files (*.anim)')
             filepath, filename = export_opts.get_export_path()
         if not os.path.isdir(filepath):
@@ -291,9 +292,10 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 IO_PDX_LOG.info("Nothing to export.")
             return
 
-        # determine the output mesh path
-        if not os.path.splitext(filename)[1] == '.anim':
-            filename += '.anim'
+        # determine the output anim path
+        name, ext = os.path.splitext(filename)
+        if not ext == '.anim':
+            filename = name + '.anim'
         animpath = os.path.join(os.path.normpath(filepath), filename)
 
         try:
@@ -601,7 +603,7 @@ class export_controls(QtWidgets.QWidget):
         if self.chk_mesh.isChecked() or self.chk_skeleton.isChecked() or self.chk_locators.isChecked():
             self.parent.do_export_mesh()
 
-        if self.chk_animation.isChecked():
+        if self.chk_timeline.isChecked() or self.chk_animation.isChecked():
             pass
 
 
