@@ -748,9 +748,11 @@ def create_skeleton(PDX_bone_list):
         # Maya allows non-unique transform names (on leaf nodes) and handles it internally by using | separators
         unique_name = clean_imported_name(bone.name)
 
-        if pmc.ls(unique_name, type='joint'):
-            bone_list[index] = pmc.PyNode(unique_name)
-            continue  # bone already exists, likely the skeleton is already built, so collect and return joints
+        # check if bone already exists, possible the skeleton is already built so collect and return joints
+        existing_bone = pmc.ls(unique_name, type='joint')
+        if len(existing_bone) == 1:
+            bone_list[index] = pmc.PyNode(existing_bone[0])
+            continue
 
         # create joint
         new_bone = pmc.joint()
