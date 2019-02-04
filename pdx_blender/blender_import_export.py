@@ -21,6 +21,7 @@ import bpy
 import bmesh
 import math
 from mathutils import Vector, Matrix, Quaternion
+from bpy_extras.io_utils import axis_conversion
 
 from .. import pdx_data
 
@@ -44,10 +45,12 @@ PDX_ROUND_SCALE = 2
 # fmt: off
 SPACE_MATRIX = Matrix((
     (1, 0, 0, 0),
-    (0, 0, 1, 0),
     (0, 1, 0, 0),
+    (0, 0, -1, 0),
     (0, 0, 0, 1)
 ))
+IMPORT_ROT = axis_conversion('Z', 'Y', '-Y', 'Z').to_4x4()
+EXPORT_ROT = axis_conversion('-Y', 'Z', 'Z', 'Y').to_4x4()
 BONESPACE_MATRIX = Matrix((
     (0, 1, 0, 0),
     (-1, 0, 0, 0),
@@ -178,7 +181,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     mesh = blender_obj.data  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.calc_normals_split()
     bm = get_bmesh(mesh)
-    bm.transform(blender_obj.matrix_world)
+    bm.transform(EXPORT_ROT * blender_obj.matrix_world)
     bmesh.ops.triangulate(bm, faces=bm.faces, quad_method=0, ngon_method=0)
 
     # ensure Bmesh data needed for int subscription is initialized
@@ -381,7 +384,7 @@ def get_mesh_skeleton_info(blender_obj):
             bone_list[i]['pa'] = [all_bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted_safe()  # convert to Game space
+        mat = swap_coord_space(EXPORT_ROT * rig.matrix_world * bone.matrix_local).inverted_safe()  # convert to Game space
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
         bone_list[i]['tx'] = []
@@ -610,6 +613,8 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     bpy.context.scene.update()
 
+    return new_loc
+
 
 def create_skeleton(PDX_bone_list, convert_bonespace=False):
     # keep track of bones as we create them
@@ -619,7 +624,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
     matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.name)) for bone in PDX_bone_list]
     matching_rigs = list(set(rig for rig in matching_rigs if rig))
     if len(matching_rigs) == 1:
-        return matching_rigs[0]
+        return matching_rigs[0], False
 
     # temporary name used during creation
     tmp_rig_name = 'io_pdx_rig'
@@ -711,7 +716,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.scene.update()
 
-    return new_rig
+    return new_rig, True
 
 
 def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
@@ -979,7 +984,10 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
             if imp_skel:
                 print("[io_pdx_mesh] creating skeleton -")
-                rig = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
+                rig, is_new = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
+                if is_new:
+                    # create_skeleton may return an existing rig that has already been rotation corrected!
+                    rig.matrix_world = IMPORT_ROT * rig.matrix_world
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -992,6 +1000,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
                 # create the geometry
                 mesh, obj = create_mesh(pdx_mesh, name=node.tag)
+                obj.matrix_world = IMPORT_ROT * obj.matrix_world
 
                 # set mesh index from source file
                 mesh["_RNA_UI"] = {}
@@ -1013,7 +1022,8 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
         print("[io_pdx_mesh] creating locators -")
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
-            create_locator(pdx_locator, scene_bone_dict)
+            obj = create_locator(pdx_locator, scene_bone_dict)
+            obj.matrix_world = IMPORT_ROT * obj.matrix_world
 
     print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
 
@@ -1095,18 +1105,27 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
     blender_empties = [obj for obj in bpy.data.objects if obj.data is None]
+
     if exp_locs and blender_empties:
         print("[io_pdx_mesh] writing locators -")
         for loc in blender_empties:
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name)
-            # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
-            position = list(swap_coord_space(loc.location))
-            rotation = list(swap_coord_space(loc.rotation_euler.to_quaternion()))
-            locnode_xml.set('p', position)
-            locnode_xml.set('q', [rotation[1], rotation[2], rotation[3], rotation[0]])
-            if loc.parent is not None and loc.parent_type == 'BONE':
+
+            loc_transform = EXPORT_ROT * loc.matrix_world
+            if exp_skel and loc.parent and loc.parent_type == 'BONE':
+                rig = loc.parent
+                bone_matrix = rig.matrix_world * rig.data.bones[loc.parent_bone].matrix_local
+                loc_transform = bone_matrix.inverted_safe() * loc.matrix_world
+
                 locnode_xml.set('pa', [loc.parent_bone])
+
+            _location, _rotation = swap_coord_space(loc_transform).decompose()[0:2]  # convert to Game space
+            position = list(_location)
+            rotation = list(_rotation)
+
+            locnode_xml.set('p', position)
+            locnode_xml.set('q', [rotation[1], rotation[2], rotation[3], rotation[0]])  # convert from wxyz to xyzw
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
