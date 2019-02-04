@@ -2,7 +2,7 @@
     Paradox asset files, Blender import/export.
 
     As Blenders 3D space is (Z-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
-    mirror all positions, normals etc along the Z axis, rotate about X and flip texture coordinates in V.
+    mirror all positions, normals etc about the XY plane AND rotate 90 about X and flip texture coordinates in V.
     Note - Blender treats matrices as column-major.
 
     author : ross-g
@@ -84,6 +84,20 @@ def get_rig_from_bone_name(bone_name):
         armt = rig.data
         if bone_name in [b.name for b in armt.bones]:
             return rig
+
+
+def get_rig_from_mesh(blender_obj):
+    skin_modifier = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
+
+    if skin_modifier:
+        # we only allow a mesh to be connected to one armature modifier
+        skin = skin_modifier[0]
+        # get the armature referenced by the modifier
+        rig = skin.object
+    else:
+        rig = None
+
+    return rig
 
 
 def clean_imported_name(name):
@@ -349,14 +363,7 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
 
 
 def get_mesh_skeleton_info(blender_obj):
-    skin_mod = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
-    if not skin_mod:
-        return []
-
-    # a mesh can only be connected to one armature modifier
-    skin = skin_mod[0]
-    # get the armature referenced by the modifier
-    rig = skin.object
+    rig = get_rig_from_mesh(blender_obj)
     if rig is None:
         return []
 
@@ -555,7 +562,7 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
 def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
-    new_loc.empty_draw_type = 'PLAIN_AXES'
+    new_loc.empty_draw_type = 'ARROWS'
     new_loc.empty_draw_size = 0.25
     new_loc.show_axis = False
 
@@ -685,10 +692,10 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         avg_dist = 5.0
         if bone_children:
             avg_dist = sum(bone_dists) / len(bone_dists)
-        avg_dist = min(max(1.0, avg_dist), 10.0)
+        avg_dist = min(max(1.0, avg_dist), 10.0) * 0.05
 
         # set bone tail offset first
-        new_bone.tail = Vector((0.0, 0.0, 0.1 * avg_dist))
+        new_bone.tail = Vector((0.0, 0.0, avg_dist))
         # set matrix directly as this includes bone roll/rotation
         new_bone.matrix = swap_coord_space(safemat.inverted_safe())  # convert to Blender space
         if convert_bonespace:
