@@ -164,15 +164,15 @@ def get_animation_clips(bone_list):
     if hasattr(root_bone, PDX_ANIMATION):
         attr_string = getattr(root_bone, PDX_ANIMATION).get()
 
-    if attr_string is not None:
+    if attr_string and attr_string != '':
         for clip_string in attr_string.split('@'):
             anim_clip = AnimClip(
                 clip_string.split('~')[0], int(clip_string.split('~')[1]), int(clip_string.split('~')[2])
             )
             anim_clips.append(anim_clip)
 
-    # sort clips by start frame
-    anim_clips.sort(key=lambda clip: clip.start)
+        # sort clips by start frame
+        anim_clips.sort(key=lambda clip: clip.start)
 
     return anim_clips
 
@@ -1306,11 +1306,19 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
 
-            # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
-            locnode_xml.set('p', list(swap_coord_space(loc.getTranslation())))
-            locnode_xml.set('q', list(swap_coord_space(loc.getRotation(quaternion=True))))
-            if loc.getParent():
+            _position= loc.getTranslation(worldSpace=True)
+            _rotation = loc.getRotation(worldSpace=True, quaternion=True)
+            if exp_skel and loc.getParent() and type(loc.getParent()) == pmc.nt.Joint:
+                _position= loc.getTranslation()
+                _rotation = loc.getRotation(quaternion=True)
+
                 locnode_xml.set('pa', [loc.getParent().name()])
+
+            position = list(swap_coord_space(_position))
+            rotation = list(swap_coord_space(_rotation))
+
+            locnode_xml.set('p', position)
+            locnode_xml.set('q', rotation)
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
@@ -1459,7 +1467,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     curr_frame = pmc.currentTime(query=True)
     if timestart != int(timestart) or timeend != int(timeend):
         raise RuntimeError(
-            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format([timestart, timeend])
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(timestart, timeend)
         )
     timestart = int(timestart)
     timeend = int(timeend)
@@ -1483,7 +1491,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
     if len(pdx_scene_rootbones) != 1:
         raise RuntimeError(
-            "Found {} scene root bones with PDX animation ({}). Please remove extra skeletons before exporting.".format(
+            "Found {0} root bones with PDX animation ({1}). Please remove extra skeletons before exporting.".format(
                 len(pdx_scene_rootbones), pdx_scene_rootbones
             )
         )
