@@ -176,20 +176,14 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         Returns a dictionary of mesh information neccessary for the exporter.
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
         exported separately!
-    """
-    # get mesh and Bmesh data structures for this mesh
-    mesh = blender_obj.data  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
-    mesh.calc_normals_split()
-    bm = get_bmesh(mesh)
-    bm.transform(EXPORT_ROT * blender_obj.matrix_world)
-    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method=0, ngon_method=0)
 
-    # ensure Bmesh data needed for int subscription is initialized
-    bm.faces.ensure_lookup_table()
-    bm.verts.ensure_lookup_table()
-    # initialize the index values of each sequence
-    bm.faces.index_update()
-    bm.verts.index_update()
+        Note: using both mesh and bmesh data below, these must be in the same space or normals & tangents will be wrong
+    """
+    # get mesh and Bmesh data structures for this object
+    mesh = blender_obj.data.copy()  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
+    mesh.name = blender_obj.data.name + '_export'
+    mesh.transform(EXPORT_ROT * blender_obj.matrix_world)
+    mesh.calc_normals_split()
 
     # we will need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
@@ -199,6 +193,16 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)]
     if uv_setnames:
         mesh.calc_tangents(uv_setnames[0])
+
+    bm = get_bmesh(mesh)
+    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method=0, ngon_method=0)
+
+    # ensure Bmesh data needed for int subscription is initialized
+    bm.faces.ensure_lookup_table()
+    bm.verts.ensure_lookup_table()
+    # initialize the index values of each sequence
+    bm.faces.index_update()
+    bm.verts.index_update()
 
     # build a blank dictionary of mesh information for the exporter
     mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
@@ -225,7 +229,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # normal
             # FIXME? seems like custom normal per face-vertex is not available through bmesh
             # _normal = loop.calc_normal()
-            _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices
+            _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices!
             _normal = list(swap_coord_space(_normal))  # convert to Game space
             if round_data:
                 _normal = util_round(_normal, PDX_DECIMALPTS)
@@ -243,7 +247,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # tangent (omitted if there were no UVs)
             if uv_setnames:
                 # _tangent = loop.calc_tangent()
-                _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices
+                _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices!
                 _tangent = list(swap_coord_space(_tangent))  # convert to Game space
                 if round_data:
                     _tangent = util_round(_tangent, PDX_DECIMALPTS)
@@ -292,6 +296,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     bm.free()
     mesh.free_tangents()
     mesh.free_normals_split()
+    bpy.data.meshes.remove(mesh)    # delete duplicate mesh datablock
 
     return mesh_dict, vert_id_list
 
@@ -1120,8 +1125,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
                 locnode_xml.set('pa', [loc.parent_bone])
 
-            _location, _rotation = swap_coord_space(loc_transform).decompose()[0:2]  # convert to Game space
-            position = list(_location)
+            _position, _rotation = swap_coord_space(loc_transform).decompose()[0:2]  # convert to Game space
+            position = list(_position)
             rotation = list(_rotation)
 
             locnode_xml.set('p', position)
@@ -1264,7 +1269,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     curr_frame = bpy.context.scene.frame_start
     if timestart != int(timestart) or timeend != int(timeend):
         raise RuntimeError(
-            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format([timestart, timeend])
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(timestart, timeend)
         )
     timestart = int(timestart)
     timeend = int(timeend)
