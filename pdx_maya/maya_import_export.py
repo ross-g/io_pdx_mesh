@@ -128,6 +128,10 @@ def list_scene_rootbones():
     return list(set([bone.root() for bone in pmc.ls(type='joint')]))
 
 
+def list_scene_pdx_meshes():
+    return [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
+
+
 def set_local_axis_display(state, object_type=None, object_list=None):
     if object_list is None:
         if object_type is None:
@@ -221,6 +225,13 @@ def remove_animation_clip(bone_list, anim_name):
     anim_clips.pop(i)
 
     set_animation_clips(bone_list, anim_clips)
+
+
+def set_mesh_index(maya_mesh, i):
+    if not hasattr(maya_mesh, PDX_MESHINDEX):
+        pmc.addAttr(maya_mesh, longName=PDX_MESHINDEX, attributeType='byte')
+
+    getattr(maya_mesh, PDX_MESHINDEX).set(i)
 
 
 def get_mesh_index(maya_mesh):
@@ -843,6 +854,10 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
 
 
 def create_mesh(PDX_mesh, name=None):
+    """
+        Creates a Maya mesh objet
+    :rtype: pmc.nt.Mesh
+    """
     # temporary name used during creation
     tmp_mesh_name = 'io_pdx_mesh'
 
@@ -1164,8 +1179,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
                 mesh = create_mesh(pdx_mesh, name=node.tag)
 
                 # set mesh index from source file
-                pmc.addAttr(mesh, longName=PDX_MESHINDEX, attributeType='byte')
-                getattr(mesh, PDX_MESHINDEX).set(i)
+                set_mesh_index(mesh, i)
 
                 # create the material
                 if pdx_material:
@@ -1212,7 +1226,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     object_xml = Xml.SubElement(root_xml, 'object')
 
     # populate object data
-    maya_meshes = [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
+    maya_meshes = list_scene_pdx_meshes()
     # sort meshes for export by index
     maya_meshes.sort(key=lambda mesh: get_mesh_index(mesh))
 
@@ -1497,7 +1511,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
         )
     root_bone = pdx_scene_rootbones[0]
 
-    # populate bone data, assume that the skeleton to be exported is selected
+    # populate bone data, assume that the skeleton to be exported starts at the scene root bone
     export_bones = get_skeleton_hierarchy([root_bone])
     info_xml.set('j', [len(export_bones)])
 

@@ -128,7 +128,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
         tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
-        tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
+
         tool_show_jnt_localaxes = QtWidgets.QAction('Show all joint axes', self)
         tool_show_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='joint'))
         tool_hide_jnt_localaxes = QtWidgets.QAction('Hide all joint axes', self)
@@ -137,6 +137,10 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_show_loc_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='locator'))
         tool_hide_loc_localaxes = QtWidgets.QAction('Hide all locator axes', self)
         tool_hide_loc_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='locator'))
+        tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
+
+        tool_edit_mesh_order = QtWidgets.QAction('Set mesh order', self)
+        tool_edit_mesh_order.triggered.connect(self.edit_mesh_order)
 
         # help menu
         help_wiki = QtWidgets.QAction('Tool Wiki', self)
@@ -161,6 +165,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tools_menu.addSeparator()
         tools_menu.addActions([tool_show_jnt_localaxes, tool_hide_jnt_localaxes])
         tools_menu.addActions([tool_show_loc_localaxes, tool_hide_loc_localaxes])
+        tools_menu.addSeparator()
+        tools_menu.addActions([tool_edit_mesh_order])
         help_menu.addActions([help_version])
         help_menu.addSeparator()
         help_menu.addActions([help_wiki, help_forum, help_code])
@@ -193,6 +199,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         )
         if filepath != '':
             if os.path.splitext(filepath)[1] == '.mesh':
+                if self.popup:
+                    self.popup.close()
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
             else:
@@ -213,6 +221,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
         )
         if filepath != '':
             if os.path.splitext(filepath)[1] == '.anim':
+                if self.popup:
+                    self.popup.close()
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
             else:
@@ -314,6 +324,12 @@ class PDXmaya_ui(QtWidgets.QDialog):
             MayaProgress.finished()
             raise
 
+    def edit_mesh_order(self):
+        if self.popup:
+            self.popup.close()
+        self.popup = meshindex_popup(parent=self)
+        self.popup.show()
+
     def load_settings(self):
         # load the JSON settings
         try:
@@ -348,6 +364,7 @@ class export_controls(QtWidgets.QWidget):
         super(export_controls, self).__init__(parent)
 
         self.parent = parent
+        self.popup = None  # reference for popup widget
 
         self.create_controls()
         self.connect_signals()
@@ -512,12 +529,16 @@ class export_controls(QtWidgets.QWidget):
         self.btn_export.clicked.connect(self.do_export)
 
     def create_new_mat(self):
+        if self.popup:
+            self.popup.close()
         self.popup = material_popup(parent=self.parent)
         self.popup.show()
 
     def edit_selected_mat(self):
         if self.list_materials.selectedItems():
             selected_mat = self.list_materials.selectedItems()[0]
+            if self.popup:
+                self.popup.close()
             self.popup = material_popup(material=selected_mat, parent=self.parent)
             self.popup.show()
 
@@ -549,15 +570,20 @@ class export_controls(QtWidgets.QWidget):
         self.list_animations.sortItems()
 
     def create_new_anim(self):
-        pass
+        self.refresh_anim_list()
 
     def edit_selected_anim(self):
-        pass
+        self.refresh_anim_list()
 
     def delete_selected_anim(self):
-        for selected_clip in self.list_animations.selectedItems():
-            name, start, end = selected_clip.data(QtCore.Qt.UserRole)
-            remove_animation_clip(bone_list, name)
+        pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
+
+        if pdx_scene_rootbones:
+            for selected_clip in self.list_animations.selectedItems():
+                name, start, end = selected_clip.data(QtCore.Qt.UserRole)
+                remove_animation_clip([pdx_scene_rootbones[0]], name)
+
+        self.refresh_anim_list()
 
     def refresh_anim_list(self):
         self.list_animations.clearSelection()
@@ -808,6 +834,74 @@ class material_popup(QtWidgets.QWidget):
             create_shader(mat_pdx, mat_name, None)
 
         self.parent.export_ctrls.refresh_mat_list()
+        self.close()
+
+
+class meshindex_popup(QtWidgets.QWidget):
+
+    def __init__(self, parent=None):
+        super(meshindex_popup, self).__init__(parent)
+
+        self.parent = parent
+
+        self.setWindowTitle('PDX mesh index')
+        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
+        self.setFixedSize(200, 200)
+        if self.parent:
+            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
+            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
+            self.setGeometry(center_x, center_y, self.width(), self.height())
+
+        self.create_controls()
+        self.connect_signals()
+
+    def create_controls(self):
+        # create controls
+        lbl_help = QtWidgets.QLabel('Drag/drop meshes to reorder')
+        self.list_meshes = QtWidgets.QListWidget()
+        self.list_meshes.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
+        self.list_meshes.defaultDropAction = QtCore.Qt.MoveAction
+
+        self.btn_okay = QtWidgets.QPushButton('Save', self)
+        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
+
+        # create layouts
+        main_layout = QtWidgets.QVBoxLayout()
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        btn_layout = QtWidgets.QHBoxLayout()
+
+        # add controls
+        self.setLayout(main_layout)
+        main_layout.addWidget(lbl_help)
+        main_layout.addWidget(self.list_meshes)
+        main_layout.addLayout(btn_layout)
+        btn_layout.addWidget(self.btn_okay)
+        btn_layout.addWidget(self.btn_cancel)
+
+        # populate list
+        self.list_meshes.clearSelection()
+        self.list_meshes.clear()
+        pdx_scenemeshes = [mesh for mesh in list_scene_pdx_meshes()]
+        pdx_scenemeshes.sort(key=lambda mesh: get_mesh_index(mesh))
+
+        for mesh in pdx_scenemeshes:
+            list_item = QtWidgets.QListWidgetItem()
+            list_item.setText(mesh.name())
+            list_item.setData(QtCore.Qt.UserRole, mesh.longName())
+            self.list_meshes.insertItem(self.list_meshes.count(), list_item)
+
+    def connect_signals(self):
+        self.btn_okay.clicked.connect(self.set_meshindex)
+        self.btn_cancel.clicked.connect(self.close)
+
+    def set_meshindex(self):
+        IO_PDX_LOG.info("Setting mesh index order...")
+        for i in xrange(self.list_meshes.count()):
+            item = self.list_meshes.item(i)
+            maya_mesh = pmc.PyNode(item.data(QtCore.Qt.UserRole))  # type: pmc.nt.Mesh
+            set_mesh_index(maya_mesh, i)
+            IO_PDX_LOG.info("\t{} - {}".format(maya_mesh.name(), i))
+
         self.close()
 
 
