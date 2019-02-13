@@ -14,6 +14,7 @@ from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from ..pdx_data import PDXData
+from ..updater import *
 from .. import bl_info
 
 try:
@@ -546,7 +547,7 @@ class PDXblender_2tools_ui(Panel):
 
         col.label('PDX materials:')
         row = col.row(align=True)
-        row.operator('io_pdx_mesh.material_create_popup', icon='MATERIAL', text='Create ...')
+        row.operator('io_pdx_mesh.material_create_popup', icon='MATERIAL', text='Create')
         row.operator('io_pdx_mesh.material_edit_popup', icon='TEXTURE_SHADED', text='Edit')
         col.separator()
 
@@ -560,8 +561,13 @@ class PDXblender_2tools_ui(Panel):
 
         col.label('PDX animations:')
         row = col.row(align=True)
-        row.operator('io_pdx_mesh.popup_message', icon='IPO_BEZIER', text='Create ...')
+        row.operator('io_pdx_mesh.popup_message', icon='IPO_BEZIER', text='Create')
         row.operator('io_pdx_mesh.popup_message', icon='NORMALIZE_FCURVES', text='Edit')
+        col.separator()
+
+        col.label('PDX meshes:')
+        row = col.row(align=True)
+        row.operator('io_pdx_mesh.popup_message', icon='SORTALPHA', text='Set mesh order')
 
 
 class PDXblender_3setup_ui(Panel):
@@ -591,7 +597,22 @@ class PDXblender_4help_ui(Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
-        self.layout.label('version {}'.format(bl_info['version']))
+        latest_version = float(RELEASE_DATA[0]['tag_name'])
+        current_version = float(bl_info['version'])
+
+        update_available = False
+        if current_version != latest_version:
+            update_available = True
+
+        self.layout.label('version: {}  {}'.format(
+            current_version, '(update available!)' if update_available else '')
+        )
+        # updater button appears if we aren't at the latest tag version
+        if update_available:
+            self.layout.operator(
+                'wm.url_open', icon='FILE_REFRESH', text='DOWNLOAD UPDATE'
+            ).url = RELEASE_DATA[0]['assets'][0]['browser_download_url']
+
         self.layout.operator(
             'wm.url_open', icon='QUESTION', text='Tool Wiki'
         ).url = 'https://github.com/ross-g/io_pdx_mesh/wiki'
