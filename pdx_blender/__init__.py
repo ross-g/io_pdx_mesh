@@ -70,6 +70,9 @@ for name, obj in inspect.getmembers(blender_ui, inspect.isclass):
     if obj.__module__.startswith(__name__) and hasattr(obj, 'bl_rna'):
         classes.append(obj)
 
+# Sort based on possible class attribute panel_order so we can set UI rollout order in the tool panel
+classes.sort(key=lambda cls: cls.panel_order if hasattr(cls, 'panel_order') else 0)
+
 
 """ ====================================================================================================================
     Main entry point.

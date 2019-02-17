@@ -20,8 +20,9 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from .. import pdx_data
 from .. import IO_PDX_LOG
+from ..pdx_data import PDXData
+from ..updater import LATEST_VERSION, LATEST_URL, AT_LATEST
 from .. import bl_info
 
 try:
@@ -143,6 +144,12 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_edit_mesh_order.triggered.connect(self.edit_mesh_order)
 
         # help menu
+        help_version = QtWidgets.QAction('version {}'.format(bl_info['version']), self)
+        help_version.setDisabled(True)
+        help_download = QtWidgets.QAction('GET UPDATE {}'.format(LATEST_VERSION), self)
+        help_download.triggered.connect(lambda: webbrowser.open(
+            LATEST_URL
+        ))
         help_wiki = QtWidgets.QAction('Tool Wiki', self)
         help_wiki.triggered.connect(lambda: webbrowser.open(
             'https://github.com/ross-g/io_pdx_mesh/wiki'
@@ -155,19 +162,21 @@ class PDXmaya_ui(QtWidgets.QDialog):
         help_code.triggered.connect(lambda: webbrowser.open(
             'https://github.com/ross-g/io_pdx_mesh'
         ))
-        help_version = QtWidgets.QAction('version {}'.format(bl_info['version']), self)
-        help_version.setDisabled(True)
 
         file_menu.addActions([file_import_mesh, file_import_anim])
         file_menu.addSeparator()
         file_menu.addActions([file_export_mesh, file_export_anim])
+
         tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
         tools_menu.addSeparator()
         tools_menu.addActions([tool_show_jnt_localaxes, tool_hide_jnt_localaxes])
         tools_menu.addActions([tool_show_loc_localaxes, tool_hide_loc_localaxes])
         tools_menu.addSeparator()
         tools_menu.addActions([tool_edit_mesh_order])
+
         help_menu.addActions([help_version])
+        if not AT_LATEST:   # update info appears if we aren't at the latest tag version
+            help_menu.addActions([help_download])
         help_menu.addSeparator()
         help_menu.addActions([help_wiki, help_forum, help_code])
 
@@ -827,7 +836,7 @@ class material_popup(QtWidgets.QWidget):
             # create a mock PDXData object for convenience here to pass to the create_shader function
             mat_pdx = type(
                 'Material',
-                (pdx_data.PDXData, object),
+                (PDXData, object),
                 {'shader': [self.mat_type.currentText()]}
             )
 

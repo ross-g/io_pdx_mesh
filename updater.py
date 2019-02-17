@@ -1,15 +1,19 @@
 """
     IO PDX Mesh Python module.
-    .
+    This is designed to allow tools to check if they are out of date or not and supply a download link to the latest.
 
     author : ross-g
 """
 
-import os
-import urllib.request
 import json
+import time
+# Py2, Py3 compatibility
+try:
+    from urllib.request import urlopen, Request, URLError
+except ImportError:
+    from urllib2 import urlopen, Request, URLError
 
-from . import bl_info
+from . import bl_info, IO_PDX_LOG
 
 
 """ ====================================================================================================================
@@ -17,8 +21,13 @@ from . import bl_info
 ========================================================================================================================
 """
 
+TIMEOUT = 1.0   # seconds
 API_URL = 'https://api.github.com'
-RELEASE_DATA = {}
+LATEST_RELEASE = {}
+LATEST_VERSION = None
+LATEST_URL = None
+
+AT_LATEST = True
 
 
 """ ====================================================================================================================
@@ -27,23 +36,48 @@ RELEASE_DATA = {}
 """
 
 
-def get_repo_url():
-    return '{api}/repos/{author}/{repo_name}'.format(api=API_URL, **bl_info)
+class Github_API(object):
+    """
+        Handles connection to Githubs API to get some data on releases for this repository.
+    """
+
+    def __init__(self):
+        self.api = API_URL
+        self.owner = bl_info['author']
+        self.repo = bl_info['repo_name']
+        self.args = {'owner': self.owner, 'repo': self.repo, 'api': self.api}
+
+        self.refresh()
+
+    @staticmethod
+    def get_data(url, t):
+        req = Request(url)
+        result = urlopen(req, timeout=t)
+        result_str = result.read()
+        result.close()
+
+        return json.JSONDecoder().decode(result_str.decode())
+
+    def refresh(self):
+        start = time.time()
+
+        # get latest release data
+        releases_url = '{api}/repos/{owner}/{repo}/releases'.format(**self.args)
+        try:
+            release_list = self.get_data(releases_url, TIMEOUT)
+        except URLError as err:
+            IO_PDX_LOG.error("Unable to check for update. ({})".format(err.reason))
+            return
+
+        global LATEST_RELEASE, LATEST_VERSION, LATEST_URL
+        LATEST_RELEASE = release_list[0]
+        LATEST_VERSION = float(release_list[0]['tag_name'])
+        LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
+
+        global AT_LATEST
+        AT_LATEST = float(bl_info['version']) == LATEST_VERSION
+
+        IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
 
 
-def get_releases_url():
-    return '{api}/repos/{author}/{repo_name}/releases'.format(api=API_URL, **bl_info)
-
-
-def get_releases_data():
-    global RELEASE_DATA
-
-    request = urllib.request.Request(get_releases_url())
-    result = urllib.request.urlopen(request)
-    result_str = result.read()
-    result.close()
-
-    RELEASE_DATA = json.JSONDecoder().decode(result_str.decode())
-
-
-get_releases_data()
+github_repo = Github_API()

@@ -14,7 +14,7 @@ from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from ..pdx_data import PDXData
-from ..updater import *
+from ..updater import LATEST_VERSION, LATEST_URL, AT_LATEST
 from .. import bl_info
 
 try:
@@ -499,12 +499,16 @@ class ignore_bone(Operator):
 """
 
 
-class PDXblender_1file_ui(Panel):
-    bl_idname = 'panel.io_pdx_mesh.file'
-    bl_label = 'File'
+class PDXUI(object):
     bl_category = 'PDX Blender Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+
+
+class PDXblenderUI_file(PDXUI, Panel):
+    bl_idname = 'panel.io_pdx_mesh.file'
+    bl_label = 'File'
+    panel_order = 1
 
     def draw(self, context):
         self.layout.label('Import:', icon='IMPORT')
@@ -518,32 +522,13 @@ class PDXblender_1file_ui(Panel):
         row.operator('io_pdx_mesh.export_anim', icon='RENDER_ANIMATION', text='Save anim ...')
 
 
-class PDXblender_2tools_ui(Panel):
+class PDXblenderUI_tools(PDXUI, Panel):
     bl_idname = 'panel.io_pdx_mesh.tools'
     bl_label = 'Tools'
-    bl_category = 'PDX Blender Tools'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
+    panel_order = 2
 
     def draw(self, context):
         col = self.layout.column(align=True)
-
-        col.label('Display local axes:')
-        row = col.row(align=True)
-        op_show_bone_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_OB_ARMATURE', text='Show all')
-        op_show_bone_axis.show = True
-        op_show_bone_axis.data_type = 'ARMATURE'
-        op_hide_bone_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_ARMATURE', text='Hide all')
-        op_hide_bone_axis.show = False
-        op_hide_bone_axis.data_type = 'ARMATURE'
-        row = col.row(align=True)
-        op_show_loc_axis = row.operator('io_pdx_mesh.show_axis', icon='MANIPUL', text='Show all')
-        op_show_loc_axis.show = True
-        op_show_loc_axis.data_type = 'EMPTY'
-        op_hide_loc_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_EMPTY', text='Hide all')
-        op_hide_loc_axis.show = False
-        op_hide_loc_axis.data_type = 'EMPTY'
-        col.separator()
 
         col.label('PDX materials:')
         row = col.row(align=True)
@@ -570,12 +555,37 @@ class PDXblender_2tools_ui(Panel):
         row.operator('io_pdx_mesh.popup_message', icon='SORTALPHA', text='Set mesh order')
 
 
-class PDXblender_3setup_ui(Panel):
+class PDXblenderUI_display(PDXUI, Panel):
+    bl_idname = 'panel.io_pdx_mesh.display'
+    bl_label = 'Display'
+    bl_options = {'DEFAULT_CLOSED'}
+    panel_order = 3
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
+
+        col.label('Display local axes:')
+        row = col.row(align=True)
+        op_show_bone_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_OB_ARMATURE', text='Show all')
+        op_show_bone_axis.show = True
+        op_show_bone_axis.data_type = 'ARMATURE'
+        op_hide_bone_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_ARMATURE', text='Hide all')
+        op_hide_bone_axis.show = False
+        op_hide_bone_axis.data_type = 'ARMATURE'
+        row = col.row(align=True)
+        op_show_loc_axis = row.operator('io_pdx_mesh.show_axis', icon='MANIPUL', text='Show all')
+        op_show_loc_axis.show = True
+        op_show_loc_axis.data_type = 'EMPTY'
+        op_hide_loc_axis = row.operator('io_pdx_mesh.show_axis', icon='OUTLINER_DATA_EMPTY', text='Hide all')
+        op_hide_loc_axis.show = False
+        op_hide_loc_axis.data_type = 'EMPTY'
+
+
+class PDXblenderUI_setup(PDXUI, Panel):
     bl_idname = 'panel.io_pdx_mesh.setup'
     bl_label = 'Setup'
-    bl_category = 'PDX Blender Tools'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
+    panel_order = 4
 
     def draw(self, context):
         settings = context.scene.io_pdx_settings
@@ -588,37 +598,29 @@ class PDXblender_3setup_ui(Panel):
         row.prop(settings, 'setup_fps', text='fps')
 
 
-class PDXblender_4help_ui(Panel):
+class PDXblenderUI_help(PDXUI, Panel):
     bl_idname = 'panel.io_pdx_mesh.help'
     bl_label = 'Help'
-    bl_category = 'PDX Blender Tools'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
     bl_options = {'DEFAULT_CLOSED'}
+    panel_order = 5
 
     def draw(self, context):
-        latest_version = float(RELEASE_DATA[0]['tag_name'])
-        current_version = float(bl_info['version'])
+        col = self.layout.column(align=True)
 
-        update_available = False
-        if current_version != latest_version:
-            update_available = True
+        col.label('version: {}'.format(bl_info['version']))
+        if not AT_LATEST:   # update info appears if we aren't at the latest tag version
+            btn_txt = 'GET UPDATE {}'.format(LATEST_VERSION)
+            col.operator(
+                'wm.url_open', icon='FILE_REFRESH', text=btn_txt
+            ).url = LATEST_URL
+        col.separator()
 
-        self.layout.label('version: {}  {}'.format(
-            current_version, '(update available!)' if update_available else '')
-        )
-        # updater button appears if we aren't at the latest tag version
-        if update_available:
-            self.layout.operator(
-                'wm.url_open', icon='FILE_REFRESH', text='DOWNLOAD UPDATE'
-            ).url = RELEASE_DATA[0]['assets'][0]['browser_download_url']
-
-        self.layout.operator(
+        col.operator(
             'wm.url_open', icon='QUESTION', text='Tool Wiki'
         ).url = 'https://github.com/ross-g/io_pdx_mesh/wiki'
-        self.layout.operator(
+        col.operator(
             'wm.url_open', icon='QUESTION', text='Paradox forums'
         ).url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
-        self.layout.operator(
+        col.operator(
             'wm.url_open', icon='QUESTION', text='Source code'
         ).url = 'https://github.com/ross-g/io_pdx_mesh'
