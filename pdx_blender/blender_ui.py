@@ -14,8 +14,7 @@ from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from ..pdx_data import PDXData
-from ..updater import LATEST_VERSION, LATEST_URL, AT_LATEST
-from .. import bl_info
+from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
 
 try:
     from . import blender_import_export
@@ -607,7 +606,7 @@ class PDXblenderUI_help(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.label('version: {}'.format(bl_info['version']))
+        col.label('version: {}'.format(CURRENT_VERSION))
         if not AT_LATEST:   # update info appears if we aren't at the latest tag version
             btn_txt = 'GET UPDATE {}'.format(LATEST_VERSION)
             col.operator(

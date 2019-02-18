@@ -23,6 +23,7 @@ from . import bl_info, IO_PDX_LOG
 
 TIMEOUT = 1.0   # seconds
 API_URL = 'https://api.github.com'
+CURRENT_VERSION = float('.'.join(map(str, bl_info['version'])))
 LATEST_RELEASE = {}
 LATEST_VERSION = None
 LATEST_URL = None
@@ -75,7 +76,7 @@ class Github_API(object):
         LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
 
         global AT_LATEST
-        AT_LATEST = float(bl_info['version']) == LATEST_VERSION
+        AT_LATEST = CURRENT_VERSION == LATEST_VERSION
 
         IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
 

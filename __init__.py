@@ -20,7 +20,7 @@ bl_info = {
     'support': 'COMMUNITY',
     'blender': (2, 78, 0),
     'maya': (2012),
-    'version': '0.6',
+    'version': (0, 6),
     'warning': 'this add-on is beta',
     'wiki_url': 'https://github.com/ross-g/io_pdx_mesh',
     'repo_name': 'io_pdx_mesh',

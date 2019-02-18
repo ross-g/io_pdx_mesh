@@ -22,8 +22,7 @@ except ImportError:
 
 from .. import IO_PDX_LOG
 from ..pdx_data import PDXData
-from ..updater import LATEST_VERSION, LATEST_URL, AT_LATEST
-from .. import bl_info
+from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
 
 try:
     from . import maya_import_export
@@ -144,7 +143,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_edit_mesh_order.triggered.connect(self.edit_mesh_order)
 
         # help menu
-        help_version = QtWidgets.QAction('version {}'.format(bl_info['version']), self)
+        help_version = QtWidgets.QAction('version {}'.format(CURRENT_VERSION), self)
         help_version.setDisabled(True)
         help_download = QtWidgets.QAction('GET UPDATE {}'.format(LATEST_VERSION), self)
         help_download.triggered.connect(lambda: webbrowser.open(
