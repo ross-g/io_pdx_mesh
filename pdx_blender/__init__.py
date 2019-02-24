@@ -8,7 +8,7 @@ import inspect
 import importlib
 import bpy
 from bpy.types import PropertyGroup
-from bpy.props import PointerProperty, StringProperty, BoolProperty, EnumProperty, IntProperty
+from bpy.props import PointerProperty, CollectionProperty, StringProperty, BoolProperty, EnumProperty, IntProperty
 
 from . import blender_import_export, blender_ui
 importlib.reload(blender_import_export)
@@ -49,6 +49,15 @@ class PDXMaterial_settings(PropertyGroup):
     )
 
 
+class PDXObject_Pointer(PropertyGroup):
+    ref = PointerProperty(name='pdx pointer', type=bpy.types.Object)
+
+
+class PDXObject_Group(PropertyGroup):
+    coll = CollectionProperty(type=PDXObject_Pointer)
+    idx = IntProperty()     # index for the collection
+
+
 class PDXExport_settings(PropertyGroup):
     custom_range = BoolProperty(
         name='Custom range',
@@ -63,7 +72,7 @@ class PDXExport_settings(PropertyGroup):
 """
 
 
-classes = [PDXBlender_settings, PDXMaterial_settings, PDXExport_settings]
+classes = [PDXBlender_settings, PDXMaterial_settings, PDXObject_Pointer, PDXObject_Group, PDXExport_settings]
 
 # Append classes dynamically from submodules
 for name, obj in inspect.getmembers(blender_ui, inspect.isclass):
@@ -92,6 +101,7 @@ def register():
     # initialise tool properties to scene
     bpy.types.Scene.io_pdx_settings = PointerProperty(type=PDXBlender_settings)
     bpy.types.Scene.io_pdx_material = PointerProperty(type=PDXMaterial_settings)
+    bpy.types.Scene.io_pdx_group = PointerProperty(type=PDXObject_Group)
     bpy.types.Scene.io_pdx_export = PointerProperty(type=PDXExport_settings)
 
 
@@ -102,3 +112,5 @@ def unregister():
     # remove tool properties from scene
     del bpy.types.Scene.io_pdx_settings
     del bpy.types.Scene.io_pdx_material
+    del bpy.types.Scene.io_pdx_group
+    del bpy.types.Scene.io_pdx_export

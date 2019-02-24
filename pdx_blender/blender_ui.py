@@ -9,7 +9,7 @@ import inspect
 import json
 import importlib
 import bpy
-from bpy.types import Operator, Panel
+from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
@@ -135,6 +135,9 @@ class material_create_popup(material_popup, Operator):
     bl_idname = 'io_pdx_mesh.material_create_popup'
     bl_label = 'Create a PDX material'
 
+    def check(self, context):
+        return True
+
     def execute(self, context):
         mat_name = self.mat_name
         mat_type = self.mat_type
@@ -149,9 +152,6 @@ class material_create_popup(material_popup, Operator):
 
         create_material(mat_pdx, None, mat_name=mat_name)
         return {'FINISHED'}
-
-    def check(self, context):
-        return True
 
     def invoke(self, context, event):
         self.mat_name = ''
@@ -188,15 +188,15 @@ class material_edit_popup(material_popup, Operator):
         update=mat_select
     )
 
+    def check(self, context):
+        return True
+
     def execute(self, context):
         mat = bpy.data.materials[self.scene_mats]
         curr_mat = context.scene.io_pdx_material
         mat.name = curr_mat.mat_name
         mat[PDX_SHADER] = curr_mat.mat_type
         return {'FINISHED'}
-
-    def check(self, context):
-        return True
 
     def invoke(self, context, event):
         pdx_scene_materials = get_scene_material_list(self, context)
@@ -222,6 +222,79 @@ class material_edit_popup(material_popup, Operator):
         box = self.layout.box()
         box.prop(curr_mat, 'mat_name')
         box.prop(curr_mat, 'mat_type')
+        self.layout.separator()
+
+
+class mesh_index_list(UIList):
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        layout.prop(item, 'name', text='', emboss=False)
+
+
+class mesh_index_actions(Operator):
+    bl_idname = "io_pdx_mesh.mesh_index_actions"
+    bl_label = "Mesh index list actions"
+    bl_options = {'REGISTER'}
+
+    action = EnumProperty(
+        items=(('UP', "Up", ""), ('DOWN', "Down", ""))
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.io_pdx_group
+
+    def move_index(self):
+        list_index = bpy.context.scene.io_pdx_group.idx
+        list_length = len(bpy.context.scene.io_pdx_group.coll) - 1
+
+        new_index = list_index + (-1 if self.action == 'UP' else 1)
+        bpy.context.scene.io_pdx_group.idx = max(0, min(new_index, list_length))
+
+    def execute(self, context):
+        collection = context.scene.io_pdx_group.coll
+        index = context.scene.io_pdx_group.idx
+        neighbor = index + (-1 if self.action == 'UP' else 1)
+        collection.move(neighbor, index)
+        self.move_index()
+
+        return{'FINISHED'}
+
+
+class mesh_index_popup(Operator):
+    bl_idname = 'io_pdx_mesh.mesh_index_popup'
+    bl_label = 'Set mesh index on PDX meshes'
+    bl_options = {'REGISTER'}
+
+    def check(self, context):
+        return True
+
+    def execute(self, context):
+        for i, item in enumerate(context.scene.io_pdx_group.coll):
+            item.ref.data['meshindex'] = i
+        return{'FINISHED'}
+
+    def invoke(self, context, event):
+        obj_group = context.scene.io_pdx_group
+
+        obj_group.coll.clear()
+        pdx_scenemeshes = list_scene_pdx_meshes()
+        pdx_scenemeshes.sort(key=lambda obj: get_mesh_index(obj.data))
+
+        for obj in pdx_scenemeshes:
+            item = obj_group.coll.add()
+            item.name = obj.name
+            item.ref = obj
+        return context.window_manager.invoke_props_dialog(self, width=200)
+
+    def draw(self, context):
+        obj_group = context.scene.io_pdx_group
+        row = self.layout.row()
+        row.template_list('mesh_index_list', '', obj_group, 'coll', obj_group, 'idx', rows=8)
+
+        col = row.column(align=True)
+        col.operator("io_pdx_mesh.mesh_index_actions", icon='TRIA_UP', text="").action = 'UP'
+        col.operator("io_pdx_mesh.mesh_index_actions", icon='TRIA_DOWN', text="").action = 'DOWN'
         self.layout.separator()
 
 
@@ -280,7 +353,7 @@ class import_mesh(Operator, ImportHelper):
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
         except Exception as err:
-            msg = "[io_pdx_mesh] FAILED to import {}".format(self.filepath)
+            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
             self.report({'ERROR'}, msg)
             print(msg)
             print(err)
@@ -343,7 +416,7 @@ class export_mesh(Operator, ExportHelper):
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
         except Exception as err:
-            msg = "[io_pdx_mesh] FAILED to export {}".format(self.filepath)
+            msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
             self.report({'ERROR'}, msg)
             print(msg)
             print(err)
@@ -385,7 +458,7 @@ class import_anim(Operator, ImportHelper):
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
         except Exception as err:
-            msg = "[io_pdx_mesh] FAILED to import {}".format(self.filepath)
+            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
             self.report({'ERROR'}, msg)
             print(msg)
             print(err)
@@ -448,7 +521,7 @@ class export_anim(Operator, ExportHelper):
                 )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
         except Exception as err:
-            msg = "[io_pdx_mesh] FAILED to export {}".format(self.filepath)
+            msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
             self.report({'ERROR'}, msg)
             print(msg)
             print(err)
@@ -543,15 +616,15 @@ class PDXblenderUI_tools(PDXUI, Panel):
         op_unignore_bone.state = False
         col.separator()
 
-        col.label('PDX animations:')
-        row = col.row(align=True)
-        row.operator('io_pdx_mesh.popup_message', icon='IPO_BEZIER', text='Create')
-        row.operator('io_pdx_mesh.popup_message', icon='NORMALIZE_FCURVES', text='Edit')
-        col.separator()
+        # col.label('PDX animations:')
+        # row = col.row(align=True)
+        # row.operator('io_pdx_mesh.popup_message', icon='IPO_BEZIER', text='Create')
+        # row.operator('io_pdx_mesh.popup_message', icon='NORMALIZE_FCURVES', text='Edit')
+        # col.separator()
 
         col.label('PDX meshes:')
         row = col.row(align=True)
-        row.operator('io_pdx_mesh.popup_message', icon='SORTALPHA', text='Set mesh order')
+        row.operator('io_pdx_mesh.mesh_index_popup', icon='SORTALPHA', text='Set mesh order')
 
 
 class PDXblenderUI_display(PDXUI, Panel):
@@ -589,12 +662,10 @@ class PDXblenderUI_setup(PDXUI, Panel):
     def draw(self, context):
         settings = context.scene.io_pdx_settings
 
-        box = self.layout.box()
-        box.label('Scene setup:')
-        box.prop(settings, 'setup_engine')
-        row = box.row()
-        row.label('Animation')
-        row.prop(settings, 'setup_fps', text='fps')
+        self.layout.prop(settings, 'setup_engine')
+        row = self.layout.row(align=True)
+        row.label('Animation:')
+        row.prop(settings, 'setup_fps', text='FPS')
 
 
 class PDXblenderUI_help(PDXUI, Panel):
