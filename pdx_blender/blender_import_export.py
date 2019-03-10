@@ -70,6 +70,16 @@ def util_round(data, ndigits=0):
     return tuple(round(x, ndigits) for x in data)
 
 
+def clean_imported_name(name):
+    # strip any namespace names, taking the final name only
+    clean_name = name.split(':')[-1]
+
+    # replace hierarchy separator character used by Maya in the case of non-unique leaf node names
+    clean_name = clean_name.replace('|', '_')
+
+    return clean_name
+
+
 def get_bmesh(mesh_data):
     """
         Returns a BMesh from existing mesh data
@@ -103,14 +113,8 @@ def get_rig_from_mesh(blender_obj):
     return rig
 
 
-def clean_imported_name(name):
-    # strip any namespace names, taking the final name only
-    clean_name = name.split(':')[-1]
-
-    # replace hierarchy separator character used by Maya in the case of non-unique leaf node names
-    clean_name = clean_name.replace('|', '_')
-
-    return clean_name
+def list_scene_pdx_meshes():
+    return [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
 
 
 def set_local_axis_display(state, data_type):
@@ -134,6 +138,18 @@ def set_ignore_joints(state):
 
     for bone in bone_list:
         bone[PDX_IGNOREJOINT] = state
+
+
+def set_mesh_index(blender_mesh, i):
+    if not PDX_MESHINDEX in blender_mesh.keys():
+        blender_mesh["_RNA_UI"] = {}
+        blender_mesh["_RNA_UI"][PDX_MESHINDEX] = {"min": 0, "max": 255, "soft_min": 0, "soft_max": 255, "step": 1}
+
+    blender_mesh[PDX_MESHINDEX] = i
+
+
+def get_mesh_index(blender_mesh):
+    return blender_mesh.get(PDX_MESHINDEX, 255)
 
 
 def check_mesh_material(blender_obj):
@@ -1008,9 +1024,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
                 obj.matrix_world = IMPORT_ROT * obj.matrix_world
 
                 # set mesh index from source file
-                mesh["_RNA_UI"] = {}
-                mesh["_RNA_UI"][PDX_MESHINDEX] = {"min": 0, "max": 255, "soft_min": 0, "soft_max": 255, "step": 1}
-                mesh[PDX_MESHINDEX] = i
+                set_mesh_index(mesh, i)
 
                 # create the material
                 if pdx_material:
@@ -1045,11 +1059,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     object_xml = Xml.SubElement(root_xml, 'object')
 
     # populate object data
-    blender_meshes = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
+    blender_meshobjs = list_scene_pdx_meshes()
     # sort meshes for export by index
-    blender_meshes.sort(key=lambda mesh: mesh.data.get(PDX_MESHINDEX, 255))
+    blender_meshobjs.sort(key=lambda obj: get_mesh_index(obj.data))
 
-    for obj in blender_meshes:
+    for obj in blender_meshobjs:
         print("[io_pdx_mesh] writing node - {}".format(obj.data.name))
         objnode_xml = Xml.SubElement(object_xml, obj.data.name)
 
