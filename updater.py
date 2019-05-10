@@ -69,6 +69,9 @@ class Github_API(object):
         except URLError as err:
             IO_PDX_LOG.error("Unable to check for update. ({})".format(err.reason))
             return
+        except Exception as err:
+            IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
+            return
 
         global LATEST_RELEASE, LATEST_VERSION, LATEST_URL
         LATEST_RELEASE = release_list[0]
