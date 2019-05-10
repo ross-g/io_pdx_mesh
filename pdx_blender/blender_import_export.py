@@ -1227,8 +1227,11 @@ def import_animfile(animpath, timestart=1):
             if edit_bone.parent:
                 parent_matrix = edit_bone.parent.matrix_local
 
-            # apply transform
+            # apply transform and set initial pose keyframe (not all bones in this initial pose will be animated)
             pose_bone.matrix = (offset_matrix.transposed() * parent_matrix.transposed()).transposed()
+            pose_bone.keyframe_insert(data_path="scale", index=-1)
+            pose_bone.keyframe_insert(data_path="rotation_quaternion", index=-1)
+            pose_bone.keyframe_insert(data_path="location", index=-1)
 
             # record the initial pose as the basis for subsequent keyframes
             initial_pose[bone_name] = pose_bone.matrix
