@@ -877,7 +877,7 @@ def create_mesh(PDX_mesh, name=None):
     return new_mesh, new_obj
 
 
-def create_fcurve(armature, bone_name, data_path, index):
+def create_fcurve(armature, bone_name, data_type, index):
     # create anim data block on the armature
     if armature.animation_data is None:
         armature.animation_data_create()
@@ -888,16 +888,19 @@ def create_fcurve(armature, bone_name, data_path, index):
         anim_data.action = bpy.data.actions.new(armature.name + '_action')
     action = anim_data.action
 
+    # determine data path
+    data_path = 'pose.bones["{}"].{}'.format(bone_name, data_type)
+
     # check if the fcurve for this data path and index already exists
     for curve in anim_data.action.fcurves:
-        if curve.data_path == data_path and curve.array_index == index:
+        if curve.data_path != data_path:
+            continue
+        if index < 0 or curve.array_index == index:
             return curve
 
-    # create bone fcurve group if it doesn't exist
-    if bone_name not in action.groups:
+    # otherwise create a new fcurve inside the correct group
+    if bone_name not in action.groups:  # create group if it doesn't exist
         action.groups.new(bone_name)
-
-    # otherwise create the fcurve inside the correct group
     f_curve = anim_data.action.fcurves.new(data_path, index, bone_name)
 
     return f_curve
@@ -1229,9 +1232,9 @@ def import_animfile(animpath, timestart=1):
 
             # apply transform and set initial pose keyframe (not all bones in this initial pose will be animated)
             pose_bone.matrix = (offset_matrix.transposed() * parent_matrix.transposed()).transposed()
-            pose_bone.keyframe_insert(data_path="scale", index=-1)
-            pose_bone.keyframe_insert(data_path="rotation_quaternion", index=-1)
-            pose_bone.keyframe_insert(data_path="location", index=-1)
+            pose_bone.keyframe_insert(data_path="scale", index=-1, group=bone_name)
+            pose_bone.keyframe_insert(data_path="rotation_quaternion", index=-1, group=bone_name)
+            pose_bone.keyframe_insert(data_path="location", index=-1, group=bone_name)
 
             # record the initial pose as the basis for subsequent keyframes
             initial_pose[bone_name] = pose_bone.matrix
