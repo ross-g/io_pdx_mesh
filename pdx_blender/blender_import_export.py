@@ -125,7 +125,7 @@ def set_local_axis_display(state, data_type):
             if node.data:
                 node.data.show_axes = state
         except Exception as err:
-            print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
+            print("[io_pdx_mesh] node '{0}' could not have it's axis shown.".format(node.name))
 
 
 def set_ignore_joints(state):
@@ -978,7 +978,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
 
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bonespace=False):
     start = time.time()
-    print("[io_pdx_mesh] Importing {}".format(meshpath))
+    print("[io_pdx_mesh] Importing {0}".format(meshpath))
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(meshpath)
@@ -992,7 +992,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
     # go through shapes
     for i, node in enumerate(shapes):
-        print("[io_pdx_mesh] creating node - {}".format(node.tag))
+        print("[io_pdx_mesh] creating node - {0}".format(node.tag))
 
         # create the skeleton first, so we can skin the mesh to it
         rig = None
@@ -1040,12 +1040,12 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
             pdx_locator = pdx_data.PDXData(loc)
             obj = create_locator(pdx_locator, scene_bone_dict)
 
-    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
     start = time.time()
-    print("[io_pdx_mesh] Exporting {}".format(meshpath))
+    print("[io_pdx_mesh] Exporting {0}".format(meshpath))
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
@@ -1059,8 +1059,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # sort meshes for export by index
     blender_meshobjs.sort(key=lambda obj: get_mesh_index(obj.data))
 
+    if len(blender_meshobjs) == 0:
+        raise RuntimeError("Nothing to export, found no meshes with PDX materials applied.")
+
     for obj in blender_meshobjs:
-        print("[io_pdx_mesh] writing node - {}".format(obj.data.name))
+        print("[io_pdx_mesh] writing node - {0}".format(obj.data.name))
         objnode_xml = Xml.SubElement(object_xml, obj.data.name)
 
         # one object can have multiple materials on a per face basis
@@ -1146,12 +1149,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     pdx_data.write_meshfile(meshpath, root_xml)
 
     bpy.ops.object.select_all(action='DESELECT')
-    print("[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] export finished! ({0:.4f} sec)".format(time.time() - start))
 
 
 def import_animfile(animpath, timestart=1):
     start = time.time()
-    print("[io_pdx_mesh] Importing {}".format(animpath))
+    print("[io_pdx_mesh] Importing {0}".format(animpath))
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(animpath)
@@ -1163,14 +1166,14 @@ def import_animfile(animpath, timestart=1):
 
     # set scene animation and playback settings
     fps = int(info.attrib['fps'][0])
-    print("[io_pdx_mesh] setting playback speed - {}".format(fps))
+    print("[io_pdx_mesh] setting playback speed - {0}".format(fps))
     try:
         bpy.context.scene.render.fps = fps
     except Exception as err:
         raise RuntimeError("Unsupported animation speed. {}".format(fps))
     bpy.context.scene.render.fps_base = 1.0
 
-    print("[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart + framecount - 1)))
+    print("[io_pdx_mesh] setting playback range - ({0},{1})".format(timestart, (timestart + framecount - 1)))
     bpy.context.scene.frame_start = timestart
     bpy.context.scene.frame_end = timestart + framecount - 1
     bpy.context.scene.frame_set(timestart)
@@ -1201,7 +1204,7 @@ def import_animfile(animpath, timestart=1):
             edit_bone = pose_bone.bone  # rig.data.bones[bone_name]
         except KeyError:
             bone_errors.append(bone_name)
-            print("[io_pdx_mesh] failed to find bone {}".format(bone_name))
+            print("[io_pdx_mesh] failed to find bone '{0}'".format(bone_name))
 
         # and set initial transform
         if pose_bone and edit_bone:
@@ -1234,7 +1237,7 @@ def import_animfile(animpath, timestart=1):
 
     # break on bone errors
     if bone_errors:
-        raise RuntimeError("Missing bones required for animation:\n{}".format(bone_errors))
+        raise RuntimeError("Missing bones required for animation:\n{0}".format(bone_errors))
 
     # check which transform types are animated on each bone
     all_bone_keyframes = OrderedDict()
@@ -1266,18 +1269,18 @@ def import_animfile(animpath, timestart=1):
         bone_keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if bone_keys.values():
-            print("[io_pdx_mesh] setting {} keyframes on bone '{}'".format(list(bone_keys.keys()), bone_name))
+            print("[io_pdx_mesh] setting {0} keyframes on bone '{1}'".format(list(bone_keys.keys()), bone_name))
             create_anim_keys(rig, bone_name, bone_keys, timestart, initial_pose)
 
     bpy.context.scene.frame_set(timestart)
     bpy.context.scene.update()
 
-    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
 def export_animfile(animpath, timestart=1, timeend=10):
     start = time.time()
-    print("[io_pdx_mesh] Exporting {}".format(animpath))
+    print("[io_pdx_mesh] Exporting {0}".format(animpath))
 
     curr_frame = bpy.context.scene.frame_start
     if timestart != int(timestart) or timeend != int(timeend):
@@ -1349,7 +1352,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
         if bone_keys:
-            print("[io_pdx_mesh] writing {} keyframes for bone '{}'".format(list(bone_keys.keys()), bone_name))
+            print("[io_pdx_mesh] writing {0} keyframes for bone '{0}'".format(list(bone_keys.keys()), bone_name))
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
@@ -1374,4 +1377,4 @@ def export_animfile(animpath, timestart=1, timeend=10):
 
     bpy.context.scene.frame_set(curr_frame)
 
-    print("[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] export finished! ({0:.4f} sec)".format(time.time() - start))

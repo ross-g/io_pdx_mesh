@@ -354,7 +354,8 @@ class import_mesh(Operator, ImportHelper):
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
-            self.report({'ERROR'}, msg)
+            self.report({'WARNING'}, msg)
+            self.report({'ERROR'}, err)
             print(msg)
             print(err)
             raise
@@ -417,7 +418,8 @@ class export_mesh(Operator, ExportHelper):
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
-            self.report({'ERROR'}, msg)
+            self.report({'WARNING'}, msg)
+            self.report({'ERROR'}, err)
             print(msg)
             print(err)
             raise
@@ -459,7 +461,8 @@ class import_anim(Operator, ImportHelper):
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
-            self.report({'ERROR'}, msg)
+            self.report({'WARNING'}, msg)
+            self.report({'ERROR'}, err)
             print(msg)
             print(err)
             raise
@@ -522,7 +525,8 @@ class export_anim(Operator, ExportHelper):
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
-            self.report({'ERROR'}, msg)
+            self.report({'WARNING'}, msg)
+            self.report({'ERROR'}, err)
             print(msg)
             print(err)
             raise
