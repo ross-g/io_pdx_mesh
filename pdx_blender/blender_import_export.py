@@ -89,7 +89,7 @@ def get_bmesh(mesh_data):
 
 
 def get_rig_from_bone_name(bone_name):
-    scene_rigs = (obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature)
+    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature]
 
     for rig in scene_rigs:
         armt = rig.data
@@ -1305,8 +1305,17 @@ def export_animfile(animpath, timestart=1, timeend=10):
     frame_samples = (timeend + 1) - timestart
     info_xml.set('sa', [frame_samples])
 
-    # populate bone data, assume that the rig to be exported is selected
+    # find the scene armature with animation property (assume this is unique)
+    rig = None
+
+    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature] # and hasattr(bone, PDX_ANIMATION) ?
     rig = bpy.context.scene.objects.active
+    if rig is None:
+        raise RuntimeError(
+            "Please select a specific armature before exporting."
+        )
+
+    # populate bone data, assume that the rig to be exported is selected
     export_bones = get_skeleton_hierarchy(rig)
     info_xml.set('j', [len(export_bones)])
 
