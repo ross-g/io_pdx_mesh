@@ -426,6 +426,10 @@ class export_controls(QtWidgets.QWidget):
         self.btn_export = QtWidgets.QPushButton('Export ...', self)
 
         # TODO: re-enable these once supported
+        self.btn_anim_create.setDisabled(True)
+        self.btn_anim_edit.setDisabled(True)
+        self.btn_anim_delete.setDisabled(True)
+        self.btn_anim_refresh.setDisabled(True)
         self.chk_create_extra.setDisabled(True)
         self.chk_merge_obj.setDisabled(True)
 
