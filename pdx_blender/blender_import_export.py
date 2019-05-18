@@ -45,12 +45,10 @@ PDX_ROUND_SCALE = 2
 # fmt: off
 SPACE_MATRIX = Matrix((
     (1, 0, 0, 0),
+    (0, 0, 1, 0),
     (0, 1, 0, 0),
-    (0, 0, -1, 0),
     (0, 0, 0, 1)
 ))
-IMPORT_ROT = axis_conversion('Z', 'Y', '-Y', 'Z').to_4x4()
-EXPORT_ROT = axis_conversion('-Y', 'Z', 'Z', 'Y').to_4x4()
 BONESPACE_MATRIX = Matrix((
     (0, 1, 0, 0),
     (-1, 0, 0, 0),
@@ -198,7 +196,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     # get mesh and Bmesh data structures for this object
     mesh = blender_obj.data.copy()  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.name = blender_obj.data.name + '_export'
-    mesh.transform(EXPORT_ROT * blender_obj.matrix_world)
+    mesh.transform(blender_obj.matrix_world)
     mesh.calc_normals_split()
 
     # we will need to test vertices for equality based on their attributes
@@ -405,7 +403,7 @@ def get_mesh_skeleton_info(blender_obj):
             bone_list[i]['pa'] = [all_bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(EXPORT_ROT * rig.matrix_world * bone.matrix_local).inverted_safe()  # convert to Game space
+        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted_safe()  # convert to Game space
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
         bone_list[i]['tx'] = []
@@ -737,7 +735,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.scene.update()
 
-    return new_rig, True
+    return new_rig
 
 
 def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
@@ -1008,10 +1006,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
             if imp_skel:
                 print("[io_pdx_mesh] creating skeleton -")
-                rig, is_new = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
-                if is_new:
-                    # create_skeleton may return an existing rig that has already been rotation corrected!
-                    rig.matrix_world = IMPORT_ROT * rig.matrix_world
+                rig = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -1024,7 +1019,6 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
                 # create the geometry
                 mesh, obj = create_mesh(pdx_mesh, name=node.tag)
-                obj.matrix_world = IMPORT_ROT * obj.matrix_world
 
                 # set mesh index from source file
                 set_mesh_index(mesh, i)
@@ -1045,7 +1039,6 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
             obj = create_locator(pdx_locator, scene_bone_dict)
-            obj.matrix_world = IMPORT_ROT * obj.matrix_world
 
     print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
 
@@ -1134,7 +1127,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name)
 
-            loc_transform = EXPORT_ROT * loc.matrix_world
+            loc_transform = loc.matrix_world
             if exp_skel and loc.parent and loc.parent_type == 'BONE':
                 rig = loc.parent
                 bone_matrix = rig.matrix_world * rig.data.bones[loc.parent_bone].matrix_local
