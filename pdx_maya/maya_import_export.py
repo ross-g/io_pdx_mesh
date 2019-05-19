@@ -771,7 +771,6 @@ def create_skeleton(PDX_bone_list):
         pmc.rename(new_bone, unique_name)
         pmc.parent(new_bone, world=True)
         bone_list[index] = new_bone
-        new_bone.radius.set(0.25)
 
         # set transform
         # fmt: off
@@ -790,6 +789,10 @@ def create_skeleton(PDX_bone_list):
         if parent is not None:
             parent_bone = bone_list[parent[0]]
             pmc.connectJoint(new_bone, parent_bone, parentMode=True)
+
+    for joint in bone_list:
+        joint.radius.set(0.5)
+        joint.segmentScaleCompensate.set(False)
 
     return bone_list
 
@@ -1502,14 +1505,23 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     info_xml.set('sa', [frame_samples])
 
     # find the scene root bone with animation property (assume this is unique)
+    root_bone = None
+
     pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
-    if len(pdx_scene_rootbones) != 1:
+    if len(pdx_scene_rootbones) == 1:
+        root_bone = pdx_scene_rootbones[0]
+    else:
+        # try to use selection root bone
+        selected_bones = pmc.selected(type='joint')
+        if selected_bones:
+            root_bone = selected_bones[0].root()
+
+    if root_bone is None:
         raise RuntimeError(
-            "Found {0} root bones with PDX animation ({1}). Please remove extra skeletons before exporting.".format(
-                len(pdx_scene_rootbones), pdx_scene_rootbones
+            "Found {0} root bones with PDX animation. Please select a specific root bone before exporting.".format(
+                len(pdx_scene_rootbones)
             )
         )
-    root_bone = pdx_scene_rootbones[0]
 
     # populate bone data, assume that the skeleton to be exported starts at the scene root bone
     export_bones = get_skeleton_hierarchy([root_bone])
