@@ -281,7 +281,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 progress_fn=MayaProgress,
             )
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Mesh export finished!\n\n{0}'.format(meshpath))
-
         except Exception as err:
             IO_PDX_LOG.info("FAILED to export {0}".format(meshpath))
             print err
@@ -324,7 +323,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 progress_fn=MayaProgress,
             )
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Animation export finished!\n\n{0}'.format(animpath))
-
         except Exception as err:
             IO_PDX_LOG.info("FAILED to export {0}".format(animpath))
             print err
@@ -398,7 +396,7 @@ class export_controls(QtWidgets.QWidget):
         self.setup_engine = QtWidgets.QComboBox()
         self.setup_engine.addItems(self.parent.settings.keys())
         lbl_fps = QtWidgets.QLabel('Animation fps:')
-        self.setup_fps = QtWidgets.QDoubleSpinBox()
+        self.setup_fps = QtWidgets.QDoubleSpinBox()     # TODO: this should set Maya prefs and read/load from presets
         self.setup_fps.setMinimum(0.0)
         self.setup_fps.setValue(15.0)
 
@@ -432,6 +430,8 @@ class export_controls(QtWidgets.QWidget):
         self.btn_anim_refresh.setDisabled(True)
         self.chk_create_extra.setDisabled(True)
         self.chk_merge_obj.setDisabled(True)
+        self.chk_timeline.setDisabled(True)
+        self.chk_animation.setDisabled(True)
 
         # create layouts
         main_layout = QtWidgets.QHBoxLayout()
@@ -729,6 +729,7 @@ class import_popup(QtWidgets.QWidget):
         except Exception as err:
             IO_PDX_LOG.info("FAILED to import {0}".format(self.pdx_file))
             print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Mesh import failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             self.close()
             raise
@@ -747,6 +748,7 @@ class import_popup(QtWidgets.QWidget):
         except Exception as err:
             IO_PDX_LOG.info("FAILED to import {0}".format(self.pdx_file))
             print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Animation import failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             self.close()
             raise
