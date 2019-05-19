@@ -554,7 +554,8 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
         for bone in export_bones:
             # convert to Game space
             _translation = swap_coord_space(bone.getTranslation())
-            _rotation = swap_coord_space(bone.getRotation(quaternion=True))
+            # bone rotation must be pre-multiplied by joint orientation
+            _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
             _scale = bone.getScale()
 
             frames_data[bone.name()].append((_translation, _rotation, _scale))
@@ -791,7 +792,7 @@ def create_skeleton(PDX_bone_list):
             pmc.connectJoint(new_bone, parent_bone, parentMode=True)
 
     for joint in bone_list:
-        joint.radius.set(0.5)
+        joint.radius.set(0.3)
         joint.segmentScaleCompensate.set(False)
 
     return bone_list
@@ -1373,7 +1374,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
         elif fps == 30:
             pmc.currentUnit(time='ntsc')
         else:
-            raise RuntimeError("Unsupported animation speed. {0}".format(fps))
+            raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
 
     IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
     if progress_fn:
@@ -1547,7 +1548,8 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
         # convert to Game space
         _translation = swap_coord_space(bone.getTranslation())
-        _rotation = swap_coord_space(bone.getRotation(quaternion=True))
+        # bone rotation must be pre-multiplied by joint orientation
+        _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
         _scale = [bone.getScale()[0]]  # animation supports uniform scale only
 
         bone_xml.set('t', util_round(list(_translation), PDX_ROUND_TRANS))
