@@ -64,12 +64,12 @@ class PDXData(object):
 
     def __str__(self):
         string = list()
-        for _key, _val in self.attrdict.iteritems():
+        for _key, _val in self.attrdict.items():
             if type(_val) == type(self):
                 string.append('{}{}:'.format(self.depth * '    ', _key))
                 string.append('{}'.format(_val))
             else:
-                string.append('{}{}:  {}'.format(self.depth * '    ', _key, len(_val)))
+                string.append('{}{}: {}  {}'.format(self.depth * '    ', _key, len(_val), _val))
         return '\n'.join(string)
 
 
@@ -183,12 +183,14 @@ def parseData(bdata, pos):
         pos += str_data_length
 
     else:
-        raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
+        raise NotImplementedError(
+            "Unknown data type encountered. {} at position {}\n{}".format(datatype, pos, bdata[pos - 10 : pos + 10])
+        )
 
     return datavalues, pos
 
 
-def read_meshfile(filepath, to_stdout=False):
+def read_meshfile(filepath):
     """
         Reads through a .mesh file and gathers all the data into hierarchical element structure.
         The resulting XML is not natively writable to string as it contains Python data types.
@@ -222,8 +224,6 @@ def read_meshfile(filepath, to_stdout=False):
         if struct.unpack_from('c', fdata, offset=pos)[0].decode() == '!':
             # check the property type and values
             prop_name, prop_values, pos = parseProperty(fdata, pos)
-            if to_stdout:
-                print("  " * current_depth + "  ", prop_name, " (count", len(prop_values), ")")
 
             # assign property values to the parent object
             parent_element.set(prop_name, prop_values)
@@ -232,8 +232,6 @@ def read_meshfile(filepath, to_stdout=False):
         elif struct.unpack_from('c', fdata, offset=pos)[0].decode() == '[':
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
-            if to_stdout:
-                print("  " * depth, obj_name, depth)
 
             # deeper branch of the tree => current parent valid
             # same or shallower branch of the tree => parent gets redefined back a level
@@ -362,14 +360,14 @@ def writeData(data_array):
         datastring += struct.pack('x')
 
     else:
-        raise NotImplementedError("Unknown data type encountered. {}".format(datatype))
+        raise NotImplementedError("Unknown data type encountered. {}\n{}".format(datatype, data_array))
 
     return datastring
 
 
 def write_meshfile(filepath, root_xml):
     """
-        Iterates over an XML element and writes the hierarchical element structure back into a binary file.
+        Iterates over an XML element and writes the element structure back into a binary file as mesh data.
     """
     datastring = b''
 
@@ -387,7 +385,7 @@ def write_meshfile(filepath, root_xml):
     # TODO: writing properties would be easier if order was irrelevant, you should test this
     # write objects root
     object_xml = root_xml.find('object')
-    if object_xml:
+    if object_xml is not None:
         current_depth = 1
         datastring += writeObject(object_xml, current_depth)
 
@@ -444,7 +442,7 @@ def write_meshfile(filepath, root_xml):
 
     # write locators root
     locator_xml = root_xml.find('locator')
-    if locator_xml:
+    if locator_xml is not None:
         current_depth = 1
         datastring += writeObject(locator_xml, current_depth)
 
@@ -463,6 +461,60 @@ def write_meshfile(filepath, root_xml):
         fp.write(datastring)
 
 
+def write_animfile(filepath, root_xml):
+    """
+        Iterates over an XML element and writes the element structure back into a binary file as animation data.
+    """
+    datastring = b''
+
+    # write the file header '@@b@'
+    header = '@@b@'
+    for x in header:
+        datastring += struct.pack('c', x.encode())
+
+    # write the file properties
+    if root_xml.tag == 'File':
+        datastring += writeProperty('pdxasset', root_xml.get('pdxasset'))
+    else:
+        raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
+
+    # write info root
+    info_xml = root_xml.find('info')
+    if info_xml is not None:
+        current_depth = 1
+        datastring += writeObject(info_xml, current_depth)
+
+        # write info properties
+        for prop in ['fps', 'sa', 'j']:
+            if info_xml.get(prop) is not None:
+                datastring += writeProperty(prop, info_xml.get(prop))
+
+        # write each bone
+        for bone_xml in info_xml:
+            current_depth = 2
+            datastring += writeObject(bone_xml, current_depth)
+
+            # write bone properties
+            for prop in ['sa', 't', 'q', 's']:
+                if bone_xml.get(prop) is not None:
+                    datastring += writeProperty(prop, bone_xml.get(prop))
+
+    # write samples root
+    samples_xml = root_xml.find('samples')
+    if samples_xml is not None:
+        current_depth = 1
+        datastring += writeObject(samples_xml, current_depth)
+
+        # write sample properties
+        for prop in ['t', 'q', 's']:
+            if samples_xml.get(prop) is not None:
+                datastring += writeProperty(prop, samples_xml.get(prop))
+
+    # write the data
+    with open(filepath, 'wb') as fp:
+        fp.write(datastring)
+
+
 """ ====================================================================================================================
     Main.
 ========================================================================================================================
@@ -473,18 +525,18 @@ if __name__ == '__main__':
     """
        When called from the command line we just print the structure and contents of the .mesh or .anim file to stdout
     """
-    clear = lambda: os.system('cls')
-    clear()
-
     if len(sys.argv) > 1:
-        a_file = sys.argv[1]
-        a_data = read_meshfile(a_file)
+        os.system('cls')
+        _file = sys.argv[1]
+        _data = read_meshfile(_file)
 
-        for elem in a_data.iter():
-            print('object', elem.tag)
-            for k, v in elem.items():
-                print('    property', k, '({})'.format(len(v)))
-                print(v)
+        pdx_data = PDXData(_data)
+
+        if len(sys.argv) > 2:
+            with open(sys.argv[2], 'wt') as fp:
+                fp.write(str(pdx_data) + '\n')
+        else:
+            print(pdx_data)
             print()
 
 
@@ -530,7 +582,7 @@ General binary format is:
                     bone    (object)
                         ix    (int)  index
                         pa    (int)  parent index, omitted for root
-                        tx    (float)  transform, 3*4 matrix
+                        tx    (float)  inverse worldspace transform, 3*4 matrix (transforms bone back to scene origin)
         locator    (object)  parent item for all locators
             node    (object)
                 p    (float)  position
@@ -543,22 +595,20 @@ General binary format is:
     header    (@@b@ for binary, @@t@ for text)
     pdxasset    (int)  number of assets?
         info    (object)
-            sa    (int)  num keyframes
-            j    (int)  num bones 
             fps    (float)  anim speed
+            sa    (int)  num keyframes
+            j    (int)  num bones
             bone    (object)
                 ...  multiple bones, not all may be animated based on 'sa' attribute
             bone    (object)
                 ...
             bone    (object)
-                q    (float)  initial rotation as quaternion
-                s    (float)  initial scale as single float
                 sa    (string)  animation curve types, combination of 's', 't', 'q'
                 t    (float)  initial translation as vector
+                q    (float)  initial rotation as quaternion
+                s    (float)  initial scale as single float
         samples    (object)
-            s    
-            q    
-            t    
-
-
+            t   (floats)    list of translations (size 3), by bone, by frame (translation is from parent, in parent space)
+            q   (floats)    list of rotations (size 4), by bone, by frame (rotation is from parent, in parent space)
+            s   (floats)    list of scales (size 1), by bone, by frame
 """

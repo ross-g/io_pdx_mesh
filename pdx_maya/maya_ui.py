@@ -6,6 +6,7 @@
 
 import json
 import inspect
+import zipfile
 import webbrowser
 
 import pymel.core as pmc
@@ -19,15 +20,27 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from io_pdx_mesh.pdx_data import PDXData
+from .. import IO_PDX_LOG
+from ..pdx_data import PDXData
+from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
 
 try:
-    import maya_import_export
+    from . import maya_import_export
     reload(maya_import_export)
-    from maya_import_export import *
+    from .maya_import_export import *
 except Exception as err:
     print err
     raise
+
+
+""" ====================================================================================================================
+    Variables and Helper functions.
+========================================================================================================================
+"""
+
+
+_script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
 
 
 def get_mayamainwindow():
@@ -52,8 +65,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
     """
         Main tool window.
     """
-    _script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-    _settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
 
     def __init__(self, parent=None):
         # parent to the Maya main window.
@@ -61,8 +72,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
             parent = get_mayamainwindow()
 
         super(PDXmaya_ui, self).__init__(parent)
-        self.popup = None                       # reference for popup widget
-        self.settings = self.load_settings()    # settings from json
+        self.popup = None  # reference for popup widget
+        self.settings = self.load_settings()  # settings from json
         self.create_ui()
         self.setStyleSheet(
             'QGroupBox {'
@@ -87,7 +98,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         if self.parent():
             parent_x = self.parent().x()
             parent_y = self.parent().y()
-            self.setGeometry(parent_x+60, parent_y+220, self.width(), self.height())
+            self.setGeometry(parent_x + 60, parent_y + 220, self.width(), self.height())
 
         # populate window
         self.create_menu()
@@ -109,18 +120,15 @@ class PDXmaya_ui(QtWidgets.QDialog):
         file_import_anim = QtWidgets.QAction('Import animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
         file_export_mesh = QtWidgets.QAction('Export mesh ...', self)
-        file_export_mesh.triggered.connect(self.do_export_mesh)
-        file_export_anim = QtWidgets.QAction('Export anim ...', self)
-        file_export_anim.triggered.connect(self.do_export_anim)
-        file_export_anim.setDisabled(True)
+        file_export_mesh.triggered.connect(lambda: self.do_export_mesh(select_path=True))
+        file_export_anim = QtWidgets.QAction('Export animation ...', self)
+        file_export_anim.triggered.connect(lambda: self.do_export_anim(select_path=True))
 
         # tools menu
-        tool_edit_settings = QtWidgets.QAction('Edit Clausewitz settings', self)
-        tool_edit_settings.triggered.connect(lambda: os.system(self._settings_file))
         tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
         tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
-        tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
+
         tool_show_jnt_localaxes = QtWidgets.QAction('Show all joint axes', self)
         tool_show_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='joint'))
         tool_hide_jnt_localaxes = QtWidgets.QAction('Hide all joint axes', self)
@@ -129,44 +137,47 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_show_loc_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='locator'))
         tool_hide_loc_localaxes = QtWidgets.QAction('Hide all locator axes', self)
         tool_hide_loc_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='locator'))
+        tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
+
+        tool_edit_mesh_order = QtWidgets.QAction('Set mesh order', self)
+        tool_edit_mesh_order.triggered.connect(self.edit_mesh_order)
 
         # help menu
+        help_version = QtWidgets.QAction('version {}'.format(CURRENT_VERSION), self)
+        help_version.setDisabled(True)
+        help_download = QtWidgets.QAction('GET UPDATE {}'.format(LATEST_VERSION), self)
+        help_download.triggered.connect(lambda: webbrowser.open(
+            LATEST_URL
+        ))
+        help_wiki = QtWidgets.QAction('Tool Wiki', self)
+        help_wiki.triggered.connect(lambda: webbrowser.open(
+            'https://github.com/ross-g/io_pdx_mesh/wiki'
+        ))
         help_forum = QtWidgets.QAction('Paradox forums', self)
         help_forum.triggered.connect(lambda: webbrowser.open(
-            'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/')
-        )
+            'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
+        ))
         help_code = QtWidgets.QAction('Source code', self)
         help_code.triggered.connect(lambda: webbrowser.open(
-            'https://github.com/ross-g/io_pdx_mesh')
-        )
+            'https://github.com/ross-g/io_pdx_mesh'
+        ))
 
-        file_menu.addActions([
-            file_import_mesh,
-            file_import_anim
-        ])
+        file_menu.addActions([file_import_mesh, file_import_anim])
         file_menu.addSeparator()
-        file_menu.addActions([
-            file_export_mesh,
-            file_export_anim
-        ])
-        tools_menu.addActions([
-            tool_edit_settings
-        ])
+        file_menu.addActions([file_export_mesh, file_export_anim])
+
+        tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
         tools_menu.addSeparator()
-        tools_menu.addActions([
-            tool_ignore_joints,
-            tool_unignore_joints
-        ])
+        tools_menu.addActions([tool_show_jnt_localaxes, tool_hide_jnt_localaxes])
+        tools_menu.addActions([tool_show_loc_localaxes, tool_hide_loc_localaxes])
         tools_menu.addSeparator()
-        tools_menu.addActions([
-            tool_show_jnt_localaxes,
-            tool_hide_jnt_localaxes,
-            tool_show_loc_localaxes,
-            tool_hide_loc_localaxes
-        ])
-        help_menu.addActions([
-            help_forum, help_code
-        ])
+        tools_menu.addActions([tool_edit_mesh_order])
+
+        help_menu.addActions([help_version])
+        if not AT_LATEST:   # update info appears if we aren't at the latest tag version
+            help_menu.addActions([help_download])
+        help_menu.addSeparator()
+        help_menu.addActions([help_wiki, help_forum, help_code])
 
     def create_controls(self):
         main_layout = QtWidgets.QVBoxLayout()
@@ -191,60 +202,73 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def do_import_mesh(self):
-        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .mesh file',
-                                                                     filter='PDX Mesh files (*.mesh)')
+        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(
+            self, caption='Select .mesh file', filter='PDX Mesh files (*.mesh)'
+        )
         if filepath != '':
             if os.path.splitext(filepath)[1] == '.mesh':
+                if self.popup:
+                    self.popup.close()
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
             else:
-                reply = QtWidgets.QMessageBox.warning(self, 'READ ERROR',
-                                                      'Unable to read selected file. The filepath ... '
-                                                      '\n\n\t{}'
-                                                      '\n ... is not a .mesh file!'.format(filepath),
-                                                      QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+                reply = QtWidgets.QMessageBox.warning(
+                    self, 'READ ERROR',
+                    'Unable to read selected file. The filepath ... '
+                    '\n\n\t{0}'
+                    '\n ... is not a .mesh file!'.format(filepath),
+                    QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok
+                )
                 if reply == QtWidgets.QMessageBox.Ok:
-                    print "[io_pdx_mesh] Nothing to import."
+                    IO_PDX_LOG.info("Nothing to import.")
 
     @QtCore.Slot()
     def do_import_anim(self):
-        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(self, caption='Select .anim file',
-                                                                     filter='PDX Animation files (*.anim)')
+        filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(
+            self, caption='Select .anim file', filter='PDX Animation files (*.anim)'
+        )
         if filepath != '':
             if os.path.splitext(filepath)[1] == '.anim':
+                if self.popup:
+                    self.popup.close()
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
             else:
-                reply = QtWidgets.QMessageBox.warning(self, 'READ ERROR',
-                                                      'Unable to read selected file. The filepath ... '
-                                                      '\n\n\t{}'
-                                                      '\n ... is not a .anim file!'.format(filepath),
-                                                      QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+                reply = QtWidgets.QMessageBox.warning(
+                    self, 'READ ERROR',
+                    'Unable to read selected file. The filepath ... '
+                    '\n\n\t{0}'
+                    '\n ... is not a .anim file!'.format(filepath),
+                    QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok
+                )
                 if reply == QtWidgets.QMessageBox.Ok:
-                    print "[io_pdx_mesh] Nothing to import."
+                    IO_PDX_LOG.info("Nothing to import.")
 
     @QtCore.Slot()
-    def do_export_mesh(self):
+    def do_export_mesh(self, select_path=False):
         export_opts = self.export_ctrls
         filepath, filename = export_opts.get_export_path()
 
         # validate directory
-        if filepath == '':
-            export_opts.select_export_path()
+        if filepath == '' or select_path:
+            export_opts.select_export_path(filter_text='PDX Mesh files (*.mesh)')
             filepath, filename = export_opts.get_export_path()
         if not os.path.isdir(filepath):
-            reply = QtWidgets.QMessageBox.warning(self, 'WRITE ERROR',
-                                                  'Unable to export content. The filepath ... '
-                                                  '\n\n\t{}'
-                                                  '\n ... is not a valid location!'.format(filepath),
-                                                  QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
+            reply = QtWidgets.QMessageBox.warning(
+                self, 'WRITE ERROR',
+                'Unable to export content. The filepath ... '
+                '\n\n\t{0}'
+                '\n ... is not a valid location!'.format(filepath),
+                QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok
+            )
             if reply == QtWidgets.QMessageBox.Ok:
-                print "[io_pdx_mesh] Nothing to export."
+                IO_PDX_LOG.info("Nothing to export.")
             return
 
         # determine the output mesh path
-        if not os.path.splitext(filename)[1] == '.mesh':
-            filename += '.mesh'
+        name, ext = os.path.splitext(filename)
+        if not ext == '.mesh':
+            filename = name + '.mesh'
         meshpath = os.path.join(os.path.normpath(filepath), filename)
 
         try:
@@ -254,33 +278,90 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 exp_skel=export_opts.chk_skeleton.isChecked(),
                 exp_locs=export_opts.chk_locators.isChecked(),
                 merge_verts=export_opts.chk_merge_vtx.isChecked(),
-                progress_fn=MayaProgress
+                progress_fn=MayaProgress,
             )
-            QtWidgets.QMessageBox.information(self, 'Success', 'Mesh export finished!\n\n{}'.format(meshpath))
-
+            QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Mesh export finished!\n\n{0}'.format(meshpath))
         except Exception as err:
-            print "[io_pdx_mesh] FAILED to export {}".format(meshpath)
+            IO_PDX_LOG.info("FAILED to export {0}".format(meshpath))
             print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Mesh export failed!\n\n{0}'.format(err))
+            MayaProgress.finished()
             raise
 
     @QtCore.Slot()
-    def do_export_anim(self):
-        pass
+    def do_export_anim(self, select_path=False):
+        export_opts = self.export_ctrls
+        filepath, filename = export_opts.get_export_path()
+
+        # validate directory
+        if filepath == '' or select_path:
+            export_opts.select_export_path(filter_text='PDX Animation files (*.anim)')
+            filepath, filename = export_opts.get_export_path()
+        if not os.path.isdir(filepath):
+            reply = QtWidgets.QMessageBox.warning(
+                self, 'WRITE ERROR',
+                'Unable to export content. The filepath ... '
+                '\n\n\t{0}'
+                '\n ... is not a valid location!'.format(filepath),
+                QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok
+            )
+            if reply == QtWidgets.QMessageBox.Ok:
+                IO_PDX_LOG.info("Nothing to export.")
+            return
+
+        # determine the output anim path
+        name, ext = os.path.splitext(filename)
+        if not ext == '.anim':
+            filename = name + '.anim'
+        animpath = os.path.join(os.path.normpath(filepath), filename)
+
+        try:
+            export_animfile(
+                animpath,
+                timestart=pmc.playbackOptions(query=True, minTime=True),
+                timeend=pmc.playbackOptions(query=True, maxTime=True),
+                progress_fn=MayaProgress,
+            )
+            QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Animation export finished!\n\n{0}'.format(animpath))
+        except Exception as err:
+            IO_PDX_LOG.info("FAILED to export {0}".format(animpath))
+            print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Animation export failed!\n\n{0}'.format(err))
+            MayaProgress.finished()
+            raise
+
+    def edit_mesh_order(self):
+        if self.popup:
+            self.popup.close()
+        self.popup = meshindex_popup(parent=self)
+        self.popup.show()
 
     def load_settings(self):
-        with open(self._settings_file, 'rt') as f:
-            try:
-                settings = json.load(f)
-                return settings
-            except Exception as err:
-                QtGui.QMessageBox.critical(self, 'Warning',
-                                           'Your "clausewitz.json" settings file has errors and is unreadable.\n'
-                                           'Check the Maya script output for details.\n\n'
-                                           'Some functions of the tool will not work without these settings.',
-                                           QtGui.QMessageBox.Ok, defaultButton=QtGui.QMessageBox.Ok)
-                print "[io_pdx_mesh] CRITICAL ERROR!"
-                print err
-                return {}
+        # load the JSON settings
+        try:
+            if '.zip' in settings_file:
+                zipped = settings_file.split('.zip')[0] + '.zip'
+                with zipfile.ZipFile(zipped, 'r') as z:
+                    f = z.open('io_pdx_mesh/clausewitz.json')
+                    settings = json.loads(f.read())
+                    return settings
+
+            else:
+                with open(settings_file, 'rt') as f:
+                    settings = json.load(f)
+                    return settings
+
+        except Exception as err:
+            QtGui.QMessageBox.critical(
+                self, 'WARNING',
+                'Your "clausewitz.json" settings file has errors and is unreadable.\n'
+                'Check the Maya script output for details.\n\n'
+                'Some functions of the tool will not work without these settings.',
+                QtGui.QMessageBox.Ok, defaultButton=QtGui.QMessageBox.Ok
+            )
+            IO_PDX_LOG.info("CRITICAL ERROR!")
+            print err
+            return {}
 
 
 class export_controls(QtWidgets.QWidget):
@@ -289,6 +370,7 @@ class export_controls(QtWidgets.QWidget):
         super(export_controls, self).__init__(parent)
 
         self.parent = parent
+        self.popup = None  # reference for popup widget
 
         self.create_controls()
         self.connect_signals()
@@ -297,21 +379,24 @@ class export_controls(QtWidgets.QWidget):
         # create controls
         # materials
         self.list_materials = QtWidgets.QListWidget()
-        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
         self.btn_mat_create = QtWidgets.QPushButton('Create ...', self)
         self.btn_mat_edit = QtWidgets.QPushButton('Edit', self)
+        self.btn_mat_delete = QtWidgets.QPushButton('Delete', self)
+        self.btn_mat_refresh = QtWidgets.QPushButton('Refresh', self)
         # animations
         self.list_animations = QtWidgets.QListWidget()
-        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
+        self.list_animations.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.btn_anim_create = QtWidgets.QPushButton('Create ...', self)
         self.btn_anim_edit = QtWidgets.QPushButton('Edit', self)
+        self.btn_anim_delete = QtWidgets.QPushButton('Delete', self)
+        self.btn_anim_refresh = QtWidgets.QPushButton('Refresh', self)
 
         # settings
         lbl_engine = QtWidgets.QLabel('Game engine:')
         self.setup_engine = QtWidgets.QComboBox()
         self.setup_engine.addItems(self.parent.settings.keys())
         lbl_fps = QtWidgets.QLabel('Animation fps:')
-        self.setup_fps = QtWidgets.QDoubleSpinBox()
+        self.setup_fps = QtWidgets.QDoubleSpinBox()     # TODO: this should set Maya prefs and read/load from presets
         self.setup_fps.setMinimum(0.0)
         self.setup_fps.setValue(15.0)
 
@@ -319,13 +404,13 @@ class export_controls(QtWidgets.QWidget):
         self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
         self.chk_skeleton = QtWidgets.QCheckBox('Export skeleton')
         self.chk_locators = QtWidgets.QCheckBox('Export locators')
-        self.chk_animation = QtWidgets.QCheckBox('Export animations')
         self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
         self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
+        self.chk_timeline = QtWidgets.QCheckBox('Export current timeline')
+        self.chk_animation = QtWidgets.QCheckBox('Export all selected animations')
+        self.chk_create_extra = QtWidgets.QCheckBox('Create .gfx and .asset')
         for ctrl in [self.chk_mesh, self.chk_skeleton, self.chk_locators, self.chk_merge_vtx]:
             ctrl.setChecked(True)
-        # self.chk_create = QtWidgets.QCheckBox('Create .gfx and .asset')
-        # self.chk_preview = QtWidgets.QCheckBox('Preview on export')
 
         # output settings
         lbl_path = QtWidgets.QLabel('Output path:')
@@ -338,12 +423,15 @@ class export_controls(QtWidgets.QWidget):
         self.txt_file.setPlaceholderText('placeholder_name.mesh')
         self.btn_export = QtWidgets.QPushButton('Export ...', self)
 
-        # TODO: re-enable these once export is working
-        self.btn_anim_refresh.setDisabled(True)
+        # TODO: re-enable these once supported
         self.btn_anim_create.setDisabled(True)
         self.btn_anim_edit.setDisabled(True)
-        self.chk_animation.setDisabled(True)
+        self.btn_anim_delete.setDisabled(True)
+        self.btn_anim_refresh.setDisabled(True)
+        self.chk_create_extra.setDisabled(True)
         self.chk_merge_obj.setDisabled(True)
+        self.chk_timeline.setDisabled(True)
+        self.chk_animation.setDisabled(True)
 
         # create layouts
         main_layout = QtWidgets.QHBoxLayout()
@@ -370,7 +458,9 @@ class export_controls(QtWidgets.QWidget):
         grp_scene_layout.setContentsMargins(4, 4, 4, 4)
         grp_scene_layout.setVerticalSpacing(5)
         grp_export = QtWidgets.QGroupBox('Export settings')
-        grp_export_layout = QtWidgets.QVBoxLayout()
+        grp_export_layout = QtWidgets.QGridLayout()
+        grp_export_layout.setVerticalSpacing(5)
+        grp_export_layout.setHorizontalSpacing(4)
         grp_export_layout.setContentsMargins(4, 4, 4, 4)
         grp_export_fields_layout = QtWidgets.QGridLayout()
         grp_export_fields_layout.setVerticalSpacing(5)
@@ -389,17 +479,21 @@ class export_controls(QtWidgets.QWidget):
         grp_mats.setLayout(grp_mats_layout)
         grp_mats_layout.addWidget(self.list_materials)
         grp_mats_layout.addLayout(grp_mats_button_layout)
-        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
         grp_mats_button_layout.addWidget(self.btn_mat_create)
         grp_mats_button_layout.addWidget(self.btn_mat_edit)
+        grp_mats_button_layout.addWidget(self.btn_mat_delete)
+        grp_mats_button_layout.addWidget(self.btn_mat_refresh)
+        grp_mats_button_layout.setSpacing(3)
 
         left_layout.addWidget(grp_anims)
         grp_anims.setLayout(grp_anims_layout)
         grp_anims_layout.addWidget(self.list_animations)
         grp_anims_layout.addLayout(grp_anims_button_layout)
-        grp_anims_button_layout.addWidget(self.btn_anim_refresh)
         grp_anims_button_layout.addWidget(self.btn_anim_create)
         grp_anims_button_layout.addWidget(self.btn_anim_edit)
+        grp_anims_button_layout.addWidget(self.btn_anim_delete)
+        grp_anims_button_layout.addWidget(self.btn_anim_refresh)
+        grp_anims_button_layout.setSpacing(3)
 
         right_layout.addWidget(grp_scene)
         grp_scene.setLayout(grp_scene_layout)
@@ -410,34 +504,62 @@ class export_controls(QtWidgets.QWidget):
 
         right_layout.addWidget(grp_export)
         grp_export.setLayout(grp_export_layout)
-        grp_export_layout.addWidget(self.chk_mesh)
-        grp_export_layout.addWidget(self.chk_skeleton)
-        grp_export_layout.addWidget(self.chk_locators)
-        grp_export_layout.addWidget(self.chk_animation)
-        grp_export_layout.addWidget(h_line())
-        grp_export_layout.addWidget(self.chk_merge_vtx)
-        grp_export_layout.addWidget(self.chk_merge_obj)
-        grp_export_layout.addWidget(h_line())
-        # grp_export_layout.addWidget(self.chk_create)
-        # grp_export_layout.addWidget(self.chk_preview)
-        # grp_export_layout.addWidget(h_line())
-        grp_export_layout.addLayout(grp_export_fields_layout)
+        grp_export_layout.addWidget(self.chk_mesh, 1, 1)
+        grp_export_layout.addWidget(self.chk_skeleton, 2, 1)
+        grp_export_layout.addWidget(self.chk_locators, 3, 1)
+        grp_export_layout.addWidget(self.chk_merge_vtx, 1, 2)
+        grp_export_layout.addWidget(self.chk_merge_obj, 2, 2)
+        grp_export_layout.addWidget(h_line(), 4, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_timeline, 5, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_animation, 6, 1, 1, 2)
+        grp_export_layout.addWidget(h_line(), 7, 1, 1, 2)
+        grp_export_layout.addWidget(self.chk_create_extra, 8, 1, 1, 2)
+        grp_export_layout.addWidget(h_line(), 9, 1, 1, 2)
+        grp_export_layout.addLayout(grp_export_fields_layout, 10, 1, 1, 2)
         grp_export_fields_layout.addWidget(lbl_path, 1, 1)
         grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
         grp_export_fields_layout.addWidget(self.btn_path, 1, 3)
         grp_export_fields_layout.addWidget(lbl_file, 2, 1)
         grp_export_fields_layout.addWidget(self.txt_file, 2, 2, 1, 2)
-        grp_export_layout.addWidget(self.btn_export)
+        grp_export_layout.addWidget(self.btn_export, 11, 1, 1, 2)
 
     def connect_signals(self):
         self.list_materials.itemClicked.connect(self.select_mat)
         self.list_materials.itemDoubleClicked.connect(self.edit_selected_mat)
-        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
         self.btn_mat_create.clicked.connect(self.create_new_mat)
         self.btn_mat_edit.clicked.connect(self.edit_selected_mat)
+        self.btn_mat_delete.clicked.connect(self.delete_selected_mat)
+        self.btn_mat_refresh.clicked.connect(self.refresh_mat_list)
+
+        self.list_animations.itemDoubleClicked.connect(self.select_anim)
+        self.btn_anim_create.clicked.connect(self.create_new_anim)
+        self.btn_anim_edit.clicked.connect(self.edit_selected_anim)
+        self.btn_anim_delete.clicked.connect(self.delete_selected_anim)
         self.btn_anim_refresh.clicked.connect(self.refresh_anim_list)
+
         self.btn_path.clicked.connect(self.select_export_path)
         self.btn_export.clicked.connect(self.do_export)
+
+    def create_new_mat(self):
+        if self.popup:
+            self.popup.close()
+        self.popup = material_popup(parent=self.parent)
+        self.popup.show()
+
+    def edit_selected_mat(self):
+        if self.list_materials.selectedItems():
+            selected_mat = self.list_materials.selectedItems()[0]
+            if self.popup:
+                self.popup.close()
+            self.popup = material_popup(material=selected_mat, parent=self.parent)
+            self.popup.show()
+
+    def delete_selected_mat(self):
+        if self.list_materials.selectedItems():
+            selected_mat = self.list_materials.selectedItems()[0]
+            material_node = pmc.PyNode(selected_mat.text())
+            pmc.delete(material_node)
+            self.refresh_mat_list()
 
     def refresh_mat_list(self):
         self.list_materials.clearSelection()
@@ -451,37 +573,58 @@ class export_controls(QtWidgets.QWidget):
 
         self.list_materials.sortItems()
 
-    def edit_selected_mat(self):
-        if self.list_materials.selectedItems():
-            selected_mat = self.list_materials.selectedItems()[0]
-            self.popup = material_popup(material=selected_mat, parent=self.parent)
-            self.popup.show()
-
-    def create_new_mat(self):
-        self.popup = material_popup(parent=self.parent)
-        self.popup.show()
-
     def select_mat(self, curr_sel):
         try:
             pmc.select(curr_sel.text())
         except pmc.MayaNodeError:
             self.refresh_mat_list()
 
+        self.list_animations.sortItems()
+
+    def create_new_anim(self):
+        self.refresh_anim_list()
+
+    def edit_selected_anim(self):
+        self.refresh_anim_list()
+
+    def delete_selected_anim(self):
+        pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
+
+        if pdx_scene_rootbones:
+            for selected_clip in self.list_animations.selectedItems():
+                name, start, end = selected_clip.data(QtCore.Qt.UserRole)
+                remove_animation_clip([pdx_scene_rootbones[0]], name)
+
+        self.refresh_anim_list()
+
     def refresh_anim_list(self):
         self.list_animations.clearSelection()
         self.list_animations.clear()
-        # pdx_scenemats = [mat.name() for mat in list_scene_materials() if hasattr(mat, PDX_SHADER)]
+        pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
 
-        # for mat in pdx_scenemats:
-        #     list_item = QtWidgets.QListWidgetItem()
-        #     list_item.setText(mat)
-        #     self.list_animations.insertItem(self.list_animations.count(), list_item)
+        pdx_sceneanims = []
+        if pdx_scene_rootbones:
+            # allow only one root bone with the animation property
+            pdx_sceneanims = get_animation_clips([pdx_scene_rootbones[0]])
 
-        self.list_animations.sortItems()
+        for clip in pdx_sceneanims:
+            list_item = QtWidgets.QListWidgetItem()
+            list_item.setText('{name}  -  {start},{end}'.format(**clip._asdict()))
+            list_item.setData(QtCore.Qt.UserRole, clip)
+            self.list_animations.insertItem(self.list_animations.count(), list_item)
 
-    def select_export_path(self):
-        filepath, filefilter = QtWidgets.QFileDialog.getSaveFileName(self, caption='Select export folder',
-                                                                     filter='PDX Mesh files (*.mesh)')
+    def select_anim(self, curr_sel):
+        if self.list_animations.selectedItems():
+            selected_clip = self.list_animations.selectedItems()[0]
+            name, start, end = selected_clip.data(QtCore.Qt.UserRole)
+
+            pmc.playbackOptions(edit=True, minTime=start)
+            pmc.playbackOptions(edit=True, maxTime=end)
+
+    def select_export_path(self, filter_text='All files (*.*)'):
+        filepath, filefilter = QtWidgets.QFileDialog.getSaveFileName(
+            self, caption='Select export folder', filter=filter_text
+        )
         path, name = os.path.split(filepath)
 
         if filepath != '' and os.path.isdir(path):
@@ -497,6 +640,9 @@ class export_controls(QtWidgets.QWidget):
     def do_export(self):
         if self.chk_mesh.isChecked() or self.chk_skeleton.isChecked() or self.chk_locators.isChecked():
             self.parent.do_export_mesh()
+
+        if self.chk_timeline.isChecked() or self.chk_animation.isChecked():
+            pass
 
 
 class import_popup(QtWidgets.QWidget):
@@ -521,9 +667,9 @@ class import_popup(QtWidgets.QWidget):
 
     def create_controls(self):
         # create controls
-        lbl_filepath = QtWidgets.QLabel('Filename:  {}'.format(os.path.split(self.pdx_file)[-1]))
+        lbl_filepath = QtWidgets.QLabel('Filename:  {0}'.format(os.path.split(self.pdx_file)[-1]))
         self.btn_import = QtWidgets.QPushButton('Import ...', self)
-        self.btn_import.setToolTip('Select a {} file to import.'.format(self.pdx_type))
+        self.btn_import.setToolTip('Select a {0} file to import.'.format(self.pdx_type))
         self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
         # mesh specific controls
         self.chk_mesh = QtWidgets.QCheckBox('Mesh')
@@ -533,6 +679,8 @@ class import_popup(QtWidgets.QWidget):
         lbl_starttime = QtWidgets.QLabel('start time:')
         lbl_starttime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.spn_start = QtWidgets.QSpinBox()
+        self.spn_start.setMaximum(9999)
+        self.spn_start.setMinimum(-9999)
         self.spn_start.setMaximumWidth(50)
         self.spn_start.setValue(1)
 
@@ -575,12 +723,13 @@ class import_popup(QtWidgets.QWidget):
                 imp_mesh=self.chk_mesh.isChecked(),
                 imp_skel=self.chk_skeleton.isChecked(),
                 imp_locs=self.chk_locators.isChecked(),
-                progress_fn=MayaProgress
+                progress_fn=MayaProgress,
             )
             self.parent.refresh_gui()
         except Exception as err:
-            print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
+            IO_PDX_LOG.info("FAILED to import {0}".format(self.pdx_file))
             print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Mesh import failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             self.close()
             raise
@@ -593,12 +742,13 @@ class import_popup(QtWidgets.QWidget):
             import_animfile(
                 self.pdx_file,
                 timestart=self.spn_start.value(),
-                progress_fn=MayaProgress
+                progress_fn=MayaProgress,
             )
             self.parent.refresh_gui()
         except Exception as err:
-            print "[io_pdx_mesh] FAILED to import {}".format(self.pdx_file)
+            IO_PDX_LOG.info("FAILED to import {0}".format(self.pdx_file))
             print err
+            QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Animation import failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             self.close()
             raise
@@ -692,14 +842,80 @@ class material_popup(QtWidgets.QWidget):
             mat_pdx = type(
                 'Material',
                 (PDXData, object),
-                {
-                    'shader': [self.mat_type.currentText()]
-                }
+                {'shader': [self.mat_type.currentText()]}
             )
 
-            create_shader(mat_name, mat_pdx, None)
+            create_shader(mat_pdx, mat_name, None)
 
         self.parent.export_ctrls.refresh_mat_list()
+        self.close()
+
+
+class meshindex_popup(QtWidgets.QWidget):
+
+    def __init__(self, parent=None):
+        super(meshindex_popup, self).__init__(parent)
+
+        self.parent = parent
+
+        self.setWindowTitle('PDX mesh index')
+        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
+        self.setFixedSize(200, 200)
+        if self.parent:
+            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
+            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
+            self.setGeometry(center_x, center_y, self.width(), self.height())
+
+        self.create_controls()
+        self.connect_signals()
+
+    def create_controls(self):
+        # create controls
+        lbl_help = QtWidgets.QLabel('Drag/drop meshes to reorder')
+        self.list_meshes = QtWidgets.QListWidget()
+        self.list_meshes.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
+        self.list_meshes.defaultDropAction = QtCore.Qt.MoveAction
+
+        self.btn_okay = QtWidgets.QPushButton('Save', self)
+        self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
+
+        # create layouts
+        main_layout = QtWidgets.QVBoxLayout()
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        btn_layout = QtWidgets.QHBoxLayout()
+
+        # add controls
+        self.setLayout(main_layout)
+        main_layout.addWidget(lbl_help)
+        main_layout.addWidget(self.list_meshes)
+        main_layout.addLayout(btn_layout)
+        btn_layout.addWidget(self.btn_okay)
+        btn_layout.addWidget(self.btn_cancel)
+
+        # populate list
+        self.list_meshes.clearSelection()
+        self.list_meshes.clear()
+        pdx_scenemeshes = [mesh for mesh in list_scene_pdx_meshes()]
+        pdx_scenemeshes.sort(key=lambda mesh: get_mesh_index(mesh))
+
+        for mesh in pdx_scenemeshes:
+            list_item = QtWidgets.QListWidgetItem()
+            list_item.setText(mesh.name())
+            list_item.setData(QtCore.Qt.UserRole, mesh.longName())
+            self.list_meshes.insertItem(self.list_meshes.count(), list_item)
+
+    def connect_signals(self):
+        self.btn_okay.clicked.connect(self.set_meshindex)
+        self.btn_cancel.clicked.connect(self.close)
+
+    def set_meshindex(self):
+        IO_PDX_LOG.info("Setting mesh index order...")
+        for i in xrange(self.list_meshes.count()):
+            item = self.list_meshes.item(i)
+            maya_mesh = pmc.PyNode(item.data(QtCore.Qt.UserRole))  # type: pmc.nt.Mesh
+            set_mesh_index(maya_mesh, i)
+            IO_PDX_LOG.info("\t{} - {}".format(maya_mesh.name(), i))
+
         self.close()
 
 
@@ -707,6 +923,7 @@ class MayaProgress(object):
     """
         Wrapping the Maya progress window for convenience.
     """
+
     def __init__(self, title, max_value):
         super(MayaProgress, self).__init__()
         pmc.progressWindow(title=title, progress=0, min=0, max=max_value, status='', isInterruptable=False)
@@ -734,7 +951,7 @@ class MayaProgress(object):
 
 
 def main():
-    print "[io_pdx_mesh] Launching Maya UI."
+    IO_PDX_LOG.info("Launching Maya UI.")
     global pdx_tools
 
     try:

@@ -2,7 +2,7 @@
     Paradox asset files, Blender import/export.
 
     As Blenders 3D space is (Z-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
-    mirror all positions, normals etc along the Z axis, rotate about X and flip texture coordinates in V.
+    mirror all positions, normals etc about the XY plane AND rotate 90 about X and flip texture coordinates in V.
     Note - Blender treats matrices as column-major.
 
     author : ross-g
@@ -10,7 +10,7 @@
 
 import os
 import time
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, namedtuple, defaultdict
 
 try:
     import xml.etree.cElementTree as Xml
@@ -21,6 +21,7 @@ import bpy
 import bmesh
 import math
 from mathutils import Vector, Matrix, Quaternion
+from bpy_extras.io_utils import axis_conversion
 
 from .. import pdx_data
 
@@ -33,10 +34,15 @@ from .. import pdx_data
 PDX_SHADER = 'shader'
 PDX_ANIMATION = 'animation'
 PDX_IGNOREJOINT = 'pdxIgnoreJoint'
+PDX_MESHINDEX = 'meshindex'
 PDX_MAXSKININFS = 4
 
 PDX_DECIMALPTS = 5
+PDX_ROUND_ROT = 4
+PDX_ROUND_TRANS = 3
+PDX_ROUND_SCALE = 2
 
+# fmt: off
 SPACE_MATRIX = Matrix((
     (1, 0, 0, 0),
     (0, 0, 1, 0),
@@ -49,6 +55,7 @@ BONESPACE_MATRIX = Matrix((
     (0, 0, 1, 0),
     (0, 0, 0, 1)
 ))
+# fmt: on
 
 
 """ ====================================================================================================================
@@ -58,7 +65,17 @@ BONESPACE_MATRIX = Matrix((
 
 
 def util_round(data, ndigits=0):
-    return data.__class__(round(x, ndigits) for x in data)
+    return tuple(round(x, ndigits) for x in data)
+
+
+def clean_imported_name(name):
+    # strip any namespace names, taking the final name only
+    clean_name = name.split(':')[-1]
+
+    # replace hierarchy separator character used by Maya in the case of non-unique leaf node names
+    clean_name = clean_name.replace('|', '_')
+
+    return clean_name
 
 
 def get_bmesh(mesh_data):
@@ -72,7 +89,7 @@ def get_bmesh(mesh_data):
 
 
 def get_rig_from_bone_name(bone_name):
-    scene_rigs = (obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature)
+    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature]
 
     for rig in scene_rigs:
         armt = rig.data
@@ -80,14 +97,22 @@ def get_rig_from_bone_name(bone_name):
             return rig
 
 
-def clean_imported_name(name):
-    # strip any namespace names, taking the final name only
-    clean_name = name.split(':')[-1]
+def get_rig_from_mesh(blender_obj):
+    skin_modifier = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
 
-    # replace hierarchy separator character used by Maya in the case of non-unique leaf node names
-    clean_name = clean_name.replace('|', '_')
+    if skin_modifier:
+        # we only allow a mesh to be connected to one armature modifier
+        skin = skin_modifier[0]
+        # get the armature referenced by the modifier
+        rig = skin.object
+    else:
+        rig = None
 
-    return clean_name
+    return rig
+
+
+def list_scene_pdx_meshes():
+    return [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
 
 
 def set_local_axis_display(state, data_type):
@@ -100,7 +125,29 @@ def set_local_axis_display(state, data_type):
             if node.data:
                 node.data.show_axes = state
         except Exception as err:
-            print("[io_pdx_mesh] node '{}' could not have it's axis shown.".format(node.name))
+            print("[io_pdx_mesh] node '{0}' could not have it's axis shown.".format(node.name))
+
+
+def set_ignore_joints(state):
+    sel_pose_bones = bpy.context.selected_pose_bones or []
+    sel_edit_bones = bpy.context.selected_editable_bones or []
+
+    bone_list = [posebone.bone for posebone in sel_pose_bones] + sel_edit_bones
+
+    for bone in bone_list:
+        bone[PDX_IGNOREJOINT] = state
+
+
+def set_mesh_index(blender_mesh, i):
+    if not PDX_MESHINDEX in blender_mesh.keys():
+        blender_mesh["_RNA_UI"] = {}
+        blender_mesh["_RNA_UI"][PDX_MESHINDEX] = {"min": 0, "max": 255, "soft_min": 0, "soft_max": 255, "step": 1}
+
+    blender_mesh[PDX_MESHINDEX] = i
+
+
+def get_mesh_index(blender_mesh):
+    return blender_mesh.get(PDX_MESHINDEX, 255)
 
 
 def check_mesh_material(blender_obj):
@@ -138,26 +185,19 @@ def get_material_textures(blender_material):
     return texture_dict
 
 
-def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=False):
+def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=True):
     """
         Returns a dictionary of mesh information neccessary for the exporter.
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
         exported separately!
-    """
-    start = time.time()
-    # get mesh and Bmesh data structures for this mesh
-    mesh = blender_obj.data  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
-    mesh.calc_normals_split()
-    bm = get_bmesh(mesh)
-    bm.transform(blender_obj.matrix_world)
-    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method=0, ngon_method=0)
 
-    # ensure Bmesh data needed for int subscription is initialized
-    bm.faces.ensure_lookup_table()
-    bm.verts.ensure_lookup_table()
-    # initialize the index values of each sequence
-    bm.faces.index_update()
-    bm.verts.index_update()
+        Note: using both mesh and bmesh data below, these must be in the same space or normals & tangents will be wrong
+    """
+    # get mesh and Bmesh data structures for this object
+    mesh = blender_obj.data.copy()  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
+    mesh.name = blender_obj.data.name + '_export'
+    mesh.transform(blender_obj.matrix_world)
+    mesh.calc_normals_split()
 
     # we will need to test vertices for equality based on their attributes
     # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
@@ -167,6 +207,16 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)]
     if uv_setnames:
         mesh.calc_tangents(uv_setnames[0])
+
+    bm = get_bmesh(mesh)
+    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method=0, ngon_method=0)
+
+    # ensure Bmesh data needed for int subscription is initialized
+    bm.faces.ensure_lookup_table()
+    bm.verts.ensure_lookup_table()
+    # initialize the index values of each sequence
+    bm.faces.index_update()
+    bm.verts.index_update()
 
     # build a blank dictionary of mesh information for the exporter
     mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
@@ -193,7 +243,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # normal
             # FIXME? seems like custom normal per face-vertex is not available through bmesh
             # _normal = loop.calc_normal()
-            _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices
+            _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices!
             _normal = list(swap_coord_space(_normal))  # convert to Game space
             if round_data:
                 _normal = util_round(_normal, PDX_DECIMALPTS)
@@ -211,7 +261,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # tangent (omitted if there were no UVs)
             if uv_setnames:
                 # _tangent = loop.calc_tangent()
-                _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices
+                _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices!
                 _tangent = list(swap_coord_space(_tangent))  # convert to Game space
                 if round_data:
                     _tangent = util_round(_tangent, PDX_DECIMALPTS)
@@ -260,8 +310,8 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     bm.free()
     mesh.free_tangents()
     mesh.free_normals_split()
+    bpy.data.meshes.remove(mesh)    # delete duplicate mesh datablock
 
-    print("[debug] {} ({})".format(blender_obj.name, time.time() - start))
     return mesh_dict, vert_id_list
 
 
@@ -286,8 +336,7 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
     skin_dict['bones'].append(PDX_MAXSKININFS)
 
     # find bone/vertex-group influences
-    # TODO: skip bone/group if bone has the PDX_IGNOREJOINT attribute
-    bone_names = [bone.name for bone in rig.data.bones]
+    bone_names = [bone.name for bone in get_skeleton_hierarchy(rig)]
     group_names = [group.name for group in blender_obj.vertex_groups]
 
     # parse all verts in order if we didn't supply a subset of vert ids
@@ -297,22 +346,24 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
 
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
-    for i, vtx in enumerate(mesh.vertices):
+    for vert_id, vtx in enumerate(mesh.vertices):
         for vtx_group in vtx.groups:
             group_index = vtx_group.group
             # get bone index by group name lookup, as it's not guaranteed that group indices and bone indices line up
             try:
-                bone_idx = bone_names.index(group_names[group_index])
+                bone_index = bone_names.index(group_names[group_index])
             except ValueError:
                 raise RuntimeError(
-                    "Vertex is skinned to a group ({}) with no corresponding armature bone!".format(
-                        group_names[group_index]
-                    )
+                    "Vertex is skinned to a group ({}) targeting a missing or excluded armature bone!"
+                    "Check all bones using the '{}' property.".format(group_names[group_index], PDX_IGNOREJOINT)
                 )
             if group_index < len(blender_obj.vertex_groups):
-                weight = vtx_group.weight
-                if weight != 0.0:
-                    vert_weights[i][bone_idx] = vtx_group.weight
+                # check we actually want this vertex (in case of material split meshes)
+                if vert_id in vertex_ids:
+                    # store any non-zero weights, by influence, per vertex
+                    weight = vtx_group.weight
+                    if weight != 0.0:
+                        vert_weights[vert_id][bone_index] = vtx_group.weight
 
     # collect data from the weights dict into the skin dict
     for vtx in vertex_ids:
@@ -334,33 +385,25 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
 
 
 def get_mesh_skeleton_info(blender_obj):
-    skin_mod = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
-    if not skin_mod:
-        return []
-
-    # a mesh can only be connected to one armature modifier
-    skin = skin_mod[0]
-    # get the armature referenced by the modifier
-    rig = skin.object
+    rig = get_rig_from_mesh(blender_obj)
     if rig is None:
         return []
 
-    # find influence bones
-    bones = [bone for bone in rig.data.bones]
+    # find all bones in hierarchy to be exported
+    all_bones = get_skeleton_hierarchy(rig)
 
     # build a list of bone information dictionaries for the exporter
-    bone_list = [{'name': x.name} for x in bones]
-    for i, bone in enumerate(bones):
-        # TODO: skip bone if it has the PDX_IGNOREJOINT attribute
+    bone_list = [{'name': x.name} for x in all_bones]
+    for i, bone in enumerate(all_bones):
         # bone index
         bone_list[i]['ix'] = [i]
 
         # bone parent index
         if bone.parent:
-            bone_list[i]['pa'] = [bones.index(bone.parent)]
+            bone_list[i]['pa'] = [all_bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted()  # convert to Game space
+        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted_safe()  # convert to Game space
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
         bone_list[i]['tx'] = []
@@ -372,19 +415,89 @@ def get_mesh_skeleton_info(blender_obj):
     return bone_list
 
 
+def get_skeleton_hierarchy(rig):
+    root_bone = rig.data.bones[0]
+
+    def get_recursive_children(bone, hierarchy):
+        hierarchy.append(bone)
+        children = [jnt for jnt in bone.children if not jnt.get(PDX_IGNOREJOINT)]
+
+        for bone in children:
+            get_recursive_children(bone, hierarchy)
+
+        return hierarchy
+
+    valid_bones = []
+    get_recursive_children(root_bone, valid_bones)
+
+    return valid_bones
+
+
+def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True):
+    # store transform for each bone over the frame range
+    frames_data = defaultdict(list)
+
+    for f in range(startframe, endframe + 1):
+        bpy.context.scene.frame_set(f)
+        for bone in export_bones:
+            pose_bone = rig.pose.bones[bone.name]
+
+            # build a matrix describing the transform from parent bone
+            parent_matrix = Matrix()
+            if pose_bone.parent:
+                # parent_matrix = pose_bone.parent.matrix.copy()
+                parent_matrix = rig.convert_space(pose_bone.parent, pose_bone.parent.matrix, 'POSE', 'WORLD')
+
+            # offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
+            pose_matrix = rig.convert_space(pose_bone, pose_bone.matrix, 'POSE', 'WORLD')
+            offset_matrix = parent_matrix.inverted_safe() * pose_matrix
+            _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # Convert to Game space
+
+            frames_data[bone.name].append((_translation, _rotation, _scale))
+
+    # create an ordered dictionary of all animated bones to store sample data
+    all_bone_keyframes = OrderedDict()
+    for bone in export_bones:
+        all_bone_keyframes[bone.name] = dict()
+
+    # determine if any transform attributes were animated over this frame range for each bone
+    for bone in export_bones:
+        # convert data from list of tuples [(t,q,s)] to three nested lists [t][q][s]
+        t_list, q_list, s_list = zip(*frames_data[bone.name])
+
+        if round_data:
+            t_list = [util_round(t, PDX_ROUND_TRANS) for t in t_list]
+            q_list = [util_round(q, PDX_ROUND_ROT) for q in q_list]
+            s_list = [util_round(s, PDX_ROUND_SCALE) for s in s_list]
+        else:
+            t_list = [t.freeze() for t in t_list]  # call freeze so Blender data can be hashed into a set
+            q_list = [q.freeze() for q in q_list]
+            s_list = [s.freeze() for s in s_list]
+
+        # convert quaternions from wxyz to xyzw
+        q_list = [(q[1], q[2], q[3], q[0]) for q in q_list]
+
+        # store any animated transform samples per attribute
+        for attr, attr_list in zip(['t', 'q', 's'], [t_list, q_list, s_list]):
+            if len(set(attr_list)) != 1:
+                all_bone_keyframes[bone.name][attr] = attr_list
+
+    return all_bone_keyframes
+
+
 def swap_coord_space(data):
     """
-        Transforms from PDX space (-Z forward, Y up) to Blender space (Y forward, Z up)
+        Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up)
     """
     global SPACE_MATRIX
 
     # matrix
     if type(data) == Matrix:
-        return SPACE_MATRIX * data * SPACE_MATRIX.inverted()
+        return SPACE_MATRIX * data.to_4x4() * SPACE_MATRIX.inverted_safe()
     # quaternion
     elif type(data) == Quaternion:
         mat = data.to_matrix()
-        return (SPACE_MATRIX * mat.to_4x4() * SPACE_MATRIX.inverted()).to_quaternion()
+        return (SPACE_MATRIX * mat.to_4x4() * SPACE_MATRIX.inverted_safe()).to_quaternion()
     # vector
     elif type(data) == Vector or len(data) == 3:
         vec = Vector(data)
@@ -471,7 +584,7 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
 def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
-    new_loc.empty_draw_type = 'PLAIN_AXES'
+    new_loc.empty_draw_type = 'ARROWS'
     new_loc.empty_draw_size = 0.25
     new_loc.show_axis = False
 
@@ -488,22 +601,24 @@ def create_locator(PDX_locator, PDX_bone_dict):
             new_loc.parent = rig
             new_loc.parent_bone = parent[0]
             new_loc.parent_type = 'BONE'
-            new_loc.matrix_world = Matrix() # reset transform after parenting
+            new_loc.matrix_world = Matrix()  # reset transform after parenting
 
         # then determine the locators transform
         transform = PDX_bone_dict[parent[0]]
         # note we transpose the matrix on creation
-        parent_Xform = Matrix((
-            (transform[0], transform[3], transform[6], transform[9]),
-            (transform[1], transform[4], transform[7], transform[10]),
-            (transform[2], transform[5], transform[8], transform[11]),
-            (0.0, 0.0, 0.0, 1.0)
-        ))
+        parent_Xform = Matrix(
+            (
+                (transform[0], transform[3], transform[6], transform[9]),
+                (transform[1], transform[4], transform[7], transform[10]),
+                (transform[2], transform[5], transform[8], transform[11]),
+                (0.0, 0.0, 0.0, 1.0),
+            )
+        )
 
     # compose transform parts
     _scale = Matrix.Scale(1, 4)
-    _rotation = ( 
-        Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4() 
+    _rotation = (
+        Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4()
     )
     _translation = Matrix.Translation(PDX_locator.p)
 
@@ -517,8 +632,10 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     bpy.context.scene.update()
 
+    return new_loc
 
-def create_skeleton(PDX_bone_list):
+
+def create_skeleton(PDX_bone_list, convert_bonespace=False):
     # keep track of bones as we create them
     bone_list = [None for _ in range(0, len(PDX_bone_list))]
 
@@ -526,7 +643,7 @@ def create_skeleton(PDX_bone_list):
     matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.name)) for bone in PDX_bone_list]
     matching_rigs = list(set(rig for rig in matching_rigs if rig))
     if len(matching_rigs) == 1:
-        return matching_rigs[0]
+        return matching_rigs[0], False
 
     # temporary name used during creation
     tmp_rig_name = 'io_pdx_rig'
@@ -565,17 +682,19 @@ def create_skeleton(PDX_bone_list):
             new_bone.use_connect = False
 
         # determine bone head transform
-        mat = Matrix((
-            (transform[0], transform[3], transform[6], transform[9]),
-            (transform[1], transform[4], transform[7], transform[10]),
-            (transform[2], transform[5], transform[8], transform[11]),
-            (0.0, 0.0, 0.0, 1.0)
-        ))
+        mat = Matrix(
+            (
+                (transform[0], transform[3], transform[6], transform[9]),
+                (transform[1], transform[4], transform[7], transform[10]),
+                (transform[2], transform[5], transform[8], transform[11]),
+                (0.0, 0.0, 0.0, 1.0),
+            )
+        )
         # rescale or recompose matrix so we always import bones at 1.0 scale
         loc, rot, scale = mat.decompose()
         try:
             safemat = Matrix.Scale(1.0 / scale[0], 4) * mat
-        except ZeroDivisionError:  # guard against zero scale bones... 
+        except ZeroDivisionError:  # guard against zero scale bones...
             safemat = Matrix.Translation(loc) * rot.to_matrix().to_4x4() * Matrix.Scale(1.0, 4)
 
         # determine avg distance to any children
@@ -583,24 +702,28 @@ def create_skeleton(PDX_bone_list):
         bone_dists = []
         for child in bone_children:
             child_transform = child.tx
-            c_mat = Matrix((
-                (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
-                (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
-                (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
-                (0.0, 0.0, 0.0, 1.0)
-            ))
+            c_mat = Matrix(
+                (
+                    (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
+                    (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
+                    (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
+                    (0.0, 0.0, 0.0, 1.0),
+                )
+            )
             c_dist = c_mat.to_translation() - safemat.to_translation()
             bone_dists.append(math.sqrt(c_dist.x ** 2 + c_dist.y ** 2 + c_dist.z ** 2))
 
         avg_dist = 5.0
         if bone_children:
             avg_dist = sum(bone_dists) / len(bone_dists)
-        avg_dist = min(max(1.0, avg_dist), 10.0)
+        avg_dist = min(max(1.0, avg_dist), 10.0) * 0.05
 
         # set bone tail offset first
-        new_bone.tail = Vector((0.0, 0.0, 0.1 * avg_dist))
+        new_bone.tail = Vector((0.0, 0.0, avg_dist))
         # set matrix directly as this includes bone roll/rotation
         new_bone.matrix = swap_coord_space(safemat.inverted_safe())  # convert to Blender space
+        if convert_bonespace:
+            new_bone.matrix = swap_coord_space(safemat.inverted_safe()) * BONESPACE_MATRIX  # convert to Blender space
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
@@ -701,10 +824,14 @@ def create_mesh(PDX_mesh, name=None):
 
     # create the object and link to the scene
     if name is None:
-        name = tmp_mesh_name
-    new_obj = bpy.data.objects.new(clean_imported_name(name), new_mesh)
+        mesh_name = tmp_mesh_name
+    else:
+        mesh_name = clean_imported_name(name)
+
+    new_obj = bpy.data.objects.new(mesh_name, new_mesh)
     bpy.context.scene.objects.link(new_obj)
-    new_mesh.name = name
+    new_mesh.name = mesh_name
+    new_obj.name = mesh_name.replace('Shape', '')
 
     # apply the vertex normal data
     if norms:
@@ -748,7 +875,7 @@ def create_mesh(PDX_mesh, name=None):
     return new_mesh, new_obj
 
 
-def create_fcurve(armature, bone_name, data_path, index):
+def create_fcurve(armature, bone_name, data_type, index):
     # create anim data block on the armature
     if armature.animation_data is None:
         armature.animation_data_create()
@@ -759,16 +886,19 @@ def create_fcurve(armature, bone_name, data_path, index):
         anim_data.action = bpy.data.actions.new(armature.name + '_action')
     action = anim_data.action
 
+    # determine data path
+    data_path = 'pose.bones["{}"].{}'.format(bone_name, data_type)
+
     # check if the fcurve for this data path and index already exists
     for curve in anim_data.action.fcurves:
-        if curve.data_path == data_path and curve.array_index == index:
+        if curve.data_path != data_path:
+            continue
+        if index < 0 or curve.array_index == index:
             return curve
 
-    # create bone fcurve group if it doesn't exist
-    if bone_name not in action.groups:
+    # otherwise create a new fcurve inside the correct group
+    if bone_name not in action.groups:  # create group if it doesn't exist
         action.groups.new(bone_name)
-
-    # otherwise create the fcurve inside the correct group
     f_curve = anim_data.action.fcurves.new(data_path, index, bone_name)
 
     return f_curve
@@ -787,31 +917,32 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
     timestart = int(timestart)
     timeend = timestart + duration
 
+    # build a matrix describing the transform from parent bone in the initial pose
+    pose_bone_initial = pose[bone_name]
+    parent_initial = Matrix()
+    if pose_bone.parent:
+        parent_initial = pose[pose_bone.parent.name]
+
+    parent_to_pose = parent_initial.inverted_safe() * pose_bone_initial
+    # decompose (so we can over write with animated components)
+    _scale = Matrix.Scale(parent_to_pose.to_scale()[0], 4)
+    _rotation = parent_to_pose.to_quaternion().to_matrix().to_4x4()
+    _translation = Matrix.Translation(parent_to_pose.to_translation())
+
     # set transform per frame and insert keys on data channels
     for k, frame in enumerate(range(timestart, timeend)):
-        bpy.context.scene.frame_current = frame
-        bpy.context.scene.update()
-
-        pose_bone_initial = pose[bone_name]
+        bpy.context.scene.frame_set(frame)
 
         # determine if we have a parent matrix
         parent_world = Matrix()
-        parent_initial = Matrix()
         if pose_bone.parent:
-            parent_initial = pose[pose_bone.parent.name]
             parent_world = pose_bone.parent.matrix
 
-        # build a matrix describing the transform from parent bone to initial posed location
-        parent_to_pose = parent_initial.inverted() * pose_bone_initial
-        # decompose
-        _scale = Matrix.Scale(parent_to_pose.to_scale()[0], 4)
-        _rotation = parent_to_pose.to_quaternion().to_matrix().to_4x4()
-        _translation = Matrix.Translation(parent_to_pose.to_translation())
-
-        # over-ride based on keyed attributes
+        # over-ride initial pose offset based on keyed attributes
         if 's' in key_dict:
             _scale = Matrix.Scale(key_dict['s'][k][0], 4)
             _scale = swap_coord_space(_scale)  # convert to Blender space
+
         if 'q' in key_dict:
             _rotation = (
                 Quaternion((key_dict['q'][k][3], key_dict['q'][k][0], key_dict['q'][k][1], key_dict['q'][k][2]))
@@ -819,6 +950,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
                 .to_4x4()
             )
             _rotation = swap_coord_space(_rotation)  # convert to Blender space
+
         if 't' in key_dict:
             _translation = Matrix.Translation(key_dict['t'][k])
             _translation = swap_coord_space(_translation)  # convert to Blender space
@@ -844,9 +976,9 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
 """
 
 
-def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
+def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bonespace=False):
     start = time.time()
-    print("[io_pdx_mesh] Importing {}".format(meshpath))
+    print("[io_pdx_mesh] Importing {0}".format(meshpath))
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(meshpath)
@@ -859,8 +991,8 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
     scene_bone_dict = dict()
 
     # go through shapes
-    for node in shapes:
-        print("[io_pdx_mesh] creating node - {}".format(node.tag))
+    for i, node in enumerate(shapes):
+        print("[io_pdx_mesh] creating node - {0}".format(node.tag))
 
         # create the skeleton first, so we can skin the mesh to it
         rig = None
@@ -874,7 +1006,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
             if imp_skel:
                 print("[io_pdx_mesh] creating skeleton -")
-                rig = create_skeleton(pdx_bone_list)
+                rig = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -887,6 +1019,9 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
 
                 # create the geometry
                 mesh, obj = create_mesh(pdx_mesh, name=node.tag)
+
+                # set mesh index from source file
+                set_mesh_index(mesh, i)
 
                 # create the material
                 if pdx_material:
@@ -903,14 +1038,14 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True):
         print("[io_pdx_mesh] creating locators -")
         for loc in locators:
             pdx_locator = pdx_data.PDXData(loc)
-            create_locator(pdx_locator, scene_bone_dict)
+            obj = create_locator(pdx_locator, scene_bone_dict)
 
-    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
     start = time.time()
-    print("[io_pdx_mesh] Exporting {}".format(meshpath))
+    print("[io_pdx_mesh] Exporting {0}".format(meshpath))
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element('File')
@@ -920,10 +1055,16 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     object_xml = Xml.SubElement(root_xml, 'object')
 
     # populate object data
-    blender_meshes = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
-    for obj in blender_meshes:
-        print("[io_pdx_mesh] writing node - {}".format(obj.name))
-        objnode_xml = Xml.SubElement(object_xml, obj.name)
+    blender_meshobjs = list_scene_pdx_meshes()
+    # sort meshes for export by index
+    blender_meshobjs.sort(key=lambda obj: get_mesh_index(obj.data))
+
+    if len(blender_meshobjs) == 0:
+        raise RuntimeError("Nothing to export, found no meshes with PDX materials applied.")
+
+    for obj in blender_meshobjs:
+        print("[io_pdx_mesh] writing node - {0}".format(obj.data.name))
+        objnode_xml = Xml.SubElement(object_xml, obj.data.name)
 
         # one object can have multiple materials on a per face basis
         materials = list(obj.data.materials)
@@ -935,7 +1076,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 meshnode_xml = Xml.SubElement(objnode_xml, 'mesh')
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts, True)
+                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts, False)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
@@ -982,29 +1123,38 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
     blender_empties = [obj for obj in bpy.data.objects if obj.data is None]
+
     if exp_locs and blender_empties:
         print("[io_pdx_mesh] writing locators -")
         for loc in blender_empties:
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name)
-            # TODO: if we export locators without exporting bones, then we should write translation differently if a locator is parented to a bone for example
-            position = list(swap_coord_space(loc.location))
-            rotation = list(swap_coord_space(loc.rotation_euler.to_quaternion()))
+
+            loc_transform = loc.matrix_world
+            if exp_skel and loc.parent and loc.parent_type == 'BONE':
+                rig = loc.parent
+                bone_matrix = rig.matrix_world * rig.data.bones[loc.parent_bone].matrix_local
+                loc_transform = bone_matrix.inverted_safe() * loc.matrix_world
+
+                locnode_xml.set('pa', [loc.parent_bone])
+
+            _position, _rotation = swap_coord_space(loc_transform).decompose()[0:2]  # convert to Game space
+            position = list(_position)
+            rotation = list(_rotation)
+
             locnode_xml.set('p', position)
-            locnode_xml.set('q', [rotation[1], rotation[2], rotation[3], rotation[0]])
-            # if loc.getParent():   # we create parent constraints rather than parent empties directly
-            #     locnode_xml.set('pa', [loc.getParent().name()])
+            locnode_xml.set('q', [rotation[1], rotation[2], rotation[3], rotation[0]])  # convert from wxyz to xyzw
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
 
     bpy.ops.object.select_all(action='DESELECT')
-    print("[io_pdx_mesh] export finished! ({:.4f} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] export finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def import_animfile(animpath, timestart=1.0):
+def import_animfile(animpath, timestart=1):
     start = time.time()
-    print("[io_pdx_mesh] Importing {}".format(animpath))
+    print("[io_pdx_mesh] Importing {0}".format(animpath))
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(animpath)
@@ -1016,17 +1166,17 @@ def import_animfile(animpath, timestart=1.0):
 
     # set scene animation and playback settings
     fps = int(info.attrib['fps'][0])
-    print("[io_pdx_mesh] setting playback speed - {}".format(fps))
+    print("[io_pdx_mesh] setting playback speed - {0}".format(fps))
     try:
         bpy.context.scene.render.fps = fps
     except Exception as err:
-        raise NotImplementedError("Unsupported animation speed. {}".format(fps))
+        raise RuntimeError("Unsupported animation speed. {}".format(fps))
     bpy.context.scene.render.fps_base = 1.0
 
-    print("[io_pdx_mesh] setting playback range - ({},{})".format(timestart, (timestart + framecount - 1)))
+    print("[io_pdx_mesh] setting playback range - ({0},{1})".format(timestart, (timestart + framecount - 1)))
     bpy.context.scene.frame_start = timestart
     bpy.context.scene.frame_end = timestart + framecount - 1
-    bpy.context.scene.frame_current = timestart
+    bpy.context.scene.frame_set(timestart)
 
     # find armature and bones being animated in the scene
     print("[io_pdx_mesh] finding armature and bones -")
@@ -1054,7 +1204,7 @@ def import_animfile(animpath, timestart=1.0):
             edit_bone = pose_bone.bone  # rig.data.bones[bone_name]
         except KeyError:
             bone_errors.append(bone_name)
-            print("[io_pdx_mesh] failed to find bone {}".format(bone_name))
+            print("[io_pdx_mesh] failed to find bone '{0}'".format(bone_name))
 
         # and set initial transform
         if pose_bone and edit_bone:
@@ -1069,22 +1219,25 @@ def import_animfile(animpath, timestart=1.0):
             )
             _translation = Matrix.Translation(bone.attrib['t'])
 
-            # this matrix describes the transform from parent bone to initial posed location
+            # this matrix describes the transform from parent bone in the initial starting pose
             offset_matrix = swap_coord_space(_translation * _rotation * _scale)  # convert to Blender space
             # determine if we have a parent matrix
             parent_matrix = Matrix()
             if edit_bone.parent:
                 parent_matrix = edit_bone.parent.matrix_local
 
-            # apply transform
+            # apply transform and set initial pose keyframe (not all bones in this initial pose will be animated)
             pose_bone.matrix = (offset_matrix.transposed() * parent_matrix.transposed()).transposed()
+            pose_bone.keyframe_insert(data_path="scale", index=-1, group=bone_name)
+            pose_bone.keyframe_insert(data_path="rotation_quaternion", index=-1, group=bone_name)
+            pose_bone.keyframe_insert(data_path="location", index=-1, group=bone_name)
 
             # record the initial pose as the basis for subsequent keyframes
             initial_pose[bone_name] = pose_bone.matrix
 
     # break on bone errors
     if bone_errors:
-        raise RuntimeError("Missing bones required for animation:\n{}".format(bone_errors))
+        raise RuntimeError("Missing bones required for animation:\n{0}".format(bone_errors))
 
     # check which transform types are animated on each bone
     all_bone_keyframes = OrderedDict()
@@ -1098,8 +1251,8 @@ def import_animfile(animpath, timestart=1.0):
 
     # then traverse the samples data to store keys per bone
     s_index, q_index, t_index = 0, 0, 0
-    for f in range(0, framecount):
-        for i, bone_name in enumerate(all_bone_keyframes):
+    for _ in range(0, framecount):
+        for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
 
             if 's' in bone_key_data:
@@ -1116,9 +1269,121 @@ def import_animfile(animpath, timestart=1.0):
         bone_keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if bone_keys.values():
-            print("[io_pdx_mesh] setting {} keyframes on bone '{}'".format(list(bone_keys.keys()), bone_name))
+            print("[io_pdx_mesh] setting {0} keyframes on bone '{1}'".format(list(bone_keys.keys()), bone_name))
             create_anim_keys(rig, bone_name, bone_keys, timestart, initial_pose)
 
+    bpy.context.scene.frame_set(timestart)
     bpy.context.scene.update()
 
-    print("[io_pdx_mesh] import finished! ({:.4f} sec)".format(time.time() - start))
+    print("[io_pdx_mesh] import finished! ({0:.4f} sec)".format(time.time() - start))
+
+
+def export_animfile(animpath, timestart=1, timeend=10):
+    start = time.time()
+    print("[io_pdx_mesh] Exporting {0}".format(animpath))
+
+    curr_frame = bpy.context.scene.frame_start
+    if timestart != int(timestart) or timeend != int(timeend):
+        raise RuntimeError(
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(timestart, timeend)
+        )
+    timestart = int(timestart)
+    timeend = int(timeend)
+
+    # create an XML structure to store the object hierarchy
+    root_xml = Xml.Element('File')
+    root_xml.set('pdxasset', [1, 0])
+
+    # create root element for animation info
+    info_xml = Xml.SubElement(root_xml, 'info')
+
+    # fill in animation info and initial pose
+    print("[io_pdx_mesh] writing animation info -")
+    fps = bpy.context.scene.render.fps
+    info_xml.set('fps', [float(fps)])
+
+    frame_samples = (timeend + 1) - timestart
+    info_xml.set('sa', [frame_samples])
+
+    # find the scene armature with animation property (assume this is unique)
+    rig = None
+
+    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature] # and hasattr(bone, PDX_ANIMATION) ?
+    rig = bpy.context.scene.objects.active
+    if rig is None:
+        raise RuntimeError(
+            "Please select a specific armature before exporting."
+        )
+
+    # populate bone data, assume that the rig to be exported is selected
+    export_bones = get_skeleton_hierarchy(rig)
+    info_xml.set('j', [len(export_bones)])
+
+    # parse the scene animation data
+    all_bone_keyframes = get_scene_animdata(rig, export_bones, timestart, timeend)
+
+    # for each bone, write sample types and describe the initial offset from parent
+    print("[io_pdx_mesh] writing initial bone transforms -")
+    bpy.context.scene.frame_set(timestart)
+    for bone in export_bones:
+        pose_bone = rig.pose.bones[bone.name]
+        bone_xml = Xml.SubElement(info_xml, pose_bone.name)
+
+        # check sample types
+        sample_types = ''
+        for attr in ['t', 'q', 's']:
+            if attr in all_bone_keyframes[pose_bone.name]:
+                sample_types += attr
+        bone_xml.set('sa', [sample_types])
+
+        # determine if we have a parent matrix
+        parent_matrix = Matrix()
+        if pose_bone.parent:
+            parent_matrix = pose_bone.parent.matrix.copy()
+
+        # calculate the inital pose offset for this bone
+        offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
+        _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # convert to Game space
+
+        # convert quaternions from wxyz to xyzw
+        _rotation = [list(_rotation)[1], list(_rotation)[2], list(_rotation)[3], list(_rotation)[0]]
+        # animation supports uniform scale only
+        _scale = [_scale[0]]
+
+        # round to required precisions and set attribute
+        bone_xml.set('t', util_round(_translation, PDX_ROUND_TRANS))
+        bone_xml.set('q', util_round(_rotation, PDX_ROUND_ROT))
+        bone_xml.set('s', util_round(_scale, PDX_ROUND_SCALE))
+
+    # create root element for animation keyframe data
+    samples_xml = Xml.SubElement(root_xml, 'samples')
+    print("[io_pdx_mesh] writing keyframes -")
+    for bone_name in all_bone_keyframes:
+        bone_keys = all_bone_keyframes[bone_name]
+        if bone_keys:
+            print("[io_pdx_mesh] writing {0} keyframes for bone '{0}'".format(list(bone_keys.keys()), bone_name))
+
+    # pack all scene animation data into flat keyframe lists
+    t_packed, q_packed, s_packed = [], [], []
+    for i in range(frame_samples):
+        for bone in all_bone_keyframes:
+            if 't' in all_bone_keyframes[bone]:
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO: pop first item is slow?
+            if 'q' in all_bone_keyframes[bone]:
+                q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
+            if 's' in all_bone_keyframes[bone]:
+                s_packed.append(all_bone_keyframes[bone]['s'].pop(0)[0])  # support uniform scale only
+
+    if t_packed:
+        samples_xml.set('t', t_packed)
+    if q_packed:
+        samples_xml.set('q', q_packed)
+    if s_packed:
+        samples_xml.set('s', s_packed)
+
+    # write the binary file from our XML structure
+    pdx_data.write_animfile(animpath, root_xml)
+
+    bpy.context.scene.frame_set(curr_frame)
+
+    print("[io_pdx_mesh] export finished! ({0:.4f} sec)".format(time.time() - start))
