@@ -15,12 +15,12 @@ Click here to view the [latest relase](https://github.com/ross-g/io_pdx_mesh/rel
 * Start Maya and change the `Command Line` to Python by clicking the label.  
 * Then use the command `import io_pdx_mesh` to launch the tool.  
 * You can highlight this command and use the middle-mouse button to drag it into a shelf button to save it.  
-* The tool window will now open.
-[[/images/maya/tool_ui_01.png|Tool window]]
+* The tool window will now open.  
+[[https://raw.githubusercontent.com/wiki/ross-g/io_pdx_mesh/images/maya/tool_ui_01.png|Tool window]]
 
 #### Blender Installation
 * Start Blender and open the `User Preferences` panel.  
 * Switch to the `Add-ons` tab and select `Install Add-on from file`. Pick the zip file you have downloaded.  
 * Tick the checkbox to enable the add-on and you should see a new tab in the `Tool Shelf` of the `3D View`. (`View > Tool Shelf` if you have it closed)  
 * The `Tool Shelf` will now have a `PDX Blender Tools` tab.  
-[[/images/blender/tool_ui_01.png|Tool panel]]
+[[https://raw.githubusercontent.com/wiki/ross-g/io_pdx_mesh/images/blender/tool_ui_01.png|Tool panel]]
