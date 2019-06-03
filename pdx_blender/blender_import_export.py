@@ -643,7 +643,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
     matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.name)) for bone in PDX_bone_list]
     matching_rigs = list(set(rig for rig in matching_rigs if rig))
     if len(matching_rigs) == 1:
-        return matching_rigs[0], False
+        return matching_rigs[0]
 
     # temporary name used during creation
     tmp_rig_name = 'io_pdx_rig'
@@ -1007,6 +1007,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
             if imp_skel:
                 print("[io_pdx_mesh] creating skeleton -")
                 rig = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
+                print(rig)
 
         # then create all the meshes
         meshes = node.findall('mesh')
