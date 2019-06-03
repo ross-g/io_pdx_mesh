@@ -13,7 +13,7 @@ Click here to view the [latest relase](https://github.com/ross-g/io_pdx_mesh/rel
 * Go to your Maya user scripts path. (eg on Windows: `C:\Users\...\Documents\maya\scripts`)  
 * Extract the contents of the zip file directly into this path.  
 * Start Maya and change the `Command Line` to Python by clicking the label.  
-* Then use the command `import io_pdx_mesh` to launch the tool.  
+* Then use the command `import io_pdx_mesh;reload(io_pdx_mesh)` to launch the tool.  
 * You can highlight this command and use the middle-mouse button to drag it into a shelf button to save it.  
 * The tool window will now open.  
 ![Maya](https://raw.githubusercontent.com/wiki/ross-g/io_pdx_mesh/images/maya/tool_ui_01.png)
