@@ -443,7 +443,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
             bone_index = all_bones.index(bone)
         except ValueError:
             raise RuntimeError(
-                "A skinned bone ({0}) is being excluded from export, check all bones using the '{1}' property.".format(
+                "A skinned bone ({0}) is being excluded from export! Check all bones using the '{1}' property.".format(
                     bone, PDX_IGNOREJOINT
                 )
             )
@@ -463,11 +463,20 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
         for influence, weight in vert_weights[vtx].iteritems():
             skin_dict['ix'].append(influence)
             skin_dict['w'].append(weight)
-        if len(vert_weights[vtx]) < PDX_MAXSKININFS:
+        if len(vert_weights[vtx]) <= PDX_MAXSKININFS:
             # pad out with null data to fill container
             padding = PDX_MAXSKININFS - len(vert_weights[vtx])
             skin_dict['ix'].extend([-1] * padding)
             skin_dict['w'].extend([0.0] * padding)
+        else:
+            # warn if vertex influence count exceeds the max
+            raise RuntimeError(
+                "Mesh '{0}' has vertices skinned to more than {1} bones! This is not supported. "
+                "You must fix skin weights to reduce the influence count.".format(
+                    maya_mesh.getTransform().name(), PDX_MAXSKININFS
+                )
+            )
+
 
     return skin_dict
 

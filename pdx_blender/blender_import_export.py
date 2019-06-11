@@ -354,8 +354,10 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
                 bone_index = bone_names.index(group_names[group_index])
             except ValueError:
                 raise RuntimeError(
-                    "Vertex is skinned to a group ({}) targeting a missing or excluded armature bone!"
-                    "Check all bones using the '{}' property.".format(group_names[group_index], PDX_IGNOREJOINT)
+                    "Mesh {0} has vertices skinned to a group ({1}) targeting a missing or excluded armature bone!"
+                    "Check all bones using the '{2}' property.".format(
+                        mesh.name, group_names[group_index], PDX_IGNOREJOINT
+                    )
                 )
             if group_index < len(blender_obj.vertex_groups):
                 # check we actually want this vertex (in case of material split meshes)
@@ -376,9 +378,10 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
             skin_dict['ix'].extend([-1] * padding)
             skin_dict['w'].extend([0.0] * padding)
         else:
+            # warn if vertex influence count exceeds the max
             raise RuntimeError(
-                "Vertex is skinned to more than {} groups! This is not supported. "
-                "Use 'Weight Tools > Limit Total' to reduce influence count.".format(PDX_MAXSKININFS)
+                "Mesh {0} has vertices skinned to more than {1} vertex groups! This is not supported. "
+                "Use 'Weight Tools > Limit Total' to reduce influence count.".format(mesh.name, PDX_MAXSKININFS)
             )
 
     return skin_dict
@@ -887,7 +890,7 @@ def create_fcurve(armature, bone_name, data_type, index):
     action = anim_data.action
 
     # determine data path
-    data_path = 'pose.bones["{}"].{}'.format(bone_name, data_type)
+    data_path = 'pose.bones["{0}"].{1}'.format(bone_name, data_type)
 
     # check if the fcurve for this data path and index already exists
     for curve in anim_data.action.fcurves:
@@ -910,7 +913,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
     # validate keyframe counts per attribute
     duration = list(set(len(keyframes) for keyframes in key_dict.values()))
     if len(duration) != 1:
-        raise RuntimeError("Inconsistent keyframe animation lengths across attributes. {}".format(bone_name))
+        raise RuntimeError("Inconsistent keyframe animation lengths across attributes. {0}".format(bone_name))
     duration = duration[0]
 
     # calculate start and end frames
@@ -1171,7 +1174,7 @@ def import_animfile(animpath, timestart=1):
     try:
         bpy.context.scene.render.fps = fps
     except Exception as err:
-        raise RuntimeError("Unsupported animation speed. {}".format(fps))
+        raise RuntimeError("Unsupported animation speed. {0}".format(fps))
     bpy.context.scene.render.fps_base = 1.0
 
     print("[io_pdx_mesh] setting playback range - ({0},{1})".format(timestart, (timestart + framecount - 1)))
@@ -1184,7 +1187,7 @@ def import_animfile(animpath, timestart=1):
     matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.tag)) for bone in info]
     matching_rigs = list(set(rig for rig in matching_rigs if rig))
     if len(matching_rigs) != 1:
-        raise RuntimeError("Missing unique armature required for animation:\n{}".format(matching_rigs))
+        raise RuntimeError("Missing unique armature required for animation: {0}".format(matching_rigs))
     rig = matching_rigs[0]
 
     # clear any current pose before attempting to load the animation
@@ -1238,7 +1241,7 @@ def import_animfile(animpath, timestart=1):
 
     # break on bone errors
     if bone_errors:
-        raise RuntimeError("Missing bones required for animation:\n{0}".format(bone_errors))
+        raise RuntimeError("Missing bones required for animation: {0}".format(bone_errors))
 
     # check which transform types are animated on each bone
     all_bone_keyframes = OrderedDict()
@@ -1312,9 +1315,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature] # and hasattr(bone, PDX_ANIMATION) ?
     rig = bpy.context.scene.objects.active
     if rig is None:
-        raise RuntimeError(
-            "Please select a specific armature before exporting."
-        )
+        raise RuntimeError("Please select a specific armature before exporting.")
 
     # populate bone data, assume that the rig to be exported is selected
     export_bones = get_skeleton_hierarchy(rig)
