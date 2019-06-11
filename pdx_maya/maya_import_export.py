@@ -1364,15 +1364,16 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
     framecount = info.attrib['sa'][0]
 
     # set scene animation and playback settings
-    fps = info.attrib['fps'][0]
+    fps = int(info.attrib['fps'][0])
     try:
         pmc.currentUnit(time=('{0}fps'.format(fps)))
     except RuntimeError:
-        fps = int(fps)
         if fps == 15:
             pmc.currentUnit(time='game')
         elif fps == 30:
             pmc.currentUnit(time='ntsc')
+        elif fps == 60:
+            pmc.currentUnit(time='ntscf')
         else:
             raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
 
