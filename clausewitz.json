@@ -16,7 +16,7 @@
             "PdxMeshWater"
         ]
     },
-    "europa_universalis": {
+    "europa_universalis_4": {
         "animation": [
             "idle",
             "moving",
@@ -36,7 +36,7 @@
             "PdxMeshTextureAtlas"
         ]
     },
-    "hearts_of_iron": {
+    "hearts_of_iron_4": {
         "animation": [
             "idle",
             "moving",
@@ -49,9 +49,35 @@
             "PdxMeshAdvancedAnim",
             "PdxMeshAdvancedSnow",
             "PdxMeshBorder",
-            "PdxMeshHoI4",
             "PdxMeshSnow",
             "PdxMeshStandard"
+        ]
+    },
+    "imperator_rome": {
+        "animation": [
+        ],
+        "material": [
+            "Collision",
+            "decal_world",
+            "lake",
+            "material_test",
+            "PdxMeshHair",
+            "PdxMeshStandard",
+            "portrait_attachment",
+            "portrait_attachment_alpha_blend",
+            "portrait_eye",
+            "portrait_hair",
+            "portrait_hair_backside",
+            "portrait_hair_opaque",
+            "portrait_skin",
+            "portrait_skin_face",
+            "standard",
+            "standard_alpha_blend",
+            "standard_alpha_to_coverage",
+            "standard_snow",
+            "standard_usercolor",
+            "tree",
+            "tree_alpha_to_coverage"
         ]
     },
     "stellaris": {
@@ -66,6 +92,9 @@
         ],
         "material": [
             "Collision",
+            "AlphaBlend_00",
+            "AlphaBlendNoDepth",
+            "AlphaBlendNoDepth_00",
             "PdxMeshAdvanced",
             "PdxMeshAlphaAdditive",
             "PdxMeshAlphaAdditiveAnimateUV",
@@ -76,6 +105,7 @@
             "PdxMeshCircleGradient",
             "PdxMeshClouds",
             "PdxMeshColor",
+            "PdxMeshColorAlphaAdditiveAnimateUV",
             "PdxMeshExtraDimensionalShip",
             "PdxMeshNavigationButton",
             "PdxMeshPlanet",
@@ -87,6 +117,8 @@
             "PdxMeshShieldFlipBook",
             "PdxMeshShieldUVStrech",
             "PdxMeshShip",
+            "PdxMeshship",
+            "PdxMeshShipColored",
             "PdxMeshStandard",
             "PdxMeshStar",
             "PdxMeshTerra",
