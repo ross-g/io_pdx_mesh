@@ -112,7 +112,8 @@ def get_rig_from_mesh(blender_obj):
 
 
 def list_scene_pdx_meshes():
-    return [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
+    # restrict to current scene, so use bpy.context.scene.objects not bpy.data.objects
+    return [obj for obj in bpy.context.scene.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
 
 
 def set_local_axis_display(state, data_type):
@@ -1010,7 +1011,6 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
             if imp_skel:
                 print("[io_pdx_mesh] creating skeleton -")
                 rig = create_skeleton(pdx_bone_list, convert_bonespace=bonespace)
-                print(rig)
 
         # then create all the meshes
         meshes = node.findall('mesh')
@@ -1126,7 +1126,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
-    blender_empties = [obj for obj in bpy.data.objects if obj.data is None]
+    blender_empties = [obj for obj in bpy.context.scene.objects if obj.data is None]
 
     if exp_locs and blender_empties:
         print("[io_pdx_mesh] writing locators -")
@@ -1312,7 +1312,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     # find the scene armature with animation property (assume this is unique)
     rig = None
 
-    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature] # and hasattr(bone, PDX_ANIMATION) ?
+    scene_rigs = [obj for obj in bpy.context.scene.objects if type(obj.data) == bpy.types.Armature] # and hasattr(bone, PDX_ANIMATION) ?
     rig = bpy.context.scene.objects.active
     if rig is None:
         raise RuntimeError("Please select a specific armature before exporting.")
