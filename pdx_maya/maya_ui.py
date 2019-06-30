@@ -108,20 +108,21 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     def create_menu(self):
         self.menubar = QtWidgets.QMenuBar()
-        file_menu = self.menubar.addMenu('&File')
+        import_menu = self.menubar.addMenu('&Import')
+        export_menu = self.menubar.addMenu('&Export')
         tools_menu = self.menubar.addMenu('&Tools')
         tools_menu.setTearOffEnabled(True)
         help_menu = self.menubar.addMenu('&Help')
 
         # file menu
-        file_import_mesh = QtWidgets.QAction('Import mesh ...', self)
+        file_import_mesh = QtWidgets.QAction('Load mesh ...', self)
         file_import_mesh.triggered.connect(self.do_import_mesh)
         # file_import_mesh.setStatusTip('')
-        file_import_anim = QtWidgets.QAction('Import animation ...', self)
+        file_import_anim = QtWidgets.QAction('Load animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
-        file_export_mesh = QtWidgets.QAction('Export mesh ...', self)
+        file_export_mesh = QtWidgets.QAction('Save mesh ...', self)
         file_export_mesh.triggered.connect(lambda: self.do_export_mesh(select_path=True))
-        file_export_anim = QtWidgets.QAction('Export animation ...', self)
+        file_export_anim = QtWidgets.QAction('Save animation ...', self)
         file_export_anim.triggered.connect(lambda: self.do_export_anim(select_path=True))
 
         # tools menu
@@ -162,9 +163,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
             'https://github.com/ross-g/io_pdx_mesh'
         ))
 
-        file_menu.addActions([file_import_mesh, file_import_anim])
-        file_menu.addSeparator()
-        file_menu.addActions([file_export_mesh, file_export_anim])
+        import_menu.addActions([file_import_mesh, file_import_anim])
+        export_menu.addActions([file_export_mesh, file_export_anim])
 
         tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
         tools_menu.addSeparator()
