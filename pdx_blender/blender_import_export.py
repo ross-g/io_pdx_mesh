@@ -262,6 +262,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # tangent (omitted if there were no UVs)
             if uv_setnames:
                 # _tangent = loop.calc_tangent()
+                _bitangent_sign = mesh.loops[loop.index].bitangent_sign
                 _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices!
                 _tangent = list(swap_coord_space(_tangent))  # convert to Game space
                 if round_data:
@@ -286,7 +287,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
                     mesh_dict['u' + str(i)].extend(_uv_coords[i])
                 if uv_setnames:
                     mesh_dict['ta'].extend(_tangent)
-                    mesh_dict['ta'].append(1.0)
+                    mesh_dict['ta'].append(_bitangent_sign)  # UV winding order
                 i = len(unique_verts) - 1  # the tri will reference the last added vertex
 
             # store the tri vert reference

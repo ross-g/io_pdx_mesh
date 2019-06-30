@@ -368,6 +368,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                 # tangent (omitted if there were no UVs)
                 if uv_setnames and tangents:
                     vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
+                    _binormal_sign = 1.0 if mFn_Mesh.isRightHandedTangent(vert_tangent_id, uv_setnames[0]) else -1.0
                     _tangent = list(tangents[vert_tangent_id])
                     _tangent = swap_coord_space(_tangent)  # convert to Game space
                     if round_data:
@@ -390,7 +391,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                         mesh_dict['u' + str(i)].extend(_uv_coords[i])
                     if uv_setnames:
                         mesh_dict['ta'].extend(_tangent)
-                        mesh_dict['ta'].append(1.0)
+                        mesh_dict['ta'].append(_binormal_sign)  # UV winding order
                     i = len(unique_verts) - 1  # the tri will reference the last added vertex
 
                 # store the tri vert reference
