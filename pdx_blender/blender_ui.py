@@ -5,9 +5,11 @@
 """
 
 import os
-import inspect
 import json
+import inspect
 import importlib
+from collections import OrderedDict
+
 import bpy
 from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
@@ -41,7 +43,7 @@ def load_settings():
     global settings_file
     with open(settings_file, 'rt') as f:
         try:
-            settings = json.load(f)
+            settings = json.load(f, object_pairs_hook=OrderedDict)
             return settings
         except Exception as err:
             print("[io_pdx_mesh] Critical error.")
@@ -53,7 +55,7 @@ def get_engine_list(self, context):
     global engine_list
 
     settings = load_settings()  # settings from json
-    engine_list = ((engine, engine, engine) for engine in sorted(settings.keys()))
+    engine_list = ((engine, engine, engine) for engine in settings.keys())
 
     return engine_list
 

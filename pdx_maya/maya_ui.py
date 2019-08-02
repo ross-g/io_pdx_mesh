@@ -4,10 +4,12 @@
     author : ross-g
 """
 
+import os
 import json
 import inspect
 import zipfile
 import webbrowser
+from collections import OrderedDict
 
 import pymel.core as pmc
 import maya.OpenMayaUI as omUI
@@ -343,21 +345,21 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 zipped = settings_file.split('.zip')[0] + '.zip'
                 with zipfile.ZipFile(zipped, 'r') as z:
                     f = z.open('io_pdx_mesh/clausewitz.json')
-                    settings = json.loads(f.read())
+                    settings = json.loads(f.read(), object_pairs_hook=OrderedDict)
                     return settings
 
             else:
                 with open(settings_file, 'rt') as f:
-                    settings = json.load(f)
+                    settings = json.load(f, object_pairs_hook=OrderedDict)
                     return settings
 
         except Exception as err:
-            QtGui.QMessageBox.critical(
+            QtWidgets.QMessageBox.critical(
                 self, 'WARNING',
                 'Your "clausewitz.json" settings file has errors and is unreadable.\n'
                 'Check the Maya script output for details.\n\n'
                 'Some functions of the tool will not work without these settings.',
-                QtGui.QMessageBox.Ok, defaultButton=QtGui.QMessageBox.Ok
+                QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok
             )
             IO_PDX_LOG.info("CRITICAL ERROR!")
             print err

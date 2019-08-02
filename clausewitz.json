@@ -36,50 +36,6 @@
             "PdxMeshTextureAtlas"
         ]
     },
-    "hearts_of_iron_4": {
-        "animation": [
-            "idle",
-            "moving",
-            "attack",
-            "death",
-            "idle2" ],
-        "material": [
-            "Collision",
-            "PdxMeshAdvanced",
-            "PdxMeshAdvancedAnim",
-            "PdxMeshAdvancedSnow",
-            "PdxMeshBorder",
-            "PdxMeshSnow",
-            "PdxMeshStandard"
-        ]
-    },
-    "imperator_rome": {
-        "animation": [
-        ],
-        "material": [
-            "Collision",
-            "decal_world",
-            "lake",
-            "material_test",
-            "PdxMeshHair",
-            "PdxMeshStandard",
-            "portrait_attachment",
-            "portrait_attachment_alpha_blend",
-            "portrait_eye",
-            "portrait_hair",
-            "portrait_hair_backside",
-            "portrait_hair_opaque",
-            "portrait_skin",
-            "portrait_skin_face",
-            "standard",
-            "standard_alpha_blend",
-            "standard_alpha_to_coverage",
-            "standard_snow",
-            "standard_usercolor",
-            "tree",
-            "tree_alpha_to_coverage"
-        ]
-    },
     "stellaris": {
         "animation": [
             "planet_rotation",
@@ -124,6 +80,50 @@
             "PdxMeshTerra",
             "PdxMeshTerraAlphaBlend",
             "PdxMeshTerraAlphaTest"
+        ]
+    },
+    "hearts_of_iron_4": {
+        "animation": [
+            "idle",
+            "moving",
+            "attack",
+            "death",
+            "idle2" ],
+        "material": [
+            "Collision",
+            "PdxMeshAdvanced",
+            "PdxMeshAdvancedAnim",
+            "PdxMeshAdvancedSnow",
+            "PdxMeshBorder",
+            "PdxMeshSnow",
+            "PdxMeshStandard"
+        ]
+    },
+    "imperator_rome": {
+        "animation": [
+        ],
+        "material": [
+            "Collision",
+            "decal_world",
+            "lake",
+            "material_test",
+            "PdxMeshHair",
+            "PdxMeshStandard",
+            "portrait_attachment",
+            "portrait_attachment_alpha_blend",
+            "portrait_eye",
+            "portrait_hair",
+            "portrait_hair_backside",
+            "portrait_hair_opaque",
+            "portrait_skin",
+            "portrait_skin_face",
+            "standard",
+            "standard_alpha_blend",
+            "standard_alpha_to_coverage",
+            "standard_snow",
+            "standard_usercolor",
+            "tree",
+            "tree_alpha_to_coverage"
         ]
     }
 }
