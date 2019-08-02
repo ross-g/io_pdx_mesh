@@ -18,7 +18,7 @@ bl_info = {
     'location': '3D View > Toolbox',
     'category': 'Import-Export',
     'support': 'COMMUNITY',
-    'blender': (2, 78, 0),
+    'blender': (2, 80, 0),
     'maya': (2012),
     'version': (0, 6),
     'warning': 'this add-on is beta',
