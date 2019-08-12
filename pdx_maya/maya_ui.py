@@ -22,7 +22,7 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from .. import IO_PDX_LOG
+from .. import IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
 
@@ -204,15 +204,19 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def do_import_mesh(self):
+        last_dir = IO_PDX_SETTINGS.last_import_mesh or ''
         filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(
-            self, caption='Select .mesh file', filter='PDX Mesh files (*.mesh)'
+            self, caption='Select .mesh file', dir=last_dir, filter='PDX Mesh files (*.mesh)'
         )
+
         if filepath != '':
+            filepath = os.path.abspath(filepath)
             if os.path.splitext(filepath)[1] == '.mesh':
                 if self.popup:
                     self.popup.close()
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
+                IO_PDX_SETTINGS.last_import_mesh = filepath
             else:
                 reply = QtWidgets.QMessageBox.warning(
                     self, 'READ ERROR',
@@ -226,15 +230,19 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def do_import_anim(self):
+        last_dir = IO_PDX_SETTINGS.last_import_anim or ''
         filepath, filefilter = QtWidgets.QFileDialog.getOpenFileName(
-            self, caption='Select .anim file', filter='PDX Animation files (*.anim)'
+            self, caption='Select .anim file', dir=last_dir, filter='PDX Animation files (*.anim)'
         )
+
         if filepath != '':
+            filepath = os.path.abspath(filepath)
             if os.path.splitext(filepath)[1] == '.anim':
                 if self.popup:
                     self.popup.close()
                 self.popup = import_popup(filepath, parent=self)
                 self.popup.show()
+                IO_PDX_SETTINGS.last_import_anim = filepath
             else:
                 reply = QtWidgets.QMessageBox.warning(
                     self, 'READ ERROR',
@@ -253,7 +261,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         # validate directory
         if filepath == '' or select_path:
-            export_opts.select_export_path(filter_text='PDX Mesh files (*.mesh)')
+            last_dir = IO_PDX_SETTINGS.last_export_mesh or ''
+            export_opts.select_export_path(filter_dir=last_dir, filter_text='PDX Mesh files (*.mesh)')
             filepath, filename = export_opts.get_export_path()
         if not os.path.isdir(filepath):
             reply = QtWidgets.QMessageBox.warning(
@@ -271,7 +280,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         name, ext = os.path.splitext(filename)
         if not ext == '.mesh':
             filename = name + '.mesh'
-        meshpath = os.path.join(os.path.normpath(filepath), filename)
+        meshpath = os.path.join(os.path.abspath(filepath), filename)
 
         try:
             export_meshfile(
@@ -283,6 +292,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 progress_fn=MayaProgress,
             )
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Mesh export finished!\n\n{0}'.format(meshpath))
+            IO_PDX_SETTINGS.last_export_mesh = meshpath
         except Exception as err:
             IO_PDX_LOG.info("FAILED to export {0}".format(meshpath))
             print err
@@ -297,7 +307,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         # validate directory
         if filepath == '' or select_path:
-            export_opts.select_export_path(filter_text='PDX Animation files (*.anim)')
+            last_dir = IO_PDX_SETTINGS.last_export_anim or ''
+            export_opts.select_export_path(filter_dir=last_dir, filter_text='PDX Animation files (*.anim)')
             filepath, filename = export_opts.get_export_path()
         if not os.path.isdir(filepath):
             reply = QtWidgets.QMessageBox.warning(
@@ -315,7 +326,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
         name, ext = os.path.splitext(filename)
         if not ext == '.anim':
             filename = name + '.anim'
-        animpath = os.path.join(os.path.normpath(filepath), filename)
+        animpath = os.path.join(os.path.abspath(filepath), filename)
 
         try:
             export_animfile(
@@ -325,6 +336,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 progress_fn=MayaProgress,
             )
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Animation export finished!\n\n{0}'.format(animpath))
+            IO_PDX_SETTINGS.last_export_anim = animpath
         except Exception as err:
             IO_PDX_LOG.info("FAILED to export {0}".format(animpath))
             print err
@@ -623,9 +635,9 @@ class export_controls(QtWidgets.QWidget):
             pmc.playbackOptions(edit=True, minTime=start)
             pmc.playbackOptions(edit=True, maxTime=end)
 
-    def select_export_path(self, filter_text='All files (*.*)'):
+    def select_export_path(self, filter_dir='', filter_text='All files (*.*)'):
         filepath, filefilter = QtWidgets.QFileDialog.getSaveFileName(
-            self, caption='Select export folder', filter=filter_text
+            self, caption='Select export folder', dir=filter_dir, filter=filter_text
         )
         path, name = os.path.split(filepath)
 

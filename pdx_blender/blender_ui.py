@@ -15,6 +15,7 @@ from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
+from .. import IO_PDX_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
 
@@ -312,6 +313,10 @@ class import_mesh(Operator, ImportHelper):
         options={'HIDDEN'},
         maxlen=255,
     )
+    filepath = StringProperty(
+        name="Import file Path",
+        maxlen= 1024,
+    )
 
     # list of operator properties
     chk_mesh = BoolProperty(
@@ -354,6 +359,8 @@ class import_mesh(Operator, ImportHelper):
                 bonespace=self.chk_bonespace
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_import_mesh = self.filepath
+
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
@@ -363,6 +370,67 @@ class import_mesh(Operator, ImportHelper):
             raise
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_import_mesh or ''
+        wm = context.window_manager.fileselect_add(self)
+
+        return {'RUNNING_MODAL'}
+
+
+class import_anim(Operator, ImportHelper):
+    bl_idname = 'io_pdx_mesh.import_anim'
+    bl_label = 'Import PDX animation'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # ImportHelper mixin class uses these
+    filename_ext = '.anim'
+    filter_glob = StringProperty(
+        default='*.anim',
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+    filepath = StringProperty(
+        name="Import file Path",
+        maxlen= 1024,
+    )
+
+    # list of operator properties
+    int_start = IntProperty(
+        name='Start frame',
+        description='Start frame',
+        default=1,
+    )
+
+    def draw(self, context):
+        box = self.layout.box()
+        box.label('Settings:', icon='IMPORT')
+        box.prop(self, 'int_start')
+
+    def execute(self, context):
+        try:
+            import_animfile(
+                self.filepath,
+                timestart=self.int_start
+            )
+            self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_import_anim = self.filepath
+
+        except Exception as err:
+            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
+            self.report({'WARNING'}, msg)
+            self.report({'ERROR'}, str(err))
+            print(msg)
+            print(err)
+            raise
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_import_anim or ''
+        wm = context.window_manager.fileselect_add(self)
+
+        return {'RUNNING_MODAL'}
 
 
 class export_mesh(Operator, ExportHelper):
@@ -376,6 +444,10 @@ class export_mesh(Operator, ExportHelper):
         default='*.mesh',
         options={'HIDDEN'},
         maxlen=255,
+    )
+    filepath = StringProperty(
+        name="Export file Path",
+        maxlen= 1024,
     )
 
     # list of operator properties
@@ -418,6 +490,8 @@ class export_mesh(Operator, ExportHelper):
                 merge_verts=self.chk_merge
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_export_mesh = self.filepath
+
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
@@ -428,48 +502,11 @@ class export_mesh(Operator, ExportHelper):
 
         return {'FINISHED'}
 
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_export_mesh or ''
+        wm = context.window_manager.fileselect_add(self)
 
-class import_anim(Operator, ImportHelper):
-    bl_idname = 'io_pdx_mesh.import_anim'
-    bl_label = 'Import PDX animation'
-    bl_options = {'REGISTER', 'UNDO'}
-
-    # ImportHelper mixin class uses these
-    filename_ext = '.anim'
-    filter_glob = StringProperty(
-        default='*.anim',
-        options={'HIDDEN'},
-        maxlen=255,
-    )
-
-    # list of operator properties
-    int_start = IntProperty(
-        name='Start frame',
-        description='Start frame',
-        default=1,
-    )
-
-    def draw(self, context):
-        box = self.layout.box()
-        box.label('Settings:', icon='IMPORT')
-        box.prop(self, 'int_start')
-
-    def execute(self, context):
-        try:
-            import_animfile(
-                self.filepath,
-                timestart=self.int_start
-            )
-            self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
-        except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
-            self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
-            raise
-
-        return {'FINISHED'}
+        return {'RUNNING_MODAL'}
 
 
 class export_anim(Operator, ExportHelper):
@@ -483,6 +520,10 @@ class export_anim(Operator, ExportHelper):
         default='*.anim',
         options={'HIDDEN'},
         maxlen=255,
+    )
+    filepath = StringProperty(
+        name="Export file Path",
+        maxlen= 1024,
     )
 
     # list of operator properties
@@ -525,6 +566,8 @@ class export_anim(Operator, ExportHelper):
                     timeend=context.scene.frame_end
                 )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_export_anim = self.filepath
+
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
@@ -534,6 +577,12 @@ class export_anim(Operator, ExportHelper):
             raise
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_export_anim or ''
+        wm = context.window_manager.fileselect_add(self)
+
+        return {'RUNNING_MODAL'}
 
 
 class show_axis(Operator):
