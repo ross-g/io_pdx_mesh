@@ -7,13 +7,15 @@
 
 import json
 import time
+from datetime import datetime, date
+
 # Py2, Py3 compatibility
 try:
     from urllib.request import urlopen, Request, URLError
 except ImportError:
     from urllib2 import urlopen, Request, URLError
 
-from . import bl_info, IO_PDX_LOG
+from . import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
 
 
 """ ====================================================================================================================
@@ -59,29 +61,41 @@ class Github_API(object):
 
         return json.JSONDecoder().decode(result_str.decode())
 
-    def refresh(self):
-        start = time.time()
+    def refresh(self, force=False):
+        recheck = True
 
-        # get latest release data
-        releases_url = '{api}/repos/{owner}/{repo}/releases'.format(**self.args)
-        try:
-            release_list = self.get_data(releases_url, TIMEOUT)
-        except URLError as err:
-            IO_PDX_LOG.error("Unable to check for update. ({})".format(err.reason))
-            return
-        except Exception as err:
-            IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
-            return
+        # only check for updates once per day
+        last_check_date = IO_PDX_SETTINGS.last_update_check
+        if last_check_date is not None:
+            recheck = date.today() > datetime.strptime(last_check_date, "%Y-%m-%d").date()
 
-        global LATEST_RELEASE, LATEST_VERSION, LATEST_URL
-        LATEST_RELEASE = release_list[0]
-        LATEST_VERSION = float(release_list[0]['tag_name'])
-        LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
+        if recheck or force:
+            start = time.time()
 
-        global AT_LATEST
-        AT_LATEST = CURRENT_VERSION == LATEST_VERSION
+            # get latest release data
+            releases_url = '{api}/repos/{owner}/{repo}/releases'.format(**self.args)
+            try:
+                release_list = self.get_data(releases_url, TIMEOUT)
+            except URLError as err:
+                IO_PDX_LOG.warning("Unable to check for update. ({})".format(err.reason))
+                return
+            except Exception as err:
+                IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
+                return
 
-        IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
+            global LATEST_RELEASE, LATEST_VERSION, LATEST_URL
+            LATEST_RELEASE = release_list[0]
+            LATEST_VERSION = float(release_list[0]['tag_name'])
+            LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
+
+            global AT_LATEST
+            AT_LATEST = CURRENT_VERSION == LATEST_VERSION
+
+            IO_PDX_SETTINGS.last_update_check = str(date.today())
+
+            IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
+        else:
+            IO_PDX_LOG.info("Skipped update check. (already ran today)")
 
 
 github_repo = Github_API()
