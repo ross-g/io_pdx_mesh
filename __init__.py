@@ -5,15 +5,19 @@
     author : ross-g
 """
 
-import os
 import sys
+import site
 import inspect
 import logging
 import traceback
+import os.path as path
+
+from .settings import PDXsettings
+
 
 bl_info = {
     'author': 'ross-g',
-    'name': 'IO PDX mesh',
+    'name': 'IO PDX Mesh',
     'description': 'Import/Export Paradox asset files for the Clausewitz game engine.',
     'location': '3D View > Toolbox',
     'category': 'Import-Export',
@@ -25,6 +29,12 @@ bl_info = {
     'wiki_url': 'https://github.com/ross-g/io_pdx_mesh',
     'repo_name': 'io_pdx_mesh',
 }
+
+
+""" ====================================================================================================================
+    Setup.
+========================================================================================================================
+"""
 
 # setup module logging
 IO_PDX_LOG = logging.getLogger('io_pdx_mesh')
@@ -39,6 +49,19 @@ app = os.path.split(sys.executable)[1]
 root_path = os.path.dirname(inspect.getfile(inspect.currentframe()))
 IO_PDX_LOG.info("Running from {0}".format(app))
 IO_PDX_LOG.info(root_path)
+
+# setup module preferences
+site.addsitedir(path.join(root_path, 'external'))
+from appdirs import user_data_dir  # noqa
+
+config_path = path.join(user_data_dir(bl_info['name'], False), 'settings.json')
+IO_PDX_SETTINGS = PDXsettings(config_path)
+
+
+""" ====================================================================================================================
+    Startup.
+========================================================================================================================
+"""
 
 # check if running in Blender
 if 'blender' in app.lower():
