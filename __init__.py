@@ -36,17 +36,12 @@ bl_info = {
 ========================================================================================================================
 """
 
-# setup module logging
-IO_PDX_LOG = logging.getLogger('io_pdx_mesh')
-IO_PDX_LOG.propagate = False
-if not IO_PDX_LOG.handlers:
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.DEBUG)
-    console.setFormatter(logging.Formatter('[%(name)s] %(levelname)s:  %(message)s'))
-    IO_PDX_LOG.addHandler(console)
+app = path.split(sys.executable)[1]
+root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 
-app = os.path.split(sys.executable)[1]
-root_path = os.path.dirname(inspect.getfile(inspect.currentframe()))
+# setup module logging
+logging.basicConfig(level=logging.DEBUG, format='[%(name)s] %(levelname)s:  %(message)s')
+IO_PDX_LOG = logging.getLogger('io_pdx_mesh')
 IO_PDX_LOG.info("Running from {0}".format(app))
 IO_PDX_LOG.info(root_path)
 
