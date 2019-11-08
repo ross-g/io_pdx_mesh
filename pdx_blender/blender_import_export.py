@@ -4,6 +4,7 @@
     As Blenders 3D space is (Z-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
     mirror all positions, normals etc about the XY plane AND rotate 90 about X and flip texture coordinates in V.
     Note - Blender treats matrices as column-major.
+         - Blender 2.8 mathutils uses Pythons PEP 465 binary operator for multiplying matrices/vectors. @
 
     author : ross-g
 """
@@ -493,15 +494,15 @@ def swap_coord_space(data):
 
     # matrix
     if type(data) == Matrix:
-        return SPACE_MATRIX * data.to_4x4() * SPACE_MATRIX.inverted_safe()
+        return SPACE_MATRIX @ data.to_4x4() @ SPACE_MATRIX.inverted_safe()
     # quaternion
     elif type(data) == Quaternion:
         mat = data.to_matrix()
-        return (SPACE_MATRIX * mat.to_4x4() * SPACE_MATRIX.inverted_safe()).to_quaternion()
+        return (SPACE_MATRIX @ mat.to_4x4() @ SPACE_MATRIX.inverted_safe()).to_quaternion()
     # vector
     elif type(data) == Vector or len(data) == 3:
         vec = Vector(data)
-        return vec * SPACE_MATRIX
+        return vec @ SPACE_MATRIX
     # uv coordinate
     elif len(data) == 2:
         return data[0], 1 - data[1]
@@ -538,8 +539,6 @@ def create_datatexture(tex_filepath):
 
 def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
     new_material = bpy.data.materials.new('io_pdx_mat')
-    new_material.diffuse_intensity = 1
-    new_material.specular_shader = 'PHONG'
     new_material.use_fake_user = True
 
     new_material[PDX_SHADER] = PDX_material.shader[0]
@@ -584,11 +583,11 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
 def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
-    new_loc.empty_draw_type = 'ARROWS'
+    new_loc.empty_display_type = 'ARROWS'
     new_loc.empty_draw_size = 0.25
     new_loc.show_axis = False
 
-    bpy.context.scene.objects.link(new_loc)
+    bpy.context.collection.objects.link(new_loc)
 
     # check for a parent relationship
     parent = getattr(PDX_locator, 'pa', None)
@@ -630,7 +629,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
     new_loc.matrix_world = swap_coord_space(final_matrix)  # convert to Blender space
     new_loc.rotation_mode = 'XYZ'
 
-    bpy.context.scene.update()
+    bpy.context.view_layer.update()
 
     return new_loc
 
@@ -651,14 +650,14 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
     # create the armature datablock
     armt = bpy.data.armatures.new('armature')
     armt.name = 'imported_armature'
-    armt.draw_type = 'STICK'
+    armt.display_type = 'STICK'
 
     # create the object and link to the scene
     new_rig = bpy.data.objects.new(tmp_rig_name, armt)
-    bpy.context.scene.objects.link(new_rig)
-    bpy.context.scene.objects.active = new_rig
-    new_rig.show_x_ray = True
-    new_rig.select = True
+    bpy.context.collection.objects.link(new_rig)
+    bpy.context.view_layer.objects.active = new_rig
+    new_rig.show_in_front = True
+    new_rig.select_set(state=True)
 
     bpy.ops.object.mode_set(mode='EDIT')
     for bone in PDX_bone_list:
@@ -693,9 +692,9 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         # rescale or recompose matrix so we always import bones at 1.0 scale
         loc, rot, scale = mat.decompose()
         try:
-            safemat = Matrix.Scale(1.0 / scale[0], 4) * mat
+            safemat = Matrix.Scale(1.0 / scale[0], 4) @ mat
         except ZeroDivisionError:  # guard against zero scale bones...
-            safemat = Matrix.Translation(loc) * rot.to_matrix().to_4x4() * Matrix.Scale(1.0, 4)
+            safemat = Matrix.Translation(loc) @ rot.to_matrix().to_4x4() @ Matrix.Scale(1.0, 4)
 
         # determine avg distance to any children
         bone_children = [b for b in PDX_bone_list if getattr(b, 'pa', [None]) == bone.ix]
@@ -733,7 +732,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
             bone.tail += Vector((0, 0, 0.1))
 
     bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.context.scene.update()
+    bpy.context.view_layer.update()
 
     return new_rig
 
@@ -829,7 +828,7 @@ def create_mesh(PDX_mesh, name=None):
         mesh_name = clean_imported_name(name)
 
     new_obj = bpy.data.objects.new(mesh_name, new_mesh)
-    bpy.context.scene.objects.link(new_obj)
+    bpy.context.collection.objects.link(new_obj)
     new_mesh.name = mesh_name
     new_obj.name = mesh_name.replace('Shape', '')
 
@@ -848,7 +847,7 @@ def create_mesh(PDX_mesh, name=None):
     # apply the UV data channels
     for idx in uv_Ch:
         uvSetName = 'map' + str(idx + 1)
-        new_mesh.uv_textures.new(uvSetName)
+        new_mesh.uv_layers.new(name=uvSetName)
 
         uvArray = []
         uv_data = uv_Ch[idx]
@@ -869,8 +868,8 @@ def create_mesh(PDX_mesh, name=None):
 
     # select the object
     bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = new_obj
-    new_obj.select = True
+    bpy.context.view_layer.objects.active = new_obj
+    new_obj.select_set(state=True)
 
     return new_mesh, new_obj
 
@@ -1187,7 +1186,7 @@ def import_animfile(animpath, timestart=1):
     rig = matching_rigs[0]
 
     # clear any current pose before attempting to load the animation
-    bpy.context.scene.objects.active = rig
+    bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode='POSE')
     bpy.ops.pose.select_all(action='SELECT')
     bpy.ops.pose.transforms_clear()
@@ -1273,7 +1272,7 @@ def import_animfile(animpath, timestart=1):
             create_anim_keys(rig, bone_name, bone_keys, timestart, initial_pose)
 
     bpy.context.scene.frame_set(timestart)
-    bpy.context.scene.update()
+    bpy.context.view_layer.update()
 
     print("[io_pdx_mesh] import finished! ({0:.4f} sec)".format(time.time() - start))
 
@@ -1309,7 +1308,8 @@ def export_animfile(animpath, timestart=1, timeend=10):
     rig = None
 
     scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature] # and hasattr(bone, PDX_ANIMATION) ?
-    rig = bpy.context.scene.objects.active
+    # TODO : finsh this, just use active object for now
+    rig = bpy.context.active_object
     if rig is None:
         raise RuntimeError(
             "Please select a specific armature before exporting."
