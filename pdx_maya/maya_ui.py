@@ -670,7 +670,7 @@ class import_popup(QtWidgets.QWidget):
 
         self.setWindowTitle('Import options')
         self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
-        self.setFixedSize(250, 100)
+        self.setFixedSize(275, 100)
         if self.parent:
             center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
             center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
@@ -690,13 +690,14 @@ class import_popup(QtWidgets.QWidget):
         self.chk_skeleton = QtWidgets.QCheckBox('Skeleton')
         self.chk_locators = QtWidgets.QCheckBox('Locators')
         # anim specific controls
-        lbl_starttime = QtWidgets.QLabel('start time:')
+        lbl_starttime = QtWidgets.QLabel('Start frame:')
         lbl_starttime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.spn_start = QtWidgets.QSpinBox()
         self.spn_start.setMaximum(9999)
         self.spn_start.setMinimum(-9999)
         self.spn_start.setMaximumWidth(50)
         self.spn_start.setValue(1)
+        self.chk_wipekeys = QtWidgets.QCheckBox('Wipe existing animation')
 
         # create layouts
         main_layout = QtWidgets.QVBoxLayout()
@@ -714,7 +715,7 @@ class import_popup(QtWidgets.QWidget):
                 opts_layout.addWidget(chk_box)
                 chk_box.setChecked(True)
         elif self.pdx_type == '.anim':
-            for qt_control in [lbl_starttime, self.spn_start]:
+            for qt_control in [self.chk_wipekeys, lbl_starttime, self.spn_start]:
                 opts_layout.addWidget(qt_control)
         main_layout.addLayout(opts_layout)
         main_layout.addSpacing(10)
