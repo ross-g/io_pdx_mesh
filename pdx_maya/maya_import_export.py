@@ -1375,6 +1375,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
     # set scene animation and playback settings
     fps = int(info.attrib['fps'][0])
+    IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
     try:
         pmc.currentUnit(time=('{0}fps'.format(fps)))
     except RuntimeError:
@@ -1387,7 +1388,6 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
         else:
             raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
 
-    IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
     if progress_fn:
         progress.update(1, 'setting playback speed')
     pmc.playbackOptions(edit=True, playbackSpeed=1.0)
@@ -1415,7 +1415,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
             bone_joint = matching_bones[0]
         except IndexError:
             bone_errors.append(bone_name)
-            IO_PDX_LOG.info("failed to find bone '{0}'".format(bone_name))
+            IO_PDX_LOG.warning("failed to find bone '{0}'".format(bone_name))
             if progress_fn:
                 progress.update(1, 'failed to find bone!')
 
@@ -1487,7 +1487,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
 def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     start = time.time()
-    IO_PDX_LOG.info("Exporting {0}".format(animpath))
+    IO_PDX_LOG.info("exporting {0}".format(animpath))
 
     progress = None
     if progress_fn:
@@ -1600,6 +1600,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     pmc.currentTime(curr_frame, edit=True)
 
+    pmc.select(None)
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
     if progress_fn:
         progress.finished()
