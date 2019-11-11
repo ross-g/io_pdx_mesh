@@ -587,7 +587,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
     new_loc.empty_draw_size = 0.25
     new_loc.show_axis = False
 
-    bpy.context.collection.objects.link(new_loc)
+    bpy.context.scene.collection.objects.link(new_loc)
 
     # check for a parent relationship
     parent = getattr(PDX_locator, 'pa', None)
@@ -654,7 +654,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
 
     # create the object and link to the scene
     new_rig = bpy.data.objects.new(tmp_rig_name, armt)
-    bpy.context.collection.objects.link(new_rig)
+    bpy.context.scene.collection.objects.link(new_rig)
     bpy.context.view_layer.objects.active = new_rig
     new_rig.show_in_front = True
     new_rig.select_set(state=True)
@@ -828,7 +828,7 @@ def create_mesh(PDX_mesh, name=None):
         mesh_name = clean_imported_name(name)
 
     new_obj = bpy.data.objects.new(mesh_name, new_mesh)
-    bpy.context.collection.objects.link(new_obj)
+    bpy.context.scene.collection.objects.link(new_obj)
     new_mesh.name = mesh_name
     new_obj.name = mesh_name.replace('Shape', '')
 
