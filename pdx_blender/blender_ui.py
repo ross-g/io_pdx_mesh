@@ -84,7 +84,7 @@ def set_animation_fps(self, context):
 """
 
 
-class popup_message(Operator):
+class IOPDX_OT_popup_message(Operator):
     bl_idname = 'io_pdx_mesh.popup_message'
     bl_label = '[io_pdx_mesh]'
     bl_options = {'REGISTER'}
@@ -131,7 +131,7 @@ class material_popup(object):
     )
 
 
-class material_create_popup(material_popup, Operator):
+class IOPDX_OT_material_create_popup(material_popup, Operator):
     bl_idname = 'io_pdx_mesh.material_create_popup'
     bl_label = 'Create a PDX material'
 
@@ -164,14 +164,14 @@ class material_create_popup(material_popup, Operator):
         box = self.layout.box()
         box.prop(self, 'mat_name')
         box.prop(self, 'mat_type')
-        row = box.split(0.33)
+        row = box.split(factor=0.33)
         row.prop(self, 'use_custom')
         if self.use_custom:
             row.prop(self, 'custom_type', text='')
         self.layout.separator()
 
 
-class material_edit_popup(material_popup, Operator):
+class IOPDX_OT_material_edit_popup(material_popup, Operator):
     bl_idname = 'io_pdx_mesh.material_edit_popup'
     bl_label = 'Edit a PDX material'
 
@@ -225,13 +225,13 @@ class material_edit_popup(material_popup, Operator):
         self.layout.separator()
 
 
-class UI_UL_mesh_index_list(UIList):
+class IOPDX_UL_mesh_index_list(UIList):
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         layout.prop(item, 'name', text='', emboss=False)
 
 
-class mesh_index_actions(Operator):
+class IOPDX_OT_mesh_index_actions(Operator):
     bl_idname = "io_pdx_mesh.mesh_index_actions"
     bl_label = "Mesh index list actions"
     bl_options = {'REGISTER'}
@@ -261,7 +261,7 @@ class mesh_index_actions(Operator):
         return{'FINISHED'}
 
 
-class mesh_index_popup(Operator):
+class IOPDX_OT_mesh_index_popup(Operator):
     bl_idname = 'io_pdx_mesh.mesh_index_popup'
     bl_label = 'Set mesh index on PDX meshes'
     bl_options = {'REGISTER'}
@@ -290,7 +290,7 @@ class mesh_index_popup(Operator):
     def draw(self, context):
         obj_group = context.scene.io_pdx_group
         row = self.layout.row()
-        row.template_list('mesh_index_list', '', obj_group, 'coll', obj_group, 'idx', rows=8)
+        row.template_list('IOPDX_UL_mesh_index_list', '', obj_group, 'coll', obj_group, 'idx', rows=8)
 
         col = row.column(align=True)
         col.operator("io_pdx_mesh.mesh_index_actions", icon='TRIA_UP', text="").action = 'UP'
@@ -298,7 +298,7 @@ class mesh_index_popup(Operator):
         self.layout.separator()
 
 
-class import_mesh(Operator, ImportHelper):
+class IOPDX_OT_import_mesh(Operator, ImportHelper):
     bl_idname = 'io_pdx_mesh.import_mesh'
     bl_label = 'Import PDX mesh'
     bl_options = {'REGISTER', 'UNDO'}
@@ -363,7 +363,7 @@ class import_mesh(Operator, ImportHelper):
         return {'FINISHED'}
 
 
-class export_mesh(Operator, ExportHelper):
+class IOPDX_OT_export_mesh(Operator, ExportHelper):
     bl_idname = 'io_pdx_mesh.export_mesh'
     bl_label = 'Export PDX mesh'
     bl_options = {'REGISTER', 'UNDO'}
@@ -427,7 +427,7 @@ class export_mesh(Operator, ExportHelper):
         return {'FINISHED'}
 
 
-class import_anim(Operator, ImportHelper):
+class IOPDX_OT_import_anim(Operator, ImportHelper):
     bl_idname = 'io_pdx_mesh.import_anim'
     bl_label = 'Import PDX animation'
     bl_options = {'REGISTER', 'UNDO'}
@@ -470,7 +470,7 @@ class import_anim(Operator, ImportHelper):
         return {'FINISHED'}
 
 
-class export_anim(Operator, ExportHelper):
+class IOPDX_OT_export_anim(Operator, ExportHelper):
     bl_idname = 'io_pdx_mesh.export_anim'
     bl_label = 'Export PDX animation'
     bl_options = {'REGISTER', 'UNDO'}
@@ -534,7 +534,7 @@ class export_anim(Operator, ExportHelper):
         return {'FINISHED'}
 
 
-class show_axis(Operator):
+class IOPDX_OT_show_axis(Operator):
     bl_idname = 'io_pdx_mesh.show_axis'
     bl_label = 'Show local axis'
     bl_options = {'REGISTER'}
@@ -555,7 +555,7 @@ class show_axis(Operator):
         return {'FINISHED'}
 
 
-class ignore_bone(Operator):
+class IOPDX_OT_ignore_bone(Operator):
     bl_idname = 'io_pdx_mesh.ignore_bone'
     bl_label = 'Ignore selected bones'
     bl_options = {'REGISTER'}
@@ -581,7 +581,7 @@ class PDXUI(object):
     bl_region_type = 'UI'
 
 
-class UI_PT_PDXblender_file(PDXUI, Panel):
+class IOPDX_PT_PDXblender_file(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.file'
     bl_label = 'File'
     panel_order = 1
@@ -598,7 +598,7 @@ class UI_PT_PDXblender_file(PDXUI, Panel):
         row.operator('io_pdx_mesh.export_anim', icon='RENDER_ANIMATION', text='Save anim ...')
 
 
-class UI_PT_PDXblender_tools(PDXUI, Panel):
+class IOPDX_PT_PDXblender_tools(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.tools'
     bl_label = 'Tools'
     panel_order = 2
@@ -631,7 +631,7 @@ class UI_PT_PDXblender_tools(PDXUI, Panel):
         row.operator('io_pdx_mesh.mesh_index_popup', icon='SORTALPHA', text='Set mesh order')
 
 
-class UI_PT_PDXblender_display(PDXUI, Panel):
+class IOPDX_PT_PDXblender_display(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.display'
     bl_label = 'Display'
     bl_options = {'DEFAULT_CLOSED'}
@@ -657,7 +657,7 @@ class UI_PT_PDXblender_display(PDXUI, Panel):
         op_hide_loc_axis.data_type = 'EMPTY'
 
 
-class UI_PT_PDXblender_setup(PDXUI, Panel):
+class IOPDX_PT_PDXblender_setup(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.setup'
     bl_label = 'Setup'
     bl_options = {'DEFAULT_CLOSED'}
@@ -672,7 +672,7 @@ class UI_PT_PDXblender_setup(PDXUI, Panel):
         row.prop(settings, 'setup_fps', text='FPS')
 
 
-class UI_PT_PDXblender_help(PDXUI, Panel):
+class IOPDX_PT_PDXblender_help(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.help'
     bl_label = 'Help'
     bl_options = {'DEFAULT_CLOSED'}
