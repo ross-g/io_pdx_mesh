@@ -363,6 +363,49 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
         return {'FINISHED'}
 
 
+class IOPDX_OT_import_anim(Operator, ImportHelper):
+    bl_idname = 'io_pdx_mesh.import_anim'
+    bl_label = 'Import PDX animation'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # ImportHelper mixin class uses these
+    filename_ext = '.anim'
+    filter_glob : StringProperty(
+        default='*.anim',
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    # list of operator properties
+    int_start : IntProperty(
+        name='Start frame',
+        description='Start frame',
+        default=1,
+    )
+
+    def draw(self, context):
+        box = self.layout.box()
+        box.label(text='Settings:', icon='IMPORT')
+        box.prop(self, 'int_start')
+
+    def execute(self, context):
+        try:
+            import_animfile(
+                self.filepath,
+                timestart=self.int_start
+            )
+            self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
+        except Exception as err:
+            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
+            self.report({'WARNING'}, msg)
+            self.report({'ERROR'}, err)
+            print(msg)
+            print(err)
+            raise
+
+        return {'FINISHED'}
+
+
 class IOPDX_OT_export_mesh(Operator, ExportHelper):
     bl_idname = 'io_pdx_mesh.export_mesh'
     bl_label = 'Export PDX mesh'
@@ -418,49 +461,6 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
-            self.report({'ERROR'}, err)
-            print(msg)
-            print(err)
-            raise
-
-        return {'FINISHED'}
-
-
-class IOPDX_OT_import_anim(Operator, ImportHelper):
-    bl_idname = 'io_pdx_mesh.import_anim'
-    bl_label = 'Import PDX animation'
-    bl_options = {'REGISTER', 'UNDO'}
-
-    # ImportHelper mixin class uses these
-    filename_ext = '.anim'
-    filter_glob : StringProperty(
-        default='*.anim',
-        options={'HIDDEN'},
-        maxlen=255,
-    )
-
-    # list of operator properties
-    int_start : IntProperty(
-        name='Start frame',
-        description='Start frame',
-        default=1,
-    )
-
-    def draw(self, context):
-        box = self.layout.box()
-        box.label(text='Settings:', icon='IMPORT')
-        box.prop(self, 'int_start')
-
-    def execute(self, context):
-        try:
-            import_animfile(
-                self.filepath,
-                timestart=self.int_start
-            )
-            self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
-        except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
             self.report({'ERROR'}, err)
             print(msg)
