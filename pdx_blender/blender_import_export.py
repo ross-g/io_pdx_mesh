@@ -311,7 +311,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     bm.free()
     mesh.free_tangents()
     mesh.free_normals_split()
-    bpy.data.meshes.remove(mesh)    # delete duplicate mesh datablock
+    bpy.data.meshes.remove(mesh)  # delete duplicate mesh datablock
 
     return mesh_dict, vert_id_list
 
@@ -404,7 +404,7 @@ def get_mesh_skeleton_info(blender_obj):
             bone_list[i]['pa'] = [all_bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(rig.matrix_world * bone.matrix_local).inverted_safe()  # convert to Game space
+        mat = swap_coord_space(rig.matrix_world @ bone.matrix_local).inverted_safe()  # convert to Game space
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
         bone_list[i]['tx'] = []
@@ -447,11 +447,15 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
             parent_matrix = Matrix()
             if pose_bone.parent:
                 # parent_matrix = pose_bone.parent.matrix.copy()
-                parent_matrix = rig.convert_space(pose_bone.parent, pose_bone.parent.matrix, 'POSE', 'WORLD')
+                parent_matrix = rig.convert_space(
+                    pose_bone=pose_bone.parent, matrix=pose_bone.parent.matrix, from_space='POSE', to_space='WORLD'
+                )
 
-            # offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
-            pose_matrix = rig.convert_space(pose_bone, pose_bone.matrix, 'POSE', 'WORLD')
-            offset_matrix = parent_matrix.inverted_safe() * pose_matrix
+            # offset_matrix = parent_matrix.inverted_safe() @ pose_bone.matrix
+            pose_matrix = rig.convert_space(
+                pose_bone=pose_bone, matrix=pose_bone.matrix, from_space='POSE', to_space='WORLD'
+            )
+            offset_matrix = parent_matrix.inverted_safe() @ pose_matrix
             _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # Convert to Game space
 
             frames_data[bone.name].append((_translation, _rotation, _scale))
@@ -621,10 +625,10 @@ def create_locator(PDX_locator, PDX_bone_dict):
     )
     _translation = Matrix.Translation(PDX_locator.p)
 
-    loc_matrix = _translation * _rotation * _scale
+    loc_matrix = _translation @ _rotation @ _scale
 
     # apply parent transform (must be multiplied in transposed form, then re-transposed before being applied)
-    final_matrix = (loc_matrix.transposed() * parent_Xform.inverted_safe().transposed()).transposed()
+    final_matrix = (loc_matrix.transposed() @ parent_Xform.inverted_safe().transposed()).transposed()
 
     new_loc.matrix_world = swap_coord_space(final_matrix)  # convert to Blender space
     new_loc.rotation_mode = 'XYZ'
@@ -722,7 +726,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         # set matrix directly as this includes bone roll/rotation
         new_bone.matrix = swap_coord_space(safemat.inverted_safe())  # convert to Blender space
         if convert_bonespace:
-            new_bone.matrix = swap_coord_space(safemat.inverted_safe()) * BONESPACE_MATRIX  # convert to Blender space
+            new_bone.matrix = swap_coord_space(safemat.inverted_safe()) @ BONESPACE_MATRIX  # convert to Blender space
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
@@ -757,7 +761,7 @@ def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
 
     # create skin weight vertex groups
     for bone in armt_bones:
-        obj.vertex_groups.new(bone.name)
+        obj.vertex_groups.new(name=bone.name)
 
     # set all skin weights
     for v in range(len(skin_dict.keys())):
@@ -922,7 +926,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
     if pose_bone.parent:
         parent_initial = pose[pose_bone.parent.name]
 
-    parent_to_pose = parent_initial.inverted_safe() * pose_bone_initial
+    parent_to_pose = parent_initial.inverted_safe() @ pose_bone_initial
     # decompose (so we can over write with animated components)
     _scale = Matrix.Scale(parent_to_pose.to_scale()[0], 4)
     _rotation = parent_to_pose.to_quaternion().to_matrix().to_4x4()
@@ -955,10 +959,10 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
             _translation = swap_coord_space(_translation)  # convert to Blender space
 
         # recompose
-        offset_matrix = _translation * _rotation * _scale
+        offset_matrix = _translation @ _rotation @ _scale
 
         # apply offset matrix
-        pose_bone.matrix = parent_world * offset_matrix
+        pose_bone.matrix = parent_world @ offset_matrix
 
         # set keyframes on the new transform
         if 's' in key_dict:
@@ -1132,8 +1136,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
             loc_transform = loc.matrix_world
             if exp_skel and loc.parent and loc.parent_type == 'BONE':
                 rig = loc.parent
-                bone_matrix = rig.matrix_world * rig.data.bones[loc.parent_bone].matrix_local
-                loc_transform = bone_matrix.inverted_safe() * loc.matrix_world
+                bone_matrix = rig.matrix_world @ rig.data.bones[loc.parent_bone].matrix_local
+                loc_transform = bone_matrix.inverted_safe() @ loc.matrix_world
 
                 locnode_xml.set('pa', [loc.parent_bone])
 
@@ -1219,14 +1223,14 @@ def import_animfile(animpath, timestart=1):
             _translation = Matrix.Translation(bone.attrib['t'])
 
             # this matrix describes the transform from parent bone in the initial starting pose
-            offset_matrix = swap_coord_space(_translation * _rotation * _scale)  # convert to Blender space
+            offset_matrix = swap_coord_space(_translation @ _rotation @ _scale)  # convert to Blender space
             # determine if we have a parent matrix
             parent_matrix = Matrix()
             if edit_bone.parent:
                 parent_matrix = edit_bone.parent.matrix_local
 
             # apply transform and set initial pose keyframe (not all bones in this initial pose will be animated)
-            pose_bone.matrix = (offset_matrix.transposed() * parent_matrix.transposed()).transposed()
+            pose_bone.matrix = (offset_matrix.transposed() @ parent_matrix.transposed()).transposed()
             pose_bone.keyframe_insert(data_path="scale", index=-1, group=bone_name)
             pose_bone.keyframe_insert(data_path="rotation_quaternion", index=-1, group=bone_name)
             pose_bone.keyframe_insert(data_path="location", index=-1, group=bone_name)
@@ -1307,13 +1311,13 @@ def export_animfile(animpath, timestart=1, timeend=10):
     # find the scene armature with animation property (assume this is unique)
     rig = None
 
-    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature] # and hasattr(bone, PDX_ANIMATION) ?
+    scene_rigs = [
+        obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature
+    ]  # and hasattr(bone, PDX_ANIMATION) ?
     # TODO : finsh this, just use active object for now
     rig = bpy.context.active_object
     if rig is None:
-        raise RuntimeError(
-            "Please select a specific armature before exporting."
-        )
+        raise RuntimeError("Please select a specific armature before exporting.")
 
     # populate bone data, assume that the rig to be exported is selected
     export_bones = get_skeleton_hierarchy(rig)
@@ -1342,7 +1346,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
             parent_matrix = pose_bone.parent.matrix.copy()
 
         # calculate the inital pose offset for this bone
-        offset_matrix = parent_matrix.inverted_safe() * pose_bone.matrix
+        offset_matrix = parent_matrix.inverted_safe() @ pose_bone.matrix
         _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # convert to Game space
 
         # convert quaternions from wxyz to xyzw
