@@ -175,7 +175,7 @@ def get_material_textures(blender_material):
 
     material_texture_slots = [slot for slot in blender_material.texture_slots if slot is not None]
     for tex_slot in material_texture_slots:
-        tex_filepath = tex_slot.texture.image.filepath
+        tex_filepath = tex_slot.texture.image.filepath_from_user()
 
         if tex_slot.use_map_color_diffuse:
             texture_dict['diff'] = tex_filepath
@@ -552,16 +552,18 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
 
     if getattr(PDX_material, 'diff', None):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
-        if os.path.exists(texture_path):
+        if os.path.isfile(texture_path):
             new_file = create_datatexture(texture_path)
             diff_tex = new_material.texture_slots.add()
             diff_tex.texture = new_file
             diff_tex.texture_coords = 'UV'
             diff_tex.use_map_color_diffuse = True
+        else:
+            raise RuntimeError("Unable to find diffuse texture filepath. {0}".format(texture_path))
 
     if getattr(PDX_material, 'n', None):
         texture_path = os.path.join(texture_dir, PDX_material.n[0])
-        if os.path.exists(texture_path):
+        if os.path.isfile(texture_path):
             new_file = create_datatexture(texture_path)
             norm_tex = new_material.texture_slots.add()
             norm_tex.texture = new_file
@@ -569,16 +571,20 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
             norm_tex.use_map_color_diffuse = False
             norm_tex.use_map_normal = True
             norm_tex.normal_map_space = 'TANGENT'
+        else:
+            raise RuntimeError("Unable to find normal texture filepath. {0}".format(texture_path))
 
     if getattr(PDX_material, 'spec', None):
         texture_path = os.path.join(texture_dir, PDX_material.spec[0])
-        if os.path.exists(texture_path):
+        if os.path.isfile(texture_path):
             new_file = create_datatexture(texture_path)
             spec_tex = new_material.texture_slots.add()
             spec_tex.texture = new_file
             spec_tex.texture_coords = 'UV'
             spec_tex.use_map_color_diffuse = False
             spec_tex.use_map_color_spec = True
+        else:
+            raise RuntimeError("Unable to find specular texture filepath. {0}".format(texture_path))
 
     if mat_name is not None:
         new_material.name = mat_name
