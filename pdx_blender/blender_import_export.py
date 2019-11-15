@@ -559,7 +559,7 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
             diff_tex.texture_coords = 'UV'
             diff_tex.use_map_color_diffuse = True
         else:
-            raise RuntimeError("Unable to find diffuse texture filepath. {0}".format(texture_path))
+            IO_PDX_LOG.warning("unable to find diffuse texture filepath. {0}".format(texture_path))
 
     if getattr(PDX_material, 'n', None):
         texture_path = os.path.join(texture_dir, PDX_material.n[0])
@@ -572,7 +572,7 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
             norm_tex.use_map_normal = True
             norm_tex.normal_map_space = 'TANGENT'
         else:
-            raise RuntimeError("Unable to find normal texture filepath. {0}".format(texture_path))
+            IO_PDX_LOG.warning("unable to find normal texture filepath. {0}".format(texture_path))
 
     if getattr(PDX_material, 'spec', None):
         texture_path = os.path.join(texture_dir, PDX_material.spec[0])
@@ -584,7 +584,7 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
             spec_tex.use_map_color_diffuse = False
             spec_tex.use_map_color_spec = True
         else:
-            raise RuntimeError("Unable to find specular texture filepath. {0}".format(texture_path))
+            IO_PDX_LOG.warning("unable to find specular texture filepath. {0}".format(texture_path))
 
     if mat_name is not None:
         new_material.name = mat_name
