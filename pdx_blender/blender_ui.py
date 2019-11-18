@@ -5,14 +5,17 @@
 """
 
 import os
-import inspect
 import json
+import inspect
 import importlib
+from collections import OrderedDict
+
 import bpy
 from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
+from .. import IO_PDX_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
 
@@ -41,7 +44,7 @@ def load_settings():
     global settings_file
     with open(settings_file, 'rt') as f:
         try:
-            settings = json.load(f)
+            settings = json.load(f, object_pairs_hook=OrderedDict)
             return settings
         except Exception as err:
             print("[io_pdx_mesh] Critical error.")
@@ -53,7 +56,7 @@ def get_engine_list(self, context):
     global engine_list
 
     settings = load_settings()  # settings from json
-    engine_list = ((engine, engine, engine) for engine in sorted(settings.keys()))
+    engine_list = ((engine, engine, engine) for engine in settings.keys())
 
     return engine_list
 
@@ -310,6 +313,10 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
         options={'HIDDEN'},
         maxlen=255,
     )
+    filepath : StringProperty(
+        name="Import file Path",
+        maxlen= 1024,
+    )
 
     # list of operator properties
     chk_mesh : BoolProperty(
@@ -352,6 +359,8 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
                 bonespace=self.chk_bonespace
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_import_mesh = self.filepath
+
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
@@ -361,6 +370,12 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
             raise
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_import_mesh or ''
+        wm = context.window_manager.fileselect_add(self)
+
+        return {'RUNNING_MODAL'}
 
 
 class IOPDX_OT_import_anim(Operator, ImportHelper):
@@ -374,6 +389,10 @@ class IOPDX_OT_import_anim(Operator, ImportHelper):
         default='*.anim',
         options={'HIDDEN'},
         maxlen=255,
+    )
+    filepath : StringProperty(
+        name="Import file Path",
+        maxlen= 1024,
     )
 
     # list of operator properties
@@ -395,15 +414,23 @@ class IOPDX_OT_import_anim(Operator, ImportHelper):
                 timestart=self.int_start
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed importing {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_import_anim = self.filepath
+
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
-            self.report({'ERROR'}, err)
+            self.report({'ERROR'}, str(err))
             print(msg)
             print(err)
             raise
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_import_anim or ''
+        wm = context.window_manager.fileselect_add(self)
+
+        return {'RUNNING_MODAL'}
 
 
 class IOPDX_OT_export_mesh(Operator, ExportHelper):
@@ -417,6 +444,10 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         default='*.mesh',
         options={'HIDDEN'},
         maxlen=255,
+    )
+    filepath : StringProperty(
+        name="Export file Path",
+        maxlen= 1024,
     )
 
     # list of operator properties
@@ -459,15 +490,23 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 merge_verts=self.chk_merge
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_export_mesh = self.filepath
+
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
-            self.report({'ERROR'}, err)
+            self.report({'ERROR'}, str(err))
             print(msg)
             print(err)
             raise
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_export_mesh or ''
+        wm = context.window_manager.fileselect_add(self)
+
+        return {'RUNNING_MODAL'}
 
 
 class IOPDX_OT_export_anim(Operator, ExportHelper):
@@ -481,6 +520,10 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
         default='*.anim',
         options={'HIDDEN'},
         maxlen=255,
+    )
+    filepath : StringProperty(
+        name="Export file Path",
+        maxlen= 1024,
     )
 
     # list of operator properties
@@ -523,15 +566,23 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
                     timeend=context.scene.frame_end
                 )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
+            IO_PDX_SETTINGS.last_export_anim = self.filepath
+
         except Exception as err:
             msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
             self.report({'WARNING'}, msg)
-            self.report({'ERROR'}, err)
+            self.report({'ERROR'}, str(err))
             print(msg)
             print(err)
             raise
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        self.filepath = IO_PDX_SETTINGS.last_export_anim or ''
+        wm = context.window_manager.fileselect_add(self)
+
+        return {'RUNNING_MODAL'}
 
 
 class IOPDX_OT_show_axis(Operator):
@@ -698,3 +749,4 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
         col.operator(
             'wm.url_open', icon='QUESTION', text='Source code'
         ).url = 'https://github.com/ross-g/io_pdx_mesh'
+

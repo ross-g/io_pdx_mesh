@@ -368,6 +368,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                 # tangent (omitted if there were no UVs)
                 if uv_setnames and tangents:
                     vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
+                    _binormal_sign = 1.0 if mFn_Mesh.isRightHandedTangent(vert_tangent_id, uv_setnames[0]) else -1.0
                     _tangent = list(tangents[vert_tangent_id])
                     _tangent = swap_coord_space(_tangent)  # convert to Game space
                     if round_data:
@@ -390,7 +391,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                         mesh_dict['u' + str(i)].extend(_uv_coords[i])
                     if uv_setnames:
                         mesh_dict['ta'].extend(_tangent)
-                        mesh_dict['ta'].append(1.0)
+                        mesh_dict['ta'].append(_binormal_sign)  # UV winding order
                     i = len(unique_verts) - 1  # the tri will reference the last added vertex
 
                 # store the tri vert reference
@@ -443,7 +444,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
             bone_index = all_bones.index(bone)
         except ValueError:
             raise RuntimeError(
-                "A skinned bone ({0}) is being excluded from export, check all bones using the '{1}' property.".format(
+                "A skinned bone ({0}) is being excluded from export! Check all bones using the '{1}' property.".format(
                     bone, PDX_IGNOREJOINT
                 )
             )
@@ -463,11 +464,20 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
         for influence, weight in vert_weights[vtx].iteritems():
             skin_dict['ix'].append(influence)
             skin_dict['w'].append(weight)
-        if len(vert_weights[vtx]) < PDX_MAXSKININFS:
+        if len(vert_weights[vtx]) <= PDX_MAXSKININFS:
             # pad out with null data to fill container
             padding = PDX_MAXSKININFS - len(vert_weights[vtx])
             skin_dict['ix'].extend([-1] * padding)
             skin_dict['w'].extend([0.0] * padding)
+        else:
+            # warn if vertex influence count exceeds the max
+            raise RuntimeError(
+                "Mesh '{0}' has vertices skinned to more than {1} bones! This is not supported. "
+                "You must fix skin weights to reduce the influence count.".format(
+                    maya_mesh.getTransform().name(), PDX_MAXSKININFS
+                )
+            )
+
 
     return skin_dict
 
@@ -1364,19 +1374,20 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
     framecount = info.attrib['sa'][0]
 
     # set scene animation and playback settings
-    fps = info.attrib['fps'][0]
+    fps = int(info.attrib['fps'][0])
+    IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
     try:
         pmc.currentUnit(time=('{0}fps'.format(fps)))
     except RuntimeError:
-        fps = int(fps)
         if fps == 15:
             pmc.currentUnit(time='game')
         elif fps == 30:
             pmc.currentUnit(time='ntsc')
+        elif fps == 60:
+            pmc.currentUnit(time='ntscf')
         else:
             raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
 
-    IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
     if progress_fn:
         progress.update(1, 'setting playback speed')
     pmc.playbackOptions(edit=True, playbackSpeed=1.0)
@@ -1404,7 +1415,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
             bone_joint = matching_bones[0]
         except IndexError:
             bone_errors.append(bone_name)
-            IO_PDX_LOG.info("failed to find bone '{0}'".format(bone_name))
+            IO_PDX_LOG.warning("failed to find bone '{0}'".format(bone_name))
             if progress_fn:
                 progress.update(1, 'failed to find bone!')
 
@@ -1476,7 +1487,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
 def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     start = time.time()
-    IO_PDX_LOG.info("Exporting {0}".format(animpath))
+    IO_PDX_LOG.info("exporting {0}".format(animpath))
 
     progress = None
     if progress_fn:
@@ -1589,6 +1600,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     pmc.currentTime(curr_frame, edit=True)
 
+    pmc.select(None)
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
     if progress_fn:
         progress.finished()

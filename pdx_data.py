@@ -49,27 +49,47 @@ class PDXData(object):
             self.depth = depth
 
         # object attribute collection
-        self.attrdict = OrderedDict()
+        self.attrlist = []
 
-        # set element attributes as object attributes
+        # set XML element attributes as object attributes
         for attr in element.attrib:
             setattr(self, attr, element.attrib[attr])
-            self.attrdict[attr] = element.attrib[attr]
+            self.attrlist.append(attr)
 
-        # iterate over element children, set these as attributes which nest further PDXData objects
+        # iterate over XML element children, set these as attributes, nesting further PDXData objects
         for child in list(element):
             child_data = type(self)(child, self.depth + 1)
-            setattr(self, child.tag, child_data)
-            self.attrdict[child.tag] = child_data
+            if hasattr(self, child.tag):
+                curr_data = getattr(self, child.tag)
+                if type(curr_data) == list:
+                    curr_data.append(child_data)
+                else:
+                    setattr(self, child.tag, [curr_data, child_data])
+            else:
+                setattr(self, child.tag, child_data)
+                self.attrlist.append(child.tag)
 
     def __str__(self):
+        indent = " " * 4
         string = list()
-        for _key, _val in self.attrdict.items():
+
+        for _key in self.attrlist:
+            _val = getattr(self, _key)
+
             if type(_val) == type(self):
-                string.append('{}{}:'.format(self.depth * '    ', _key))
-                string.append('{}'.format(_val))
+                string.append("{}{}:".format(self.depth * indent, _key))
+                string.append("{}".format(_val))
+
             else:
-                string.append('{}{}: {}  {}'.format(self.depth * '    ', _key, len(_val), _val))
+                if all(type(v) == type(self) for v in _val):
+                    for v in _val:
+                        string.append("{}{}:".format(self.depth * indent, _key))
+                        string.append("{}".format(v))
+                else:
+                    data_len = len(_val)
+                    data_type = list(set(type(v) for v in _val))[0].__name__
+                    string.append("{}{} ({}, {}):  {}".format(self.depth * indent, _key, data_type, data_len, _val))
+
         return '\n'.join(string)
 
 

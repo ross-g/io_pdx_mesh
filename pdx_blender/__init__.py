@@ -10,6 +10,8 @@ import bpy
 from bpy.types import PropertyGroup
 from bpy.props import PointerProperty, CollectionProperty, StringProperty, BoolProperty, EnumProperty, IntProperty
 
+from .. import IO_PDX_LOG
+
 from . import blender_import_export, blender_ui
 importlib.reload(blender_import_export)
 importlib.reload(blender_ui)
@@ -90,7 +92,7 @@ classes.sort(key=lambda cls: cls.panel_order if hasattr(cls, 'panel_order') else
 
 
 def register():
-    print("[io_pdx_mesh] Loading Blender UI.")
+    IO_PDX_LOG.info("Loading Blender UI.")
     import importlib
     importlib.reload(blender_import_export)
     importlib.reload(blender_ui)
