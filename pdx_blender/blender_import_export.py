@@ -527,67 +527,91 @@ def swap_coord_space(data):
 """
 
 
-def create_datatexture(tex_filepath):
-    texture_name = os.path.split(tex_filepath)[1]
+def create_node_texture(node_tree, tex_filepath):
+    texture_name = os.path.basename(tex_filepath)
 
-    if texture_name in bpy.data.images:
-        new_image = bpy.data.images[texture_name]
-    else:
-        new_image = bpy.data.images.load(tex_filepath)
+    teximage_node = node_tree.nodes.new('ShaderNodeTexImage')
+    teximage_node.name = texture_name
 
-    if texture_name in bpy.data.textures:
-        new_texture = bpy.data.textures[texture_name]
+    if os.path.isfile(tex_filepath):
+        new_image = bpy.data.images.load(tex_filepath, check_existing=True)
     else:
-        new_texture = bpy.data.textures.new(texture_name, type='IMAGE')
-        new_texture.image = new_image
+        # create a placeholder for missing texture
+        new_image = bpy.data.images.new(texture_name, 32, 32)
+        # highlight node to show error
+        teximage_node.color = (1, 0, 0)
+        teximage_node.use_custom_color = True
+
+        IO_PDX_LOG.warning("unable to find texture filepath. {0}".format(tex_filepath))
 
     new_image.use_fake_user = True
-    new_texture.use_fake_user = True
+    teximage_node.image = new_image
 
-    return new_texture
+    return teximage_node
 
 
 def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
     new_material = bpy.data.materials.new('io_pdx_mat')
-    new_material.use_fake_user = True
-
     new_material[PDX_SHADER] = PDX_material.shader[0]
+    new_material.use_backface_culling = True
+    new_material.use_fake_user = True
+    new_material.use_nodes = True
+
+    def set_node_pos(node, x, y):
+        node.location = Vector((x * 300.0, y * -300.0))
+
+    node_tree = new_material.node_tree
+    nodes = node_tree.nodes
+    links = node_tree.links
+
+    shader_root = nodes.get('Principled BSDF')
 
     if getattr(PDX_material, 'diff', None):
         texture_path = os.path.join(texture_dir, PDX_material.diff[0])
-        if os.path.isfile(texture_path):
-            new_file = create_datatexture(texture_path)
-            diff_tex = new_material.texture_slots.add()
-            diff_tex.texture = new_file
-            diff_tex.texture_coords = 'UV'
-            diff_tex.use_map_color_diffuse = True
-        else:
-            IO_PDX_LOG.warning("unable to find diffuse texture filepath. {0}".format(texture_path))
 
-    if getattr(PDX_material, 'n', None):
-        texture_path = os.path.join(texture_dir, PDX_material.n[0])
-        if os.path.isfile(texture_path):
-            new_file = create_datatexture(texture_path)
-            norm_tex = new_material.texture_slots.add()
-            norm_tex.texture = new_file
-            norm_tex.texture_coords = 'UV'
-            norm_tex.use_map_color_diffuse = False
-            norm_tex.use_map_normal = True
-            norm_tex.normal_map_space = 'TANGENT'
-        else:
-            IO_PDX_LOG.warning("unable to find normal texture filepath. {0}".format(texture_path))
+        albedo_texture = create_node_texture(node_tree, texture_path)
+        set_node_pos(albedo_texture, -5, 0)
+
+        links.new(albedo_texture.outputs['Color'], shader_root.inputs['Base Color'])
 
     if getattr(PDX_material, 'spec', None):
         texture_path = os.path.join(texture_dir, PDX_material.spec[0])
-        if os.path.isfile(texture_path):
-            new_file = create_datatexture(texture_path)
-            spec_tex = new_material.texture_slots.add()
-            spec_tex.texture = new_file
-            spec_tex.texture_coords = 'UV'
-            spec_tex.use_map_color_diffuse = False
-            spec_tex.use_map_color_spec = True
-        else:
-            IO_PDX_LOG.warning("unable to find specular texture filepath. {0}".format(texture_path))
+
+        material_texture = create_node_texture(node_tree, texture_path)
+        material_texture.image.colorspace_settings.is_data = True
+        set_node_pos(material_texture, -5, 1)
+
+        separate_rgb = node_tree.nodes.new(type="ShaderNodeSeparateRGB")
+        set_node_pos(separate_rgb, -4, 1)
+
+        links.new(material_texture.outputs['Color'], separate_rgb.inputs['Image'])
+        # links.new(separate_rgb.outputs['R'], shader_root.inputs['Specular'])  # material.R used for custom mask?
+        links.new(separate_rgb.outputs['G'], shader_root.inputs['Specular'])
+        links.new(separate_rgb.outputs['B'], shader_root.inputs['Metallic'])
+        links.new(material_texture.outputs['Alpha'], shader_root.inputs['Roughness'])
+
+    if getattr(PDX_material, 'n', None):
+        texture_path = os.path.join(texture_dir, PDX_material.n[0])
+
+        normal_texture = create_node_texture(node_tree, texture_path)
+        normal_texture.image.colorspace_settings.is_data = True
+        set_node_pos(normal_texture, -5, 2)
+
+        separate_rgb = node_tree.nodes.new(type="ShaderNodeSeparateRGB")
+        set_node_pos(separate_rgb, -4, 2)
+        combine_rgb = node_tree.nodes.new(type="ShaderNodeCombineRGB")
+        combine_rgb.inputs['B'].default_value = 1.0
+        set_node_pos(combine_rgb, -3, 2)
+
+        normal_map = node_tree.nodes.new('ShaderNodeNormalMap')
+        set_node_pos(normal_map, -2, 2)
+
+        links.new(normal_texture.outputs['Color'], separate_rgb.inputs['Image'])
+        links.new(separate_rgb.outputs['G'], combine_rgb.inputs['R'])
+        # links.new(separate_rgb.outputs['B'], combine_rgb.inputs['R'])  # normal.B used for emissive?
+        links.new(normal_texture.outputs['Alpha'], combine_rgb.inputs['G'])
+        links.new(combine_rgb.outputs['Image'], normal_map.inputs['Color'])
+        links.new(normal_map.outputs['Normal'], shader_root.inputs['Normal'])
 
     if mat_name is not None:
         new_material.name = mat_name
@@ -600,7 +624,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
     new_loc.empty_display_type = 'ARROWS'
-    new_loc.empty_draw_size = 0.25
+    new_loc.empty_display_size = 0.25
     new_loc.show_axis = False
 
     bpy.context.scene.collection.objects.link(new_loc)
