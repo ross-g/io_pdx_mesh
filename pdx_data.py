@@ -13,7 +13,6 @@ from __future__ import print_function
 import os
 import sys
 import struct
-from collections import OrderedDict
 
 try:
     import xml.etree.cElementTree as Xml
@@ -71,7 +70,7 @@ class PDXData(object):
 
     def __str__(self):
         indent = " " * 4
-        string = list()
+        string = []
 
         for _key in self.attrlist:
             _val = getattr(self, _key)
@@ -90,7 +89,7 @@ class PDXData(object):
                     data_type = list(set(type(v) for v in _val))[0].__name__
                     string.append("{}{} ({}, {}):  {}".format(self.depth * indent, _key, data_type, data_len, _val))
 
-        return '\n'.join(string)
+        return "\n".join(string)
 
 
 """ ====================================================================================================================
@@ -571,11 +570,14 @@ General binary format is:
 .mesh file format
 ========================================================================================================================
     header    (@@b@ for binary, @@t@ for text)
-    pdxasset    (int)  number of assets?
+    pdxasset    (int)  number of assets? file format version?
         object    (object)  parent item for all 3D objects
+            lodperc    (float)  list of LOD switches, percentage size of bounding sphere?  NEW STYLE!
+            loddist    (float)  list of LOD switches, some distance metric?  OLD STYLE! OBSOLETE?
             shape    (object)
                 ...  multiple shapes, used for meshes under different node transforms
             shape    (object)
+                lod    (int)  LOD level of shape, 0 based
                 mesh    (object)
                     ...  multiple meshes per shape, used for different material IDs
                 mesh    (object)
@@ -586,6 +588,7 @@ General binary format is:
                     ta    (float)  tangents
                     u0    (float)  UVs
                     tri    (int)  triangles
+                    boundingsphere    (float)  describes centre and radius of mesh spherical bound  NEW STYLE!
                     aabb    (object)
                         min    (float)  min bounding box
                         max    (float)  max bounding box

@@ -47,7 +47,7 @@ class Github_API(object):
     def __init__(self):
         self.api = API_URL
         self.owner = bl_info['author']
-        self.repo = bl_info['repo_name']
+        self.repo = bl_info['project_name']
         self.args = {'owner': self.owner, 'repo': self.repo, 'api': self.api}
 
         self.refresh()
