@@ -312,6 +312,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     triangles = mesh.getTriangles()
     uv_setnames = [uv_set for uv_set in mesh.getUVSetNames() if mFn_Mesh.numUVs(uv_set) > 0]
     uv_coords = {}
+    tangents = None
     for i, uv_set in enumerate(uv_setnames):
         _u, _v = mesh.getUVs(uvSet=uv_set)
         uv_coords[i] = zip(_u, _v)
@@ -322,15 +323,17 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
 
     # collect all unique verts in the order that we process them
-    unique_verts = []
+    export_verts = []
+    unique_verts = set()
 
     for face in meshfaces:
+        face_id = face.index()
         face_vert_ids = face.getVertices()  # vertices making this face
-        num_triangles = triangles[0][face.index()]  # number of triangles making this face
+        num_triangles = triangles[0][face_id]  # number of triangles making this face
 
         # store data for each tri of each face
         for tri in xrange(0, num_triangles):
-            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), tri)  # vertices making this triangle
+            tri_vert_ids = mesh.getPolygonTriangleVertices(face_id, tri)  # vertices making this triangle
 
             dict_vert_idx = []
 
@@ -352,7 +355,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     _normal = util_round(list(_normal), PDX_DECIMALPTS)
 
                 # uv
-                _uv_coords = {}
+                _uv_coords = ()
                 for i, uv_set in enumerate(uv_setnames):
                     try:
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
@@ -363,28 +366,33 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
                         uv = (0.0, 0.0)
-                    _uv_coords[i] = uv
+                    _uv_coords += (uv,)
 
                 # tangent (omitted if there were no UVs)
                 if uv_setnames and tangents:
-                    vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
+                    vert_tangent_id = mesh.getTangentId(face_id, vert_id)
                     _binormal_sign = 1.0 if mFn_Mesh.isRightHandedTangent(vert_tangent_id, uv_setnames[0]) else -1.0
                     _tangent = list(tangents[vert_tangent_id])
                     _tangent = swap_coord_space(_tangent)  # convert to Game space
                     if round_data:
                         _tangent = util_round(list(_tangent), PDX_DECIMALPTS)
 
-                # check if this tri vert is new and unique, or can just reference an existing vertex
+                # check if this tri-vert is new and unique, or can if we can just use an existing vertex
                 new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
-                # test if we have already stored this vertex
-                try:
-                    # no data needs to be added to the dict, the tri can just reference an existing vertex
-                    i = unique_verts.index(new_vert)
-                except ValueError:
-                    i = None
-                if i is None or skip_merge_vertices:
-                    # new unique vertex, collect it and add the vert data to the dict
-                    unique_verts.append(new_vert)
+
+                # test if we have already stored this vertex in the unique set
+                i = None
+                if not skip_merge_vertices:
+                    if new_vert in unique_verts:
+                        # no new data to be added to the mesh dict, the tri will reference an existing vert
+                        i = export_verts.index(new_vert)
+
+                if i is None:
+                    # collect the new vertex
+                    unique_verts.add(new_vert)
+                    export_verts.append(new_vert)
+
+                    # add this vert data to the mesh dict
                     mesh_dict['p'].extend(_position)
                     mesh_dict['n'].extend(_normal)
                     for i, uv_set in enumerate(uv_setnames):
@@ -392,9 +400,10 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     if uv_setnames:
                         mesh_dict['ta'].extend(_tangent)
                         mesh_dict['ta'].append(_binormal_sign)  # UV winding order
-                    i = len(unique_verts) - 1  # the tri will reference the last added vertex
+                    # the tri will reference the last added vertex
+                    i = len(export_verts) - 1
 
-                # store the tri vert reference
+                # store the tri-vert reference
                 dict_vert_idx.append(i)
 
             # tri-faces
@@ -403,14 +412,14 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
             )
 
     # calculate min and max bounds of mesh
-    x_VtxPos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
-    y_VtxPos = set([mesh_dict['p'][i + 1] for i in xrange(0, len(mesh_dict['p']), 3)])
-    z_VtxPos = set([mesh_dict['p'][i + 2] for i in xrange(0, len(mesh_dict['p']), 3)])
-    mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
-    mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
+    x_vtx_pos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
+    y_vtx_pos = set([mesh_dict['p'][i + 1] for i in xrange(0, len(mesh_dict['p']), 3)])
+    z_vtx_pos = set([mesh_dict['p'][i + 2] for i in xrange(0, len(mesh_dict['p']), 3)])
+    mesh_dict['min'] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
+    mesh_dict['max'] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
 
     # create an ordered list of vertex ids that we have gathered into the mesh dict
-    vert_id_list = [vert.id for vert in unique_verts]
+    vert_id_list = [vert.id for vert in export_verts]
 
     return mesh_dict, vert_id_list
 
