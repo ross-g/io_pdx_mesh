@@ -34,9 +34,9 @@ class PDXsettings(object):
             except OSError as e:
                 if e.errno != errno.EEXIST:
                     print(e)
-            # default settings
-            self.config_path = filepath
-            self.app = sys.executable
+        # default settings
+        self.config_path = filepath
+        self.app = sys.executable
 
     def __setattr__(self, name, value):
         super(PDXsettings, self).__setattr__(name, value)

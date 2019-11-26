@@ -312,6 +312,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     triangles = mesh.getTriangles()
     uv_setnames = [uv_set for uv_set in mesh.getUVSetNames() if mFn_Mesh.numUVs(uv_set) > 0]
     uv_coords = {}
+    tangents = None
     for i, uv_set in enumerate(uv_setnames):
         _u, _v = mesh.getUVs(uvSet=uv_set)
         uv_coords[i] = zip(_u, _v)
@@ -322,15 +323,17 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
 
     # collect all unique verts in the order that we process them
-    unique_verts = []
+    export_verts = []
+    unique_verts = set()
 
     for face in meshfaces:
+        face_id = face.index()
         face_vert_ids = face.getVertices()  # vertices making this face
-        num_triangles = triangles[0][face.index()]  # number of triangles making this face
+        num_triangles = triangles[0][face_id]  # number of triangles making this face
 
         # store data for each tri of each face
         for tri in xrange(0, num_triangles):
-            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), tri)  # vertices making this triangle
+            tri_vert_ids = mesh.getPolygonTriangleVertices(face_id, tri)  # vertices making this triangle
 
             dict_vert_idx = []
 
@@ -352,7 +355,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     _normal = util_round(list(_normal), PDX_DECIMALPTS)
 
                 # uv
-                _uv_coords = {}
+                _uv_coords = ()
                 for i, uv_set in enumerate(uv_setnames):
                     try:
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
@@ -363,28 +366,33 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
                         uv = (0.0, 0.0)
-                    _uv_coords[i] = uv
+                    _uv_coords += (uv,)
 
                 # tangent (omitted if there were no UVs)
                 if uv_setnames and tangents:
-                    vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
+                    vert_tangent_id = mesh.getTangentId(face_id, vert_id)
                     _binormal_sign = 1.0 if mFn_Mesh.isRightHandedTangent(vert_tangent_id, uv_setnames[0]) else -1.0
                     _tangent = list(tangents[vert_tangent_id])
                     _tangent = swap_coord_space(_tangent)  # convert to Game space
                     if round_data:
                         _tangent = util_round(list(_tangent), PDX_DECIMALPTS)
 
-                # check if this tri vert is new and unique, or can just reference an existing vertex
+                # check if this tri-vert is new and unique, or can if we can just use an existing vertex
                 new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
-                # test if we have already stored this vertex
-                try:
-                    # no data needs to be added to the dict, the tri can just reference an existing vertex
-                    i = unique_verts.index(new_vert)
-                except ValueError:
-                    i = None
-                if i is None or skip_merge_vertices:
-                    # new unique vertex, collect it and add the vert data to the dict
-                    unique_verts.append(new_vert)
+
+                # test if we have already stored this vertex in the unique set
+                i = None
+                if not skip_merge_vertices:
+                    if new_vert in unique_verts:
+                        # no new data to be added to the mesh dict, the tri will reference an existing vert
+                        i = export_verts.index(new_vert)
+
+                if i is None:
+                    # collect the new vertex
+                    unique_verts.add(new_vert)
+                    export_verts.append(new_vert)
+
+                    # add this vert data to the mesh dict
                     mesh_dict['p'].extend(_position)
                     mesh_dict['n'].extend(_normal)
                     for i, uv_set in enumerate(uv_setnames):
@@ -392,9 +400,10 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     if uv_setnames:
                         mesh_dict['ta'].extend(_tangent)
                         mesh_dict['ta'].append(_binormal_sign)  # UV winding order
-                    i = len(unique_verts) - 1  # the tri will reference the last added vertex
+                    # the tri will reference the last added vertex
+                    i = len(export_verts) - 1
 
-                # store the tri vert reference
+                # store the tri-vert reference
                 dict_vert_idx.append(i)
 
             # tri-faces
@@ -403,14 +412,14 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
             )
 
     # calculate min and max bounds of mesh
-    x_VtxPos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
-    y_VtxPos = set([mesh_dict['p'][i + 1] for i in xrange(0, len(mesh_dict['p']), 3)])
-    z_VtxPos = set([mesh_dict['p'][i + 2] for i in xrange(0, len(mesh_dict['p']), 3)])
-    mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
-    mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
+    x_vtx_pos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
+    y_vtx_pos = set([mesh_dict['p'][i + 1] for i in xrange(0, len(mesh_dict['p']), 3)])
+    z_vtx_pos = set([mesh_dict['p'][i + 2] for i in xrange(0, len(mesh_dict['p']), 3)])
+    mesh_dict['min'] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
+    mesh_dict['max'] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
 
     # create an ordered list of vertex ids that we have gathered into the mesh dict
-    vert_id_list = [vert.id for vert in unique_verts]
+    vert_id_list = [vert.id for vert in export_verts]
 
     return mesh_dict, vert_id_list
 
@@ -435,7 +444,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
 
     # parse all verts in order if we didn't supply a subset of vert ids
     if vertex_ids is None:
-        vertex_ids = range(len(maya_mesh.verts))
+        vertex_ids = xrange(len(maya_mesh.verts))
 
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
@@ -477,7 +486,6 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
                     maya_mesh.getTransform().name(), PDX_MAXSKININFS
                 )
             )
-
 
     return skin_dict
 
@@ -559,7 +567,7 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
     # store transform for each bone over the frame range
     frames_data = defaultdict(list)
 
-    for f in range(startframe, endframe + 1):
+    for f in xrange(startframe, endframe + 1):
         pmc.currentTime(f, edit=True)
         for bone in export_bones:
             # convert to Game space
@@ -758,7 +766,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
 def create_skeleton(PDX_bone_list):
     # keep track of bones as we create them
-    bone_list = [None for _ in range(0, len(PDX_bone_list))]
+    bone_list = [None for _ in xrange(0, len(PDX_bone_list))]
 
     pmc.select(clear=True)
     for bone in PDX_bone_list:
@@ -907,12 +915,12 @@ def create_mesh(PDX_mesh, name=None):
     # faces
     numPolygons = len(tris) / 3
     polygonCounts = OpenMaya.MIntArray()  # count of vertices per poly
-    for i in range(0, numPolygons):
+    for i in xrange(0, numPolygons):
         polygonCounts.append(3)
 
     # vert connections
     polygonConnects = OpenMaya.MIntArray()
-    for i in range(0, len(tris), 3):
+    for i in xrange(0, len(tris), 3):
         polygonConnects.append(tris[i + 2])  # convert handedness to Maya space
         polygonConnects.append(tris[i + 1])
         polygonConnects.append(tris[i])
@@ -962,16 +970,16 @@ def create_mesh(PDX_mesh, name=None):
             n = OpenMaya.MVector(_norms[0], _norms[1], _norms[2])
             normalsIn.append(n)
         vertexList = OpenMaya.MIntArray()  # matches normal to vert by index
-        for i in range(0, numVertices):
+        for i in xrange(0, numVertices):
             vertexList.append(i)
         mFn_Mesh.setVertexNormals(normalsIn, vertexList)
 
     # apply the UV data channels
     uvCounts = OpenMaya.MIntArray()
-    for i in range(0, numPolygons):
+    for i in xrange(0, numPolygons):
         uvCounts.append(3)
     uvIds = OpenMaya.MIntArray()
-    for i in range(0, len(tris), 3):
+    for i in xrange(0, len(tris), 3):
         uvIds.append(tris[i + 2])  # convert handedness to Maya space
         uvIds.append(tris[i + 1])
         uvIds.append(tris[i])
@@ -1334,10 +1342,10 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
 
-            _position= loc.getTranslation(worldSpace=True)
+            _position = loc.getTranslation(worldSpace=True)
             _rotation = loc.getRotation(worldSpace=True, quaternion=True)
             if exp_skel and loc.getParent() and type(loc.getParent()) == pmc.nt.Joint:
-                _position= loc.getTranslation()
+                _position = loc.getTranslation()
                 _rotation = loc.getRotation(quaternion=True)
 
                 locnode_xml.set('pa', [loc.getParent().name()])
@@ -1452,7 +1460,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
     # then traverse the samples data to store keys per bone
     s_index, q_index, t_index = 0, 0, 0
-    for _ in range(0, framecount):
+    for _ in xrange(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
 
@@ -1579,7 +1587,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
-    for i in range(frame_samples):
+    for i in xrange(frame_samples):
         for bone in all_bone_keyframes:
             if 't' in all_bone_keyframes[bone]:
                 t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO: pop first item is slow?
