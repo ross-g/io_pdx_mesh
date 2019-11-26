@@ -444,7 +444,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
 
     # parse all verts in order if we didn't supply a subset of vert ids
     if vertex_ids is None:
-        vertex_ids = range(len(maya_mesh.verts))
+        vertex_ids = xrange(len(maya_mesh.verts))
 
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
@@ -486,7 +486,6 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
                     maya_mesh.getTransform().name(), PDX_MAXSKININFS
                 )
             )
-
 
     return skin_dict
 
@@ -568,7 +567,7 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
     # store transform for each bone over the frame range
     frames_data = defaultdict(list)
 
-    for f in range(startframe, endframe + 1):
+    for f in xrange(startframe, endframe + 1):
         pmc.currentTime(f, edit=True)
         for bone in export_bones:
             # convert to Game space
@@ -767,7 +766,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
 def create_skeleton(PDX_bone_list):
     # keep track of bones as we create them
-    bone_list = [None for _ in range(0, len(PDX_bone_list))]
+    bone_list = [None for _ in xrange(0, len(PDX_bone_list))]
 
     pmc.select(clear=True)
     for bone in PDX_bone_list:
@@ -916,12 +915,12 @@ def create_mesh(PDX_mesh, name=None):
     # faces
     numPolygons = len(tris) / 3
     polygonCounts = OpenMaya.MIntArray()  # count of vertices per poly
-    for i in range(0, numPolygons):
+    for i in xrange(0, numPolygons):
         polygonCounts.append(3)
 
     # vert connections
     polygonConnects = OpenMaya.MIntArray()
-    for i in range(0, len(tris), 3):
+    for i in xrange(0, len(tris), 3):
         polygonConnects.append(tris[i + 2])  # convert handedness to Maya space
         polygonConnects.append(tris[i + 1])
         polygonConnects.append(tris[i])
@@ -971,16 +970,16 @@ def create_mesh(PDX_mesh, name=None):
             n = OpenMaya.MVector(_norms[0], _norms[1], _norms[2])
             normalsIn.append(n)
         vertexList = OpenMaya.MIntArray()  # matches normal to vert by index
-        for i in range(0, numVertices):
+        for i in xrange(0, numVertices):
             vertexList.append(i)
         mFn_Mesh.setVertexNormals(normalsIn, vertexList)
 
     # apply the UV data channels
     uvCounts = OpenMaya.MIntArray()
-    for i in range(0, numPolygons):
+    for i in xrange(0, numPolygons):
         uvCounts.append(3)
     uvIds = OpenMaya.MIntArray()
-    for i in range(0, len(tris), 3):
+    for i in xrange(0, len(tris), 3):
         uvIds.append(tris[i + 2])  # convert handedness to Maya space
         uvIds.append(tris[i + 1])
         uvIds.append(tris[i])
@@ -1343,10 +1342,10 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
 
-            _position= loc.getTranslation(worldSpace=True)
+            _position = loc.getTranslation(worldSpace=True)
             _rotation = loc.getRotation(worldSpace=True, quaternion=True)
             if exp_skel and loc.getParent() and type(loc.getParent()) == pmc.nt.Joint:
-                _position= loc.getTranslation()
+                _position = loc.getTranslation()
                 _rotation = loc.getRotation(quaternion=True)
 
                 locnode_xml.set('pa', [loc.getParent().name()])
@@ -1461,7 +1460,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
     # then traverse the samples data to store keys per bone
     s_index, q_index, t_index = 0, 0, 0
-    for _ in range(0, framecount):
+    for _ in xrange(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
 
@@ -1588,7 +1587,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
-    for i in range(frame_samples):
+    for i in xrange(frame_samples):
         for bone in all_bone_keyframes:
             if 't' in all_bone_keyframes[bone]:
                 t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO: pop first item is slow?
