@@ -540,9 +540,15 @@ def create_node_texture(node_tree, tex_filepath):
 
     if os.path.isfile(tex_filepath):
         new_image = bpy.data.images.load(tex_filepath, check_existing=True)
+
     else:
-        # create a placeholder for missing texture
-        new_image = bpy.data.images.new(texture_name, 32, 32)
+        # check for existing placeholder
+        if texture_name in bpy.data.images:
+            new_image = bpy.data.images[texture_name]
+        else:
+            # create a new placeholder for missing texture file
+            new_image = bpy.data.images.new(texture_name, 32, 32)
+            new_image.source = 'FILE'
         # highlight node to show error
         teximage_node.color = (1, 0, 0)
         teximage_node.use_custom_color = True
@@ -550,37 +556,43 @@ def create_node_texture(node_tree, tex_filepath):
         IO_PDX_LOG.warning("unable to find texture filepath. {0}".format(tex_filepath))
 
     new_image.use_fake_user = True
+    new_image.alpha_mode = 'CHANNEL_PACKED'
+
     teximage_node.image = new_image
 
     return teximage_node
 
 
-def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
-    new_material = bpy.data.materials.new('io_pdx_mat')
-    new_material[PDX_SHADER] = PDX_material.shader[0]
-    new_material.use_backface_culling = True
-    new_material.use_fake_user = True
-    new_material.use_nodes = True
+def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
+    new_shader = bpy.data.materials.new(shader_name)
+    new_shader[PDX_SHADER] = PDX_material.shader[0]
+    new_shader.use_fake_user = True
+    new_shader.use_nodes = True
+
+    new_shader.use_backface_culling = True
+    new_shader.shadow_method = 'CLIP'
+    new_shader.blend_method = 'CLIP'
 
     def set_node_pos(node, x, y):
         node.location = Vector((x * 300.0, y * -300.0))
 
-    node_tree = new_material.node_tree
+    node_tree = new_shader.node_tree
     nodes = node_tree.nodes
     links = node_tree.links
 
     shader_root = nodes.get('Principled BSDF')
 
-    if getattr(PDX_material, 'diff', None):
-        texture_path = os.path.join(texture_dir, PDX_material.diff[0])
+    if getattr(PDX_material, 'diff', None) or placeholder:
+        texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.diff[0])
 
         albedo_texture = create_node_texture(node_tree, texture_path)
         set_node_pos(albedo_texture, -5, 0)
 
         links.new(albedo_texture.outputs['Color'], shader_root.inputs['Base Color'])
+        # links.new(albedo_texture.outputs['Alpha'], shader_root.inputs['Alpha'])  # diffuse.A sometimes used for alpha
 
-    if getattr(PDX_material, 'spec', None):
-        texture_path = os.path.join(texture_dir, PDX_material.spec[0])
+    if getattr(PDX_material, 'spec', None) or placeholder:
+        texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.spec[0])
 
         material_texture = create_node_texture(node_tree, texture_path)
         material_texture.image.colorspace_settings.is_data = True
@@ -595,8 +607,8 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
         links.new(separate_rgb.outputs['B'], shader_root.inputs['Metallic'])
         links.new(material_texture.outputs['Alpha'], shader_root.inputs['Roughness'])
 
-    if getattr(PDX_material, 'n', None):
-        texture_path = os.path.join(texture_dir, PDX_material.n[0])
+    if getattr(PDX_material, 'n', None) or placeholder:
+        texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.n[0])
 
         normal_texture = create_node_texture(node_tree, texture_path)
         normal_texture.image.colorspace_settings.is_data = True
@@ -618,11 +630,14 @@ def create_material(PDX_material, texture_dir, mesh=None, mat_name=None):
         links.new(combine_rgb.outputs['Image'], normal_map.inputs['Color'])
         links.new(normal_map.outputs['Normal'], shader_root.inputs['Normal'])
 
-    if mat_name is not None:
-        new_material.name = mat_name
-    if mesh is not None:
-        new_material.name = 'PDXphong_' + mesh.name
-        mesh.materials.append(new_material)
+    return new_shader
+
+
+def create_material(PDX_material, mesh, texture_path):
+    shader_name = 'PDXmat_' + mesh.name
+    shader = create_shader(PDX_material, shader_name, texture_path)
+
+    mesh.materials.append(shader)
 
 
 def create_locator(PDX_locator, PDX_bone_dict):
@@ -1070,7 +1085,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
                 # create the material
                 if pdx_material:
                     IO_PDX_LOG.info("creating material -")
-                    create_material(pdx_material, os.path.split(meshpath)[0], mesh)
+                    create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
                 # create the vertex group skin
                 if rig and pdx_skin:

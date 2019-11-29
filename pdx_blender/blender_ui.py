@@ -96,7 +96,7 @@ class IOPDX_OT_popup_message(Operator):
         default='NOT YET IMPLEMENTED!',
     )
     msg_icon : StringProperty(
-        default='ERROR',  # 'QUESTION', 'CANCEL'
+        default='ERROR',  # 'QUESTION', 'CANCEL', 'INFO'
     )
     msg_width : IntProperty(
         default=300,
@@ -153,7 +153,7 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
             {'shader': [mat_type]}
         )
 
-        create_material(mat_pdx, None, mat_name=mat_name)
+        create_shader(mat_pdx, mat_name, None, placeholder=True)
         return {'FINISHED'}
 
     def invoke(self, context, event):
