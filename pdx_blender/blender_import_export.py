@@ -209,10 +209,10 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
     # cache some mesh data
     uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)]
     if uv_setnames:
-        mesh.calc_tangents(uv_setnames[0])
+        mesh.calc_tangents(uvmap=uv_setnames[0])
 
     bm = get_bmesh(mesh)
-    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method=0, ngon_method=0)
+    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method='BEAUTY', ngon_method='BEAUTY')
 
     # ensure Bmesh data needed for int subscription is initialized
     bm.faces.ensure_lookup_table()
