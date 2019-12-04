@@ -174,16 +174,42 @@ def get_material_shader(blender_material):
 def get_material_textures(blender_material):
     texture_dict = dict()
 
-    material_texture_slots = [slot for slot in blender_material.texture_slots if slot is not None]
-    for tex_slot in material_texture_slots:
-        tex_filepath = tex_slot.texture.image.filepath_from_user()
+    node_tree = blender_material.node_tree
+    nodes = node_tree.nodes
+    links = node_tree.links
 
-        if tex_slot.use_map_color_diffuse:
-            texture_dict['diff'] = tex_filepath
-        elif tex_slot.use_map_normal:
-            texture_dict['n'] = tex_filepath
-        elif tex_slot.use_map_color_spec:
-            texture_dict['spec'] = tex_filepath
+    # find the first valid Matrial Output node linked to a Surface shader
+    try:
+        material_output = next(
+            n for n in nodes if type(n) == bpy.types.ShaderNodeOutputMaterial and n.inputs['Surface'].is_linked
+        )
+    except StopIteration:
+        raise RuntimeError("No connected 'Material Output' found for material: {0}".format(blender_material.name))
+
+    surface_input = material_output.inputs['Surface'].links[0]
+    shader_root = surface_input.from_node
+    if not type(surface_input.from_socket) == bpy.types.NodeSocketShader:
+        raise RuntimeError(
+            "No BSDF shader connected to 'Material Output > Surface' for material: {0}".format(blender_material.name)
+        )
+
+    # follow linked Shader node inputs up the node tree until we find a connected Image Texture node
+    for bsdf_input, pdxmaterial_slot in zip(['Base Color', 'Roughness', 'Normal'], ['diff', 'spec', 'n']):
+        if shader_root.inputs[bsdf_input].is_linked:
+            try:
+                input_node = shader_root.inputs[bsdf_input].links[0].from_node
+                while type(input_node) != bpy.types.ShaderNodeTexImage:
+                    # just check the first connected input for simplicity and continue upstream
+                    first_link = next(i for i in input_node.inputs if i.is_linked)
+                    input_node = first_link.links[0].from_node
+
+                tex_filepath = input_node.image.filepath_from_user()
+                texture_dict[pdxmaterial_slot] = tex_filepath
+
+            except StopIteration:
+                IO_PDX_LOG.warning(
+                    "No connected {0} Image Texture found for: {1}".format(bsdf_input, blender_material.name)
+                )
 
     return texture_dict
 
