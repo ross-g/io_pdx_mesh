@@ -29,7 +29,7 @@ class PDXsettings(object):
             # new settings file
             try:
                 os.makedirs(path.dirname(filepath))
-                with open(filepath, 'w') as f:
+                with open(filepath, 'w') as _:
                     pass
             except OSError as e:
                 if e.errno != errno.EEXIST:

@@ -22,7 +22,6 @@ import bpy
 import bmesh
 import math
 from mathutils import Vector, Matrix, Quaternion
-from bpy_extras.io_utils import axis_conversion
 
 from .. import pdx_data
 from .. import IO_PDX_LOG
@@ -129,6 +128,7 @@ def set_local_axis_display(state, data_type):
                 node.data.show_axes = state
         except Exception as err:
             IO_PDX_LOG.info("node '{0}' could not have it's axis shown.".format(node.name))
+            IO_PDX_LOG.error(err)
 
 
 def set_ignore_joints(state):
@@ -142,7 +142,7 @@ def set_ignore_joints(state):
 
 
 def set_mesh_index(blender_mesh, i):
-    if not PDX_MESHINDEX in blender_mesh.keys():
+    if PDX_MESHINDEX not in blender_mesh.keys():
         blender_mesh["_RNA_UI"] = {}
         blender_mesh["_RNA_UI"][PDX_MESHINDEX] = {"min": 0, "max": 255, "soft_min": 0, "soft_max": 255, "step": 1}
 
@@ -176,7 +176,6 @@ def get_material_textures(blender_material):
 
     node_tree = blender_material.node_tree
     nodes = node_tree.nodes
-    links = node_tree.links
 
     # find the first valid Matrial Output node linked to a Surface shader
     try:
@@ -271,7 +270,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
                 _position = util_round(_position, PDX_DECIMALPTS)
 
             # normal
-            # FIXME? seems like custom normal per face-vertex is not available through bmesh
+            # FIXME : seems like custom normal per face-vertex is not available through bmesh?
             # _normal = loop.calc_normal()
             _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices!
             _normal = tuple(swap_coord_space(_normal))  # convert to Game space
@@ -332,9 +331,9 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         )
 
     # calculate min and max bounds of mesh
-    x_vtx_pos = set([mesh_dict['p'][i] for i in range(0, len(mesh_dict['p']), 3)])
-    y_vtx_pos = set([mesh_dict['p'][i + 1] for i in range(0, len(mesh_dict['p']), 3)])
-    z_vtx_pos = set([mesh_dict['p'][i + 2] for i in range(0, len(mesh_dict['p']), 3)])
+    x_vtx_pos = set([mesh_dict['p'][j] for j in range(0, len(mesh_dict['p']), 3)])
+    y_vtx_pos = set([mesh_dict['p'][j + 1] for j in range(0, len(mesh_dict['p']), 3)])
+    z_vtx_pos = set([mesh_dict['p'][j + 2] for j in range(0, len(mesh_dict['p']), 3)])
     mesh_dict['min'] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
     mesh_dict['max'] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
 
@@ -814,7 +813,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
     for bone in bone_list:
         # Blender culls zero length bones, nudge the tail to ensure we don't create any
         if bone.length == 0:
-            # FIXME: is this safe? this would affect bone rotation
+            # FIXME : is this safe? this would affect bone rotation?
             bone.tail += Vector((0, 0, 0.1))
 
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -854,6 +853,7 @@ def create_skin(PDX_skin, PDX_bones, obj, rig, max_infs=None):
             norm_weights = [float(w) / sum(weights) for w in weights]
         except Exception as err:
             norm_weights = weights
+            IO_PDX_LOG.error(err)
         # strip zero weight entries
         joint_weights = [(j, w) for j, w in zip(joints, norm_weights) if w != 0.0]
 
@@ -1256,6 +1256,7 @@ def import_animfile(animpath, timestart=1):
     try:
         bpy.context.scene.render.fps = fps
     except Exception as err:
+        IO_PDX_LOG.error(err)
         raise RuntimeError("Unsupported animation speed. {0}".format(fps))
     bpy.context.scene.render.fps_base = 1.0
 
@@ -1395,9 +1396,9 @@ def export_animfile(animpath, timestart=1, timeend=10):
     # find the scene armature with animation property (assume this is unique)
     rig = None
 
-    scene_rigs = [
-        obj for obj in bpy.context.scene.objects if type(obj.data) == bpy.types.Armature
-    ]  # and hasattr(bone, PDX_ANIMATION) ?
+    # scene_rigs = [
+    #     obj for obj in bpy.context.scene.objects if type(obj.data) == bpy.types.Armature
+    # ]  # and hasattr(bone, PDX_ANIMATION) ?
     # TODO : finsh this, just use active object for now
     rig = bpy.context.active_object
     if rig is None:
@@ -1456,7 +1457,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     for i in range(frame_samples):
         for bone in all_bone_keyframes:
             if 't' in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO: pop first item is slow?
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO : pop first item is slow?
             if 'q' in all_bone_keyframes[bone]:
                 q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
             if 's' in all_bone_keyframes[bone]:

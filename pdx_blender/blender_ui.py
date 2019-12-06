@@ -24,7 +24,7 @@ try:
     importlib.reload(blender_import_export)
     from .blender_import_export import *
 except Exception as err:
-    print(err)
+    IO_PDX_LOG.error(err)
     raise
 
 
@@ -47,8 +47,8 @@ def load_settings():
             settings = json.load(f, object_pairs_hook=OrderedDict)
             return settings
         except Exception as err:
-            print("[io_pdx_mesh] Critical error.")
-            print(err)
+            IO_PDX_LOG.info("CRITICAL ERROR!")
+            IO_PDX_LOG.error(err)
             return {}
 
 
@@ -315,7 +315,7 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
     )
     filepath : StringProperty(
         name="Import file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -362,11 +362,10 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
             IO_PDX_SETTINGS.last_import_mesh = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to import {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Mesh import failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
@@ -392,7 +391,7 @@ class IOPDX_OT_import_anim(Operator, ImportHelper):
     )
     filepath : StringProperty(
         name="Import file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -417,11 +416,10 @@ class IOPDX_OT_import_anim(Operator, ImportHelper):
             IO_PDX_SETTINGS.last_import_anim = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to import {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Animation import failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
@@ -447,7 +445,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
     )
     filepath : StringProperty(
         name="Export file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -493,11 +491,10 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
             IO_PDX_SETTINGS.last_export_mesh = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to export {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Mesh export failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
@@ -523,7 +520,7 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
     )
     filepath : StringProperty(
         name="Export file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -569,11 +566,10 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
             IO_PDX_SETTINGS.last_export_anim = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to export {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Animation export failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
@@ -749,4 +745,3 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
         col.operator(
             'wm.url_open', icon='QUESTION', text='Source code'
         ).url = 'https://github.com/ross-g/io_pdx_mesh'
-
