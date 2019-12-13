@@ -31,7 +31,7 @@ try:
     reload(maya_import_export)
     from .maya_import_export import *
 except Exception as err:
-    print err
+    IO_PDX_LOG.error(err)
     raise
 
 
@@ -57,9 +57,9 @@ def h_line():
     return line
 
 
-""" ================================================================================================
+""" ====================================================================================================================
     UI classes for the import/export tool.
-====================================================================================================
+========================================================================================================================
 """
 
 
@@ -294,8 +294,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Mesh export finished!\n\n{0}'.format(meshpath))
             IO_PDX_SETTINGS.last_export_mesh = meshpath
         except Exception as err:
-            IO_PDX_LOG.info("FAILED to export {0}".format(meshpath))
-            print err
+            IO_PDX_LOG.warning("FAILED to export {0}".format(meshpath))
+            IO_PDX_LOG.error(err)
             QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Mesh export failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             raise
@@ -338,8 +338,8 @@ class PDXmaya_ui(QtWidgets.QDialog):
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Animation export finished!\n\n{0}'.format(animpath))
             IO_PDX_SETTINGS.last_export_anim = animpath
         except Exception as err:
-            IO_PDX_LOG.info("FAILED to export {0}".format(animpath))
-            print err
+            IO_PDX_LOG.warning("FAILED to export {0}".format(animpath))
+            IO_PDX_LOG.error(err)
             QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Animation export failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             raise
@@ -374,7 +374,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok
             )
             IO_PDX_LOG.info("CRITICAL ERROR!")
-            print err
+            IO_PDX_LOG.error(err)
             return {}
 
 
@@ -742,8 +742,8 @@ class import_popup(QtWidgets.QWidget):
             )
             self.parent.refresh_gui()
         except Exception as err:
-            IO_PDX_LOG.info("FAILED to import {0}".format(self.pdx_file))
-            print err
+            IO_PDX_LOG.warning("FAILED to import {0}".format(self.pdx_file))
+            IO_PDX_LOG.error(err)
             QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Mesh import failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             self.close()
@@ -761,8 +761,8 @@ class import_popup(QtWidgets.QWidget):
             )
             self.parent.refresh_gui()
         except Exception as err:
-            IO_PDX_LOG.info("FAILED to import {0}".format(self.pdx_file))
-            print err
+            IO_PDX_LOG.warning("FAILED to import {0}".format(self.pdx_file))
+            IO_PDX_LOG.error(err)
             QtWidgets.QMessageBox.critical(self, 'FAILURE', 'Animation import failed!\n\n{0}'.format(err))
             MayaProgress.finished()
             self.close()
@@ -824,7 +824,7 @@ class material_popup(QtWidgets.QWidget):
             mat_shader = getattr(mat_node, PDX_SHADER).get()
 
             self.mat_name.setText(mat_name)
-            if self.mat_type.findText(mat_shader) is not -1:
+            if self.mat_type.findText(mat_shader) != -1:
                 self.mat_type.setCurrentIndex(self.mat_type.findText(mat_shader))
             else:
                 self.mat_type.setEditText(mat_shader)
@@ -853,11 +853,12 @@ class material_popup(QtWidgets.QWidget):
         # creating a new material
         else:
             mat_name = self.mat_name.text()
+            mat_type = self.mat_type.currentText()
             # create a mock PDXData object for convenience here to pass to the create_shader function
             mat_pdx = type(
                 'Material',
                 (PDXData, object),
-                {'shader': [self.mat_type.currentText()]}
+                {'shader': [mat_type]}
             )
 
             create_shader(mat_pdx, mat_name, None)
@@ -959,9 +960,9 @@ class MayaProgress(object):
         pmc.progressWindow(endProgress=True)
 
 
-""" ================================================================================================
+""" ====================================================================================================================
     Main entry point.
-====================================================================================================
+========================================================================================================================
 """
 
 
