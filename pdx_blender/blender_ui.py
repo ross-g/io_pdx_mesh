@@ -15,7 +15,7 @@ from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
-from .. import IO_PDX_SETTINGS
+from .. import IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
 
