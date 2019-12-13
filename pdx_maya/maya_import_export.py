@@ -8,6 +8,7 @@
 """
 
 import os
+import sys
 import time
 from collections import OrderedDict, namedtuple, defaultdict
 
@@ -24,6 +25,10 @@ from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaterni
 
 from .. import pdx_data
 from .. import IO_PDX_LOG
+
+# Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
+if sys.version_info >= (3, 0):
+    xrange = range
 
 
 """ ====================================================================================================================
@@ -412,9 +417,9 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
             )
 
     # calculate min and max bounds of mesh
-    x_vtx_pos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
-    y_vtx_pos = set([mesh_dict['p'][i + 1] for i in xrange(0, len(mesh_dict['p']), 3)])
-    z_vtx_pos = set([mesh_dict['p'][i + 2] for i in xrange(0, len(mesh_dict['p']), 3)])
+    x_vtx_pos = set([mesh_dict['p'][j] for j in xrange(0, len(mesh_dict['p']), 3)])
+    y_vtx_pos = set([mesh_dict['p'][j + 1] for j in xrange(0, len(mesh_dict['p']), 3)])
+    z_vtx_pos = set([mesh_dict['p'][j + 2] for j in xrange(0, len(mesh_dict['p']), 3)])
     mesh_dict['min'] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
     mesh_dict['max'] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
 
@@ -697,7 +702,7 @@ def create_shader(PDX_material, shader_name, texture_dir):
 
 
 def create_material(PDX_material, mesh, texture_path):
-    shader_name = 'PDXphong_' + mesh.name()
+    shader_name = 'PDXmat_' + mesh.name()
     shader, s_group = create_shader(PDX_material, shader_name, texture_path)
 
     pmc.select(mesh)
@@ -1589,8 +1594,9 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     t_packed, q_packed, s_packed = [], [], []
     for i in xrange(frame_samples):
         for bone in all_bone_keyframes:
+            # TODO: list.pop(0) can be slow? test deque.popleft() for potential speedup
             if 't' in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO: pop first item is slow?
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))
             if 'q' in all_bone_keyframes[bone]:
                 q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
             if 's' in all_bone_keyframes[bone]:
