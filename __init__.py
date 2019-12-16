@@ -11,6 +11,7 @@ import inspect
 import logging
 import traceback
 import os.path as path
+from imp import reload
 
 from .settings import PDXsettings
 

@@ -25,12 +25,6 @@ from . import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
 
 TIMEOUT = 1.0   # seconds
 API_URL = 'https://api.github.com'
-CURRENT_VERSION = float('.'.join(map(str, bl_info['version'])))
-LATEST_RELEASE = {}
-LATEST_VERSION = None
-LATEST_URL = None
-
-AT_LATEST = True
 
 
 """ ====================================================================================================================
@@ -45,11 +39,16 @@ class Github_API(object):
     """
 
     def __init__(self):
+        self.LATEST_RELEASE = {}
+        self.LATEST_VERSION = None
+        self.LATEST_URL = None
+        self.AT_LATEST = None
+        self.CURRENT_VERSION = float('.'.join(map(str, bl_info['version'])))
+
         self.api = API_URL
         self.owner = bl_info['author']
         self.repo = bl_info['project_name']
         self.args = {'owner': self.owner, 'repo': self.repo, 'api': self.api}
-
         self.refresh()
 
     @staticmethod
@@ -83,19 +82,17 @@ class Github_API(object):
                 IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
                 return
 
-            global LATEST_RELEASE, LATEST_VERSION, LATEST_URL
-            LATEST_RELEASE = release_list[0]
-            LATEST_VERSION = float(release_list[0]['tag_name'])
-            LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
+            self.LATEST_RELEASE = release_list[0]
+            self.LATEST_VERSION = float(release_list[0]['tag_name'])
+            self.LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
 
-            global AT_LATEST
-            AT_LATEST = CURRENT_VERSION == LATEST_VERSION
+            self.AT_LATEST = self.CURRENT_VERSION == self.LATEST_VERSION
 
             IO_PDX_SETTINGS.last_update_check = str(date.today())
-
             IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
+
         else:
             IO_PDX_LOG.info("Skipped update check. (already ran today)")
 
 
-github_repo = Github_API()
+github = Github_API()

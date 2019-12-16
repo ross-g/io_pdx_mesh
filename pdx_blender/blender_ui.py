@@ -17,12 +17,23 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from .. import IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
-from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
+from ..updater import github
 
 try:
     from . import blender_import_export
     importlib.reload(blender_import_export)
-    from .blender_import_export import *
+    from .blender_import_export import (
+        create_shader,
+        export_animfile,
+        export_meshfile,
+        get_mesh_index,
+        import_animfile,
+        import_meshfile,
+        list_scene_pdx_meshes,
+        PDX_SHADER,
+        set_ignore_joints,
+        set_local_axis_display,
+    )
 except Exception as err:
     IO_PDX_LOG.error(err)
     raise
@@ -372,7 +383,7 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_import_mesh or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
@@ -426,7 +437,7 @@ class IOPDX_OT_import_anim(Operator, ImportHelper):
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_import_anim or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
@@ -501,7 +512,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_export_mesh or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
@@ -576,7 +587,7 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_export_anim or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
@@ -728,12 +739,12 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.label(text='version: {}'.format(CURRENT_VERSION))
-        if not AT_LATEST:   # update info appears if we aren't at the latest tag version
-            btn_txt = 'GET UPDATE {}'.format(LATEST_VERSION)
+        col.label(text='version: {}'.format(github.CURRENT_VERSION))
+        if not github.AT_LATEST:   # update info appears if we aren't at the latest tag version
+            btn_txt = 'GET UPDATE {}'.format(github.LATEST_VERSION)
             col.operator(
                 'wm.url_open', icon='FILE_REFRESH', text=btn_txt
-            ).url = LATEST_URL
+            ).url = github.LATEST_URL
         col.separator()
 
         col.operator(
