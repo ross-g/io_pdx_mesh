@@ -147,7 +147,7 @@ class material_popup(object):
 
 class IOPDX_OT_material_create_popup(material_popup, Operator):
     bl_idname = 'io_pdx_mesh.material_create_popup'
-    bl_label = 'Create a PDX material'
+    bl_description = bl_label = 'Create a PDX material'
 
     def check(self, context):
         return True
@@ -187,7 +187,7 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
 
 class IOPDX_OT_material_edit_popup(material_popup, Operator):
     bl_idname = 'io_pdx_mesh.material_edit_popup'
-    bl_label = 'Edit a PDX material'
+    bl_description = bl_label = 'Edit a PDX material'
 
     def mat_select(self, context):
         mat = bpy.data.materials[self.scene_mats]
@@ -247,7 +247,7 @@ class IOPDX_UL_mesh_index_list(UIList):
 
 class IOPDX_OT_mesh_index_actions(Operator):
     bl_idname = "io_pdx_mesh.mesh_index_actions"
-    bl_label = "Mesh index list actions"
+    bl_description = bl_label = "Mesh index list actions"
     bl_options = {'REGISTER'}
 
     action : EnumProperty(
@@ -277,7 +277,7 @@ class IOPDX_OT_mesh_index_actions(Operator):
 
 class IOPDX_OT_mesh_index_popup(Operator):
     bl_idname = 'io_pdx_mesh.mesh_index_popup'
-    bl_label = 'Set mesh index on PDX meshes'
+    bl_description = bl_label = 'Set mesh index on PDX meshes'
     bl_options = {'REGISTER'}
 
     def check(self, context):
@@ -314,7 +314,7 @@ class IOPDX_OT_mesh_index_popup(Operator):
 
 class IOPDX_OT_import_mesh(Operator, ImportHelper):
     bl_idname = 'io_pdx_mesh.import_mesh'
-    bl_label = 'Import PDX mesh'
+    bl_description = bl_label = 'Import PDX mesh'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ImportHelper mixin class uses these
@@ -390,7 +390,7 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
 
 class IOPDX_OT_import_anim(Operator, ImportHelper):
     bl_idname = 'io_pdx_mesh.import_anim'
-    bl_label = 'Import PDX animation'
+    bl_description = bl_label = 'Import PDX animation'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ImportHelper mixin class uses these
@@ -444,7 +444,7 @@ class IOPDX_OT_import_anim(Operator, ImportHelper):
 
 class IOPDX_OT_export_mesh(Operator, ExportHelper):
     bl_idname = 'io_pdx_mesh.export_mesh'
-    bl_label = 'Export PDX mesh'
+    bl_description = bl_label = 'Export PDX mesh'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ExportHelper mixin class uses these
@@ -519,7 +519,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
 
 class IOPDX_OT_export_anim(Operator, ExportHelper):
     bl_idname = 'io_pdx_mesh.export_anim'
-    bl_label = 'Export PDX animation'
+    bl_description = bl_label = 'Export PDX animation'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ExportHelper mixin class uses these
@@ -594,7 +594,7 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
 
 class IOPDX_OT_show_axis(Operator):
     bl_idname = 'io_pdx_mesh.show_axis'
-    bl_label = 'Show local axis'
+    bl_description = bl_label = 'Show / hide local axis'
     bl_options = {'REGISTER'}
 
     show : BoolProperty(
@@ -615,7 +615,7 @@ class IOPDX_OT_show_axis(Operator):
 
 class IOPDX_OT_ignore_bone(Operator):
     bl_idname = 'io_pdx_mesh.ignore_bone'
-    bl_label = 'Ignore selected bones'
+    bl_description = bl_label = 'Ignore / Unignore selected bones'
     bl_options = {'REGISTER'}
 
     state : BoolProperty(
@@ -674,7 +674,7 @@ class IOPDX_PT_PDXblender_tools(PDXUI, Panel):
         row = col.row(align=True)
         op_ignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='GROUP_BONE', text='Ignore bones')
         op_ignore_bone.state = True
-        op_unignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='BONE_DATA', text='Un-ignore bones')
+        op_unignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='BONE_DATA', text='Unignore bones')
         op_unignore_bone.state = False
         col.separator()
 
