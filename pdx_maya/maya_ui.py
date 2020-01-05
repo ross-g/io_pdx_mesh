@@ -5,10 +5,12 @@
 """
 
 import os
+import sys
 import json
 import inspect
 import zipfile
 import webbrowser
+from imp import reload
 from collections import OrderedDict
 
 import pymel.core as pmc
@@ -22,17 +24,39 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from .. import IO_PDX_LOG, IO_PDX_SETTINGS
+from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
-from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
+from ..updater import github
 
 try:
     from . import maya_import_export
     reload(maya_import_export)
-    from .maya_import_export import *
+    from .maya_import_export import (
+        create_shader,
+        export_animfile,
+        export_meshfile,
+        get_animation_clips,
+        get_mesh_index,
+        import_animfile,
+        import_meshfile,
+        list_scene_materials,
+        list_scene_pdx_meshes,
+        list_scene_rootbones,
+        PDX_ANIMATION,
+        PDX_SHADER,
+        remove_animation_clip,
+        set_ignore_joints,
+        set_local_axis_display,
+        set_mesh_index,
+    )
 except Exception as err:
     IO_PDX_LOG.error(err)
     raise
+
+# Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
+if sys.version_info >= (3, 0):
+    xrange = range
+    long = int
 
 
 """ ====================================================================================================================
@@ -146,24 +170,16 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tool_edit_mesh_order.triggered.connect(self.edit_mesh_order)
 
         # help menu
-        help_version = QtWidgets.QAction('version {}'.format(CURRENT_VERSION), self)
+        help_version = QtWidgets.QAction('current version {}'.format(github.CURRENT_VERSION), self)
         help_version.setDisabled(True)
-        help_download = QtWidgets.QAction('GET UPDATE {}'.format(LATEST_VERSION), self)
-        help_download.triggered.connect(lambda: webbrowser.open(
-            LATEST_URL
-        ))
+        help_download = QtWidgets.QAction('GET UPDATE {}'.format(github.LATEST_VERSION), self)
+        help_download.triggered.connect(lambda: webbrowser.open(str(github.LATEST_URL)))
         help_wiki = QtWidgets.QAction('Tool Wiki', self)
-        help_wiki.triggered.connect(lambda: webbrowser.open(
-            'https://github.com/ross-g/io_pdx_mesh/wiki'
-        ))
+        help_wiki.triggered.connect(lambda: webbrowser.open(bl_info['wiki_url']))
         help_forum = QtWidgets.QAction('Paradox forums', self)
-        help_forum.triggered.connect(lambda: webbrowser.open(
-            'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
-        ))
+        help_forum.triggered.connect(lambda: webbrowser.open(bl_info['wiki_url']))
         help_code = QtWidgets.QAction('Source code', self)
-        help_code.triggered.connect(lambda: webbrowser.open(
-            'https://github.com/ross-g/io_pdx_mesh'
-        ))
+        help_code.triggered.connect(lambda: webbrowser.open(bl_info['project_url']))
 
         import_menu.addActions([file_import_mesh, file_import_anim])
         export_menu.addActions([file_export_mesh, file_export_anim])
@@ -176,8 +192,11 @@ class PDXmaya_ui(QtWidgets.QDialog):
         tools_menu.addActions([tool_edit_mesh_order])
 
         help_menu.addActions([help_version])
-        if not AT_LATEST:   # update info appears if we aren't at the latest tag version
+        if github.AT_LATEST is False:   # update info appears if we aren't at the latest tag version
             help_menu.addActions([help_download])
+            bold_fnt = help_download.font()
+            bold_fnt.setBold(True)
+            help_download.setFont(bold_fnt)
         help_menu.addSeparator()
         help_menu.addActions([help_wiki, help_forum, help_code])
 
@@ -482,7 +501,6 @@ class export_controls(QtWidgets.QWidget):
 
         for grp in [grp_mats, grp_anims, grp_scene, grp_export]:
             grp.setMinimumWidth(250)
-            # grp.setFont(QtGui.QFont('SansSerif', 8, QtGui.QFont.Bold))
 
         # add controls
         self.setLayout(main_layout)

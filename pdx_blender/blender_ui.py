@@ -15,16 +15,27 @@ from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
-from .. import IO_PDX_SETTINGS
+from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
-from ..updater import CURRENT_VERSION, LATEST_VERSION, LATEST_URL, AT_LATEST
+from ..updater import github
 
 try:
     from . import blender_import_export
     importlib.reload(blender_import_export)
-    from .blender_import_export import *
+    from .blender_import_export import (
+        create_material,
+        export_animfile,
+        export_meshfile,
+        get_mesh_index,
+        import_animfile,
+        import_meshfile,
+        list_scene_pdx_meshes,
+        PDX_SHADER,
+        set_ignore_joints,
+        set_local_axis_display,
+    )
 except Exception as err:
-    print(err)
+    IO_PDX_LOG.error(err)
     raise
 
 
@@ -47,8 +58,8 @@ def load_settings():
             settings = json.load(f, object_pairs_hook=OrderedDict)
             return settings
         except Exception as err:
-            print("[io_pdx_mesh] Critical error.")
-            print(err)
+            IO_PDX_LOG.info("CRITICAL ERROR!")
+            IO_PDX_LOG.error(err)
             return {}
 
 
@@ -136,7 +147,7 @@ class material_popup(object):
 
 class material_create_popup(material_popup, Operator):
     bl_idname = 'io_pdx_mesh.material_create_popup'
-    bl_label = 'Create a PDX material'
+    bl_description = bl_label = 'Create a PDX material'
 
     def check(self, context):
         return True
@@ -146,7 +157,7 @@ class material_create_popup(material_popup, Operator):
         mat_type = self.mat_type
         if self.use_custom or mat_type == '__NONE__':
             mat_type = self.custom_type
-        # create a mock PDXData object for convenience here to pass to the create_shader function
+        # create a mock PDXData object for convenience here to pass to the create_material function
         mat_pdx = type(
             'Material',
             (PDXData, object),
@@ -176,7 +187,7 @@ class material_create_popup(material_popup, Operator):
 
 class material_edit_popup(material_popup, Operator):
     bl_idname = 'io_pdx_mesh.material_edit_popup'
-    bl_label = 'Edit a PDX material'
+    bl_description = bl_label = 'Edit a PDX material'
 
     def mat_select(self, context):
         mat = bpy.data.materials[self.scene_mats]
@@ -236,7 +247,7 @@ class mesh_index_list(UIList):
 
 class mesh_index_actions(Operator):
     bl_idname = "io_pdx_mesh.mesh_index_actions"
-    bl_label = "Mesh index list actions"
+    bl_description = bl_label = "Mesh index list actions"
     bl_options = {'REGISTER'}
 
     action = EnumProperty(
@@ -261,12 +272,12 @@ class mesh_index_actions(Operator):
         collection.move(neighbor, index)
         self.move_index()
 
-        return{'FINISHED'}
+        return {'FINISHED'}
 
 
 class mesh_index_popup(Operator):
     bl_idname = 'io_pdx_mesh.mesh_index_popup'
-    bl_label = 'Set mesh index on PDX meshes'
+    bl_description = bl_label = 'Set mesh index on PDX meshes'
     bl_options = {'REGISTER'}
 
     def check(self, context):
@@ -275,7 +286,7 @@ class mesh_index_popup(Operator):
     def execute(self, context):
         for i, item in enumerate(context.scene.io_pdx_group.coll):
             item.ref.data['meshindex'] = i
-        return{'FINISHED'}
+        return {'FINISHED'}
 
     def invoke(self, context, event):
         obj_group = context.scene.io_pdx_group
@@ -303,7 +314,7 @@ class mesh_index_popup(Operator):
 
 class import_mesh(Operator, ImportHelper):
     bl_idname = 'io_pdx_mesh.import_mesh'
-    bl_label = 'Import PDX mesh'
+    bl_description = bl_label = 'Import PDX mesh'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ImportHelper mixin class uses these
@@ -315,7 +326,7 @@ class import_mesh(Operator, ImportHelper):
     )
     filepath = StringProperty(
         name="Import file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -362,25 +373,24 @@ class import_mesh(Operator, ImportHelper):
             IO_PDX_SETTINGS.last_import_mesh = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to import {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Mesh import failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_import_mesh or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
 
 class import_anim(Operator, ImportHelper):
     bl_idname = 'io_pdx_mesh.import_anim'
-    bl_label = 'Import PDX animation'
+    bl_description = bl_label = 'Import PDX animation'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ImportHelper mixin class uses these
@@ -392,7 +402,7 @@ class import_anim(Operator, ImportHelper):
     )
     filepath = StringProperty(
         name="Import file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -417,25 +427,24 @@ class import_anim(Operator, ImportHelper):
             IO_PDX_SETTINGS.last_import_anim = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to import {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to import {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Animation import failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_import_anim or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
 
 class export_mesh(Operator, ExportHelper):
     bl_idname = 'io_pdx_mesh.export_mesh'
-    bl_label = 'Export PDX mesh'
+    bl_description = bl_label = 'Export PDX mesh'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ExportHelper mixin class uses these
@@ -447,7 +456,7 @@ class export_mesh(Operator, ExportHelper):
     )
     filepath = StringProperty(
         name="Export file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -493,25 +502,24 @@ class export_mesh(Operator, ExportHelper):
             IO_PDX_SETTINGS.last_export_mesh = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to export {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Mesh export failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_export_mesh or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
 
 class export_anim(Operator, ExportHelper):
     bl_idname = 'io_pdx_mesh.export_anim'
-    bl_label = 'Export PDX animation'
+    bl_description = bl_label = 'Export PDX animation'
     bl_options = {'REGISTER', 'UNDO'}
 
     # ExportHelper mixin class uses these
@@ -523,7 +531,7 @@ class export_anim(Operator, ExportHelper):
     )
     filepath = StringProperty(
         name="Export file Path",
-        maxlen= 1024,
+        maxlen=1024,
     )
 
     # list of operator properties
@@ -569,25 +577,24 @@ class export_anim(Operator, ExportHelper):
             IO_PDX_SETTINGS.last_export_anim = self.filepath
 
         except Exception as err:
-            msg = '[io_pdx_mesh] FAILED to export {}'.format(self.filepath)
-            self.report({'WARNING'}, msg)
+            IO_PDX_LOG.warning("FAILED to export {0}".format(self.filepath))
+            IO_PDX_LOG.error(err)
+            self.report({'WARNING'}, 'Animation export failed!')
             self.report({'ERROR'}, str(err))
-            print(msg)
-            print(err)
             raise
 
         return {'FINISHED'}
 
     def invoke(self, context, event):
         self.filepath = IO_PDX_SETTINGS.last_export_anim or ''
-        wm = context.window_manager.fileselect_add(self)
+        context.window_manager.fileselect_add(self)
 
         return {'RUNNING_MODAL'}
 
 
 class show_axis(Operator):
     bl_idname = 'io_pdx_mesh.show_axis'
-    bl_label = 'Show local axis'
+    bl_description = bl_label = 'Show / hide local axis'
     bl_options = {'REGISTER'}
 
     show = BoolProperty(
@@ -608,7 +615,7 @@ class show_axis(Operator):
 
 class ignore_bone(Operator):
     bl_idname = 'io_pdx_mesh.ignore_bone'
-    bl_label = 'Ignore selected bones'
+    bl_description = bl_label = 'Ignore / Unignore selected bones'
     bl_options = {'REGISTER'}
 
     state = BoolProperty(
@@ -667,7 +674,7 @@ class PDXblenderUI_tools(PDXUI, Panel):
         row = col.row(align=True)
         op_ignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='OUTLINER_DATA_POSE', text='Ignore bones')
         op_ignore_bone.state = True
-        op_unignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='POSE_HLT', text='Un-ignore bones')
+        op_unignore_bone = row.operator('io_pdx_mesh.ignore_bone', icon='POSE_HLT', text='Unignore bones')
         op_unignore_bone.state = False
         col.separator()
 
@@ -732,20 +739,12 @@ class PDXblenderUI_help(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.label('version: {}'.format(CURRENT_VERSION))
-        if not AT_LATEST:   # update info appears if we aren't at the latest tag version
-            btn_txt = 'GET UPDATE {}'.format(LATEST_VERSION)
-            col.operator(
-                'wm.url_open', icon='FILE_REFRESH', text=btn_txt
-            ).url = LATEST_URL
+        col.label(text='current version: {}'.format(github.CURRENT_VERSION))
+        if github.AT_LATEST is False:   # update info appears if we aren't at the latest tag version
+            btn_txt = 'GET UPDATE {}'.format(github.LATEST_VERSION)
+            col.operator('wm.url_open', icon='FILE_REFRESH', text=btn_txt).url = str(github.LATEST_URL)
         col.separator()
 
-        col.operator(
-            'wm.url_open', icon='QUESTION', text='Tool Wiki'
-        ).url = 'https://github.com/ross-g/io_pdx_mesh/wiki'
-        col.operator(
-            'wm.url_open', icon='QUESTION', text='Paradox forums'
-        ).url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
-        col.operator(
-            'wm.url_open', icon='QUESTION', text='Source code'
-        ).url = 'https://github.com/ross-g/io_pdx_mesh'
+        col.operator('wm.url_open', icon='QUESTION', text='Addon Wiki').url = bl_info['wiki_url']
+        col.operator('wm.url_open', icon='QUESTION', text='Paradox forums').url = bl_info['forum_url']
+        col.operator('wm.url_open', icon='QUESTION', text='Source code').url = bl_info['project_url']
