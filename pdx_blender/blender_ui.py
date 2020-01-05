@@ -15,7 +15,7 @@ from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
-from .. import IO_PDX_LOG, IO_PDX_SETTINGS
+from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
 
@@ -272,7 +272,7 @@ class IOPDX_OT_mesh_index_actions(Operator):
         collection.move(neighbor, index)
         self.move_index()
 
-        return{'FINISHED'}
+        return {'FINISHED'}
 
 
 class IOPDX_OT_mesh_index_popup(Operator):
@@ -286,7 +286,7 @@ class IOPDX_OT_mesh_index_popup(Operator):
     def execute(self, context):
         for i, item in enumerate(context.scene.io_pdx_group.coll):
             item.ref.data['meshindex'] = i
-        return{'FINISHED'}
+        return {'FINISHED'}
 
     def invoke(self, context, event):
         obj_group = context.scene.io_pdx_group
@@ -739,20 +739,12 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.label(text='version: {}'.format(github.CURRENT_VERSION))
-        if not github.AT_LATEST:   # update info appears if we aren't at the latest tag version
+        col.label(text='current version: {}'.format(github.CURRENT_VERSION))
+        if github.AT_LATEST is False:   # update info appears if we aren't at the latest tag version
             btn_txt = 'GET UPDATE {}'.format(github.LATEST_VERSION)
-            col.operator(
-                'wm.url_open', icon='FILE_REFRESH', text=btn_txt
-            ).url = github.LATEST_URL
+            col.operator('wm.url_open', icon='FILE_REFRESH', text=btn_txt).url = str(github.LATEST_URL)
         col.separator()
 
-        col.operator(
-            'wm.url_open', icon='QUESTION', text='Tool Wiki'
-        ).url = 'https://github.com/ross-g/io_pdx_mesh/wiki'
-        col.operator(
-            'wm.url_open', icon='QUESTION', text='Paradox forums'
-        ).url = 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/'
-        col.operator(
-            'wm.url_open', icon='QUESTION', text='Source code'
-        ).url = 'https://github.com/ross-g/io_pdx_mesh'
+        col.operator('wm.url_open', icon='QUESTION', text='Addon Wiki').url = bl_info['wiki_url']
+        col.operator('wm.url_open', icon='QUESTION', text='Paradox forums').url = bl_info['forum_url']
+        col.operator('wm.url_open', icon='QUESTION', text='Source code').url = bl_info['project_url']

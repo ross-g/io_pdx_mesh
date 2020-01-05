@@ -81,18 +81,26 @@ class Github_API(object):
             except Exception as err:
                 IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
                 return
-
             self.LATEST_RELEASE = release_list[0]
+
+            # store data
             self.LATEST_VERSION = float(release_list[0]['tag_name'])
             self.LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
-
-            self.AT_LATEST = self.CURRENT_VERSION == self.LATEST_VERSION
+            # cache data to settings
+            IO_PDX_SETTINGS.github_latest_version = self.LATEST_VERSION
+            IO_PDX_SETTINGS.github_latest_url = self.LATEST_URL
 
             IO_PDX_SETTINGS.last_update_check = str(date.today())
             IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
 
         else:
+            # used cached release data in settings
+            self.LATEST_VERSION = IO_PDX_SETTINGS.github_latest_version
+            self.LATEST_URL = IO_PDX_SETTINGS.github_latest_url
+
             IO_PDX_LOG.info("Skipped update check. (already ran today)")
+
+        self.AT_LATEST = self.CURRENT_VERSION == self.LATEST_VERSION
 
 
 github = Github_API()
