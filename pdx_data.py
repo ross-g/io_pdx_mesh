@@ -13,7 +13,6 @@ from __future__ import print_function
 import os
 import sys
 import struct
-from collections import OrderedDict
 
 try:
     import xml.etree.cElementTree as Xml
@@ -49,28 +48,48 @@ class PDXData(object):
             self.depth = depth
 
         # object attribute collection
-        self.attrdict = OrderedDict()
+        self.attrlist = []
 
-        # set element attributes as object attributes
+        # set XML element attributes as object attributes
         for attr in element.attrib:
             setattr(self, attr, element.attrib[attr])
-            self.attrdict[attr] = element.attrib[attr]
+            self.attrlist.append(attr)
 
-        # iterate over element children, set these as attributes which nest further PDXData objects
+        # iterate over XML element children, set these as attributes, nesting further PDXData objects
         for child in list(element):
             child_data = type(self)(child, self.depth + 1)
-            setattr(self, child.tag, child_data)
-            self.attrdict[child.tag] = child_data
+            if hasattr(self, child.tag):
+                curr_data = getattr(self, child.tag)
+                if type(curr_data) == list:
+                    curr_data.append(child_data)
+                else:
+                    setattr(self, child.tag, [curr_data, child_data])
+            else:
+                setattr(self, child.tag, child_data)
+                self.attrlist.append(child.tag)
 
     def __str__(self):
-        string = list()
-        for _key, _val in self.attrdict.items():
+        indent = " " * 4
+        string = []
+
+        for _key in self.attrlist:
+            _val = getattr(self, _key)
+
             if type(_val) == type(self):
-                string.append('{}{}:'.format(self.depth * '    ', _key))
-                string.append('{}'.format(_val))
+                string.append("{}{}:".format(self.depth * indent, _key))
+                string.append("{}".format(_val))
+
             else:
-                string.append('{}{}: {}  {}'.format(self.depth * '    ', _key, len(_val), _val))
-        return '\n'.join(string)
+                if all(type(v) == type(self) for v in _val):
+                    for v in _val:
+                        string.append("{}{}:".format(self.depth * indent, _key))
+                        string.append("{}".format(v))
+                else:
+                    data_len = len(_val)
+                    data_type = list(set(type(v) for v in _val))[0].__name__
+                    string.append("{}{} ({}, {}):  {}".format(self.depth * indent, _key, data_type, data_len, _val))
+
+        return "\n".join(string)
 
 
 """ ====================================================================================================================
@@ -551,11 +570,14 @@ General binary format is:
 .mesh file format
 ========================================================================================================================
     header    (@@b@ for binary, @@t@ for text)
-    pdxasset    (int)  number of assets?
+    pdxasset    (int)  number of assets? file format version?
         object    (object)  parent item for all 3D objects
+            lodperc    (float)  list of LOD switches, percentage size of bounding sphere?  NEW STYLE!
+            loddist    (float)  list of LOD switches, some distance metric?  OLD STYLE! OBSOLETE?
             shape    (object)
                 ...  multiple shapes, used for meshes under different node transforms
             shape    (object)
+                lod    (int)  LOD level of shape, 0 based
                 mesh    (object)
                     ...  multiple meshes per shape, used for different material IDs
                 mesh    (object)
@@ -566,6 +588,7 @@ General binary format is:
                     ta    (float)  tangents
                     u0    (float)  UVs
                     tri    (int)  triangles
+                    boundingsphere    (float)  describes centre and radius of mesh spherical bound  NEW STYLE!
                     aabb    (object)
                         min    (float)  min bounding box
                         max    (float)  max bounding box
@@ -608,7 +631,7 @@ General binary format is:
                 q    (float)  initial rotation as quaternion
                 s    (float)  initial scale as single float
         samples    (object)
-            t   (floats)    list of translations (size 3), by bone, by frame (translation is from parent, in parent space)
-            q   (floats)    list of rotations (size 4), by bone, by frame (rotation is from parent, in parent space)
+            t   (floats)    list of translations (size 3), by bone, by frame (translation from parent, in parent space)
+            q   (floats)    list of rotations (size 4), by bone, by frame (rotation from parent, in parent space)
             s   (floats)    list of scales (size 1), by bone, by frame
 """

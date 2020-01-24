@@ -16,7 +16,7 @@
             "PdxMeshWater"
         ]
     },
-    "europa_universalis": {
+    "europa_universalis_4": {
         "animation": [
             "idle",
             "moving",
@@ -36,24 +36,6 @@
             "PdxMeshTextureAtlas"
         ]
     },
-    "hearts_of_iron": {
-        "animation": [
-            "idle",
-            "moving",
-            "attack",
-            "death",
-            "idle2" ],
-        "material": [
-            "Collision",
-            "PdxMeshAdvanced",
-            "PdxMeshAdvancedAnim",
-            "PdxMeshAdvancedSnow",
-            "PdxMeshBorder",
-            "PdxMeshHoI4",
-            "PdxMeshSnow",
-            "PdxMeshStandard"
-        ]
-    },
     "stellaris": {
         "animation": [
             "planet_rotation",
@@ -66,6 +48,7 @@
         ],
         "material": [
             "Collision",
+            "AlphaBlendNoDepth",
             "PdxMeshAdvanced",
             "PdxMeshAlphaAdditive",
             "PdxMeshAlphaAdditiveAnimateUV",
@@ -76,6 +59,7 @@
             "PdxMeshCircleGradient",
             "PdxMeshClouds",
             "PdxMeshColor",
+            "PdxMeshColorAlphaAdditiveAnimateUV",
             "PdxMeshExtraDimensionalShip",
             "PdxMeshNavigationButton",
             "PdxMeshPlanet",
@@ -87,11 +71,56 @@
             "PdxMeshShieldFlipBook",
             "PdxMeshShieldUVStrech",
             "PdxMeshShip",
+            "PdxMeshShipColored",
             "PdxMeshStandard",
             "PdxMeshStar",
             "PdxMeshTerra",
             "PdxMeshTerraAlphaBlend",
             "PdxMeshTerraAlphaTest"
+        ]
+    },
+    "hearts_of_iron_4": {
+        "animation": [
+            "idle",
+            "moving",
+            "attack",
+            "death",
+            "idle2" ],
+        "material": [
+            "Collision",
+            "PdxMeshAdvanced",
+            "PdxMeshAdvancedAnim",
+            "PdxMeshAdvancedSnow",
+            "PdxMeshBorder",
+            "PdxMeshSnow",
+            "PdxMeshStandard"
+        ]
+    },
+    "imperator_rome": {
+        "animation": [
+        ],
+        "material": [
+            "Collision",
+            "decal_world",
+            "lake",
+            "material_test",
+            "PdxMeshHair",
+            "PdxMeshStandard",
+            "portrait_attachment",
+            "portrait_attachment_alpha_blend",
+            "portrait_eye",
+            "portrait_hair",
+            "portrait_hair_backside",
+            "portrait_hair_opaque",
+            "portrait_skin",
+            "portrait_skin_face",
+            "standard",
+            "standard_alpha_blend",
+            "standard_alpha_to_coverage",
+            "standard_snow",
+            "standard_usercolor",
+            "tree",
+            "tree_alpha_to_coverage"
         ]
     }
 }

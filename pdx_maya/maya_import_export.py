@@ -8,6 +8,7 @@
 """
 
 import os
+import sys
 import time
 from collections import OrderedDict, namedtuple, defaultdict
 
@@ -24,6 +25,10 @@ from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaterni
 
 from .. import pdx_data
 from .. import IO_PDX_LOG
+
+# Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
+if sys.version_info >= (3, 0):
+    xrange = range
 
 
 """ ====================================================================================================================
@@ -312,6 +317,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     triangles = mesh.getTriangles()
     uv_setnames = [uv_set for uv_set in mesh.getUVSetNames() if mFn_Mesh.numUVs(uv_set) > 0]
     uv_coords = {}
+    tangents = None
     for i, uv_set in enumerate(uv_setnames):
         _u, _v = mesh.getUVs(uvSet=uv_set)
         uv_coords[i] = zip(_u, _v)
@@ -322,20 +328,29 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
     mesh_dict = {x: [] for x in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri', 'min', 'max']}
 
     # collect all unique verts in the order that we process them
-    unique_verts = []
+    export_verts = []
+    unique_verts = set()
 
     for face in meshfaces:
+        face_id = face.index()
         face_vert_ids = face.getVertices()  # vertices making this face
-        num_triangles = triangles[0][face.index()]  # number of triangles making this face
+        num_triangles = triangles[0][face_id]  # number of triangles making this face
 
         # store data for each tri of each face
         for tri in xrange(0, num_triangles):
-            tri_vert_ids = mesh.getPolygonTriangleVertices(face.index(), tri)  # vertices making this triangle
+            tri_vert_ids = mesh.getPolygonTriangleVertices(face_id, tri)  # vertices making this triangle
+
+            # implementation note: the official PDX exporter seems to process verts, in vertex order, for each triangle
+            # we must sort the list of tri-verts in vertex order, as by default Maya can return a different order
+            # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
+            _sorted = sorted(enumerate(tri_vert_ids), key=lambda x: x[1])
+            sorted_indices = [i[0] for i in _sorted]    # track sorting change
+            sorted_tri_vert_ids = [i[1] for i in _sorted]
 
             dict_vert_idx = []
 
             # loop over tri verts
-            for vert_id in tri_vert_ids:
+            for vert_id in sorted_tri_vert_ids:
                 _local_id = face_vert_ids.index(vert_id)  # face relative vertex index
 
                 # position
@@ -352,7 +367,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     _normal = util_round(list(_normal), PDX_DECIMALPTS)
 
                 # uv
-                _uv_coords = {}
+                _uv_coords = ()
                 for i, uv_set in enumerate(uv_setnames):
                     try:
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
@@ -363,53 +378,61 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
                         uv = (0.0, 0.0)
-                    _uv_coords[i] = uv
+                    _uv_coords += (uv,)
 
                 # tangent (omitted if there were no UVs)
                 if uv_setnames and tangents:
-                    vert_tangent_id = mesh.getTangentId(face.index(), vert_id)
+                    vert_tangent_id = mesh.getTangentId(face_id, vert_id)
+                    _binormal_sign = 1.0 if mFn_Mesh.isRightHandedTangent(vert_tangent_id, uv_setnames[0]) else -1.0
                     _tangent = list(tangents[vert_tangent_id])
                     _tangent = swap_coord_space(_tangent)  # convert to Game space
                     if round_data:
                         _tangent = util_round(list(_tangent), PDX_DECIMALPTS)
 
-                # check if this tri vert is new and unique, or can just reference an existing vertex
+                # check if this tri-vert is new and unique, or can if we can just use an existing vertex
                 new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
-                # test if we have already stored this vertex
-                try:
-                    # no data needs to be added to the dict, the tri can just reference an existing vertex
-                    i = unique_verts.index(new_vert)
-                except ValueError:
-                    i = None
-                if i is None or skip_merge_vertices:
-                    # new unique vertex, collect it and add the vert data to the dict
-                    unique_verts.append(new_vert)
+
+                # test if we have already stored this vertex in the unique set
+                i = None
+                if not skip_merge_vertices:
+                    if new_vert in unique_verts:
+                        # no new data to be added to the mesh dict, the tri will reference an existing vert
+                        i = export_verts.index(new_vert)
+
+                if i is None:
+                    # collect the new vertex
+                    unique_verts.add(new_vert)
+                    export_verts.append(new_vert)
+
+                    # add this vert data to the mesh dict
                     mesh_dict['p'].extend(_position)
                     mesh_dict['n'].extend(_normal)
                     for i, uv_set in enumerate(uv_setnames):
                         mesh_dict['u' + str(i)].extend(_uv_coords[i])
                     if uv_setnames:
                         mesh_dict['ta'].extend(_tangent)
-                        mesh_dict['ta'].append(1.0)
-                    i = len(unique_verts) - 1  # the tri will reference the last added vertex
+                        mesh_dict['ta'].append(_binormal_sign)  # UV winding order
+                    # the tri will reference the last added vertex
+                    i = len(export_verts) - 1
 
-                # store the tri vert reference
+                # store the tri-vert reference
                 dict_vert_idx.append(i)
 
             # tri-faces
             mesh_dict['tri'].extend(
-                [dict_vert_idx[0], dict_vert_idx[2], dict_vert_idx[1]]  # convert handedness to Game space
-            )
+                # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
+                [dict_vert_idx[sorted_indices[0]], dict_vert_idx[sorted_indices[2]], dict_vert_idx[sorted_indices[1]]]
+            )  # convert handedness to Game space
 
     # calculate min and max bounds of mesh
-    x_VtxPos = set([mesh_dict['p'][i] for i in xrange(0, len(mesh_dict['p']), 3)])
-    y_VtxPos = set([mesh_dict['p'][i + 1] for i in xrange(0, len(mesh_dict['p']), 3)])
-    z_VtxPos = set([mesh_dict['p'][i + 2] for i in xrange(0, len(mesh_dict['p']), 3)])
-    mesh_dict['min'] = [min(x_VtxPos), min(y_VtxPos), min(z_VtxPos)]
-    mesh_dict['max'] = [max(x_VtxPos), max(y_VtxPos), max(z_VtxPos)]
+    x_vtx_pos = set([mesh_dict['p'][j] for j in xrange(0, len(mesh_dict['p']), 3)])
+    y_vtx_pos = set([mesh_dict['p'][j + 1] for j in xrange(0, len(mesh_dict['p']), 3)])
+    z_vtx_pos = set([mesh_dict['p'][j + 2] for j in xrange(0, len(mesh_dict['p']), 3)])
+    mesh_dict['min'] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
+    mesh_dict['max'] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
 
     # create an ordered list of vertex ids that we have gathered into the mesh dict
-    vert_id_list = [vert.id for vert in unique_verts]
+    vert_id_list = [vert.id for vert in export_verts]
 
     return mesh_dict, vert_id_list
 
@@ -434,7 +457,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
 
     # parse all verts in order if we didn't supply a subset of vert ids
     if vertex_ids is None:
-        vertex_ids = range(len(maya_mesh.verts))
+        vertex_ids = xrange(len(maya_mesh.verts))
 
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
@@ -443,7 +466,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
             bone_index = all_bones.index(bone)
         except ValueError:
             raise RuntimeError(
-                "A skinned bone ({0}) is being excluded from export, check all bones using the '{1}' property.".format(
+                "A skinned bone ({0}) is being excluded from export! Check all bones using the '{1}' property.".format(
                     bone, PDX_IGNOREJOINT
                 )
             )
@@ -463,11 +486,19 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
         for influence, weight in vert_weights[vtx].iteritems():
             skin_dict['ix'].append(influence)
             skin_dict['w'].append(weight)
-        if len(vert_weights[vtx]) < PDX_MAXSKININFS:
+        if len(vert_weights[vtx]) <= PDX_MAXSKININFS:
             # pad out with null data to fill container
             padding = PDX_MAXSKININFS - len(vert_weights[vtx])
             skin_dict['ix'].extend([-1] * padding)
             skin_dict['w'].extend([0.0] * padding)
+        else:
+            # warn if vertex influence count exceeds the max
+            raise RuntimeError(
+                "Mesh '{0}' has vertices skinned to more than {1} bones! This is not supported. "
+                "You must fix skin weights to reduce the influence count.".format(
+                    maya_mesh.getTransform().name(), PDX_MAXSKININFS
+                )
+            )
 
     return skin_dict
 
@@ -549,7 +580,7 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
     # store transform for each bone over the frame range
     frames_data = defaultdict(list)
 
-    for f in range(startframe, endframe + 1):
+    for f in xrange(startframe, endframe + 1):
         pmc.currentTime(f, edit=True)
         for bone in export_bones:
             # convert to Game space
@@ -679,7 +710,7 @@ def create_shader(PDX_material, shader_name, texture_dir):
 
 
 def create_material(PDX_material, mesh, texture_path):
-    shader_name = 'PDXphong_' + mesh.name()
+    shader_name = 'PDXmat_' + mesh.name()
     shader, s_group = create_shader(PDX_material, shader_name, texture_path)
 
     pmc.select(mesh)
@@ -748,7 +779,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
 def create_skeleton(PDX_bone_list):
     # keep track of bones as we create them
-    bone_list = [None for _ in range(0, len(PDX_bone_list))]
+    bone_list = [None for _ in xrange(0, len(PDX_bone_list))]
 
     pmc.select(clear=True)
     for bone in PDX_bone_list:
@@ -897,12 +928,12 @@ def create_mesh(PDX_mesh, name=None):
     # faces
     numPolygons = len(tris) / 3
     polygonCounts = OpenMaya.MIntArray()  # count of vertices per poly
-    for i in range(0, numPolygons):
+    for i in xrange(0, numPolygons):
         polygonCounts.append(3)
 
     # vert connections
     polygonConnects = OpenMaya.MIntArray()
-    for i in range(0, len(tris), 3):
+    for i in xrange(0, len(tris), 3):
         polygonConnects.append(tris[i + 2])  # convert handedness to Maya space
         polygonConnects.append(tris[i + 1])
         polygonConnects.append(tris[i])
@@ -952,16 +983,16 @@ def create_mesh(PDX_mesh, name=None):
             n = OpenMaya.MVector(_norms[0], _norms[1], _norms[2])
             normalsIn.append(n)
         vertexList = OpenMaya.MIntArray()  # matches normal to vert by index
-        for i in range(0, numVertices):
+        for i in xrange(0, numVertices):
             vertexList.append(i)
         mFn_Mesh.setVertexNormals(normalsIn, vertexList)
 
     # apply the UV data channels
     uvCounts = OpenMaya.MIntArray()
-    for i in range(0, numPolygons):
+    for i in xrange(0, numPolygons):
         uvCounts.append(3)
     uvIds = OpenMaya.MIntArray()
-    for i in range(0, len(tris), 3):
+    for i in xrange(0, len(tris), 3):
         uvIds.append(tris[i + 2])  # convert handedness to Maya space
         uvIds.append(tris[i + 1])
         uvIds.append(tris[i])
@@ -1324,10 +1355,10 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc.name())
 
-            _position= loc.getTranslation(worldSpace=True)
+            _position = loc.getTranslation(worldSpace=True)
             _rotation = loc.getRotation(worldSpace=True, quaternion=True)
             if exp_skel and loc.getParent() and type(loc.getParent()) == pmc.nt.Joint:
-                _position= loc.getTranslation()
+                _position = loc.getTranslation()
                 _rotation = loc.getRotation(quaternion=True)
 
                 locnode_xml.set('pa', [loc.getParent().name()])
@@ -1364,19 +1395,20 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
     framecount = info.attrib['sa'][0]
 
     # set scene animation and playback settings
-    fps = info.attrib['fps'][0]
+    fps = int(info.attrib['fps'][0])
+    IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
     try:
         pmc.currentUnit(time=('{0}fps'.format(fps)))
     except RuntimeError:
-        fps = int(fps)
         if fps == 15:
             pmc.currentUnit(time='game')
         elif fps == 30:
             pmc.currentUnit(time='ntsc')
+        elif fps == 60:
+            pmc.currentUnit(time='ntscf')
         else:
             raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
 
-    IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
     if progress_fn:
         progress.update(1, 'setting playback speed')
     pmc.playbackOptions(edit=True, playbackSpeed=1.0)
@@ -1404,7 +1436,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
             bone_joint = matching_bones[0]
         except IndexError:
             bone_errors.append(bone_name)
-            IO_PDX_LOG.info("failed to find bone '{0}'".format(bone_name))
+            IO_PDX_LOG.warning("failed to find bone '{0}'".format(bone_name))
             if progress_fn:
                 progress.update(1, 'failed to find bone!')
 
@@ -1441,7 +1473,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
     # then traverse the samples data to store keys per bone
     s_index, q_index, t_index = 0, 0, 0
-    for _ in range(0, framecount):
+    for _ in xrange(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
 
@@ -1476,7 +1508,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
 
 def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     start = time.time()
-    IO_PDX_LOG.info("Exporting {0}".format(animpath))
+    IO_PDX_LOG.info("exporting {0}".format(animpath))
 
     progress = None
     if progress_fn:
@@ -1568,10 +1600,11 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
-    for i in range(frame_samples):
+    for i in xrange(frame_samples):
         for bone in all_bone_keyframes:
+            # TODO: list.pop(0) can be slow? test deque.popleft() for potential speedup
             if 't' in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO: pop first item is slow?
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))
             if 'q' in all_bone_keyframes[bone]:
                 q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
             if 's' in all_bone_keyframes[bone]:
@@ -1589,6 +1622,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     pmc.currentTime(curr_frame, edit=True)
 
+    pmc.select(None)
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
     if progress_fn:
         progress.finished()
