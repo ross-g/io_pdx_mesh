@@ -23,7 +23,7 @@ from . import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
 ========================================================================================================================
 """
 
-TIMEOUT = 1.0   # seconds
+TIMEOUT = 1.0  # seconds
 API_URL = 'https://api.github.com'
 
 
@@ -39,7 +39,6 @@ class Github_API(object):
     """
 
     def __init__(self):
-        self.LATEST_RELEASE = {}
         self.LATEST_VERSION = None
         self.LATEST_URL = None
         self.AT_LATEST = None
@@ -81,14 +80,20 @@ class Github_API(object):
             except Exception as err:
                 IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
                 return
-            self.LATEST_RELEASE = release_list[0]
+
+            latest = release_list[0]
 
             # store data
-            self.LATEST_VERSION = float(release_list[0]['tag_name'])
-            self.LATEST_URL = release_list[0]['assets'][0]['browser_download_url']
+            self.LATEST_VERSION = float(latest['tag_name'])
+            self.LATEST_URL = latest['assets'][0]['browser_download_url']
+            self.LATEST_NOTES = '{0}\r\nRelease version: {1}\r\n{2}'.format(
+                latest['published_at'].split('T')[0], latest['tag_name'], latest['body']
+            )
+
             # cache data to settings
             IO_PDX_SETTINGS.github_latest_version = self.LATEST_VERSION
             IO_PDX_SETTINGS.github_latest_url = self.LATEST_URL
+            IO_PDX_SETTINGS.github_latest_notes = self.LATEST_NOTES
 
             IO_PDX_SETTINGS.last_update_check = str(date.today())
             IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
@@ -97,6 +102,7 @@ class Github_API(object):
             # used cached release data in settings
             self.LATEST_VERSION = IO_PDX_SETTINGS.github_latest_version
             self.LATEST_URL = IO_PDX_SETTINGS.github_latest_url
+            self.LATEST_NOTES = IO_PDX_SETTINGS.github_latest_notes
 
             IO_PDX_LOG.info("Skipped update check. (already ran today)")
 

@@ -12,6 +12,7 @@ import zipfile
 import webbrowser
 from imp import reload
 from collections import OrderedDict
+from textwrap import wrap
 
 import pymel.core as pmc
 import maya.OpenMayaUI as omUI
@@ -74,6 +75,20 @@ def get_mayamainwindow():
     return wrapInstance(long(pointer), QtWidgets.QMainWindow)
 
 
+def set_action_icon(action, icon_name):
+    """ to visually browse for Mayas internal icon set
+            import maya.app.general.resourceBrowser as resourceBrowser
+            resBrowser = resourceBrowser.resourceBrowser()
+            path = resBrowser.run()
+        generate the full list with
+            cmds.resourceManager()
+    """
+    try:
+        action.setIcon(QtGui.QIcon(':/{}'.format(icon_name)))
+    except Exception as err:
+        IO_PDX_LOG.error(err)
+
+
 def h_line():
     line = QtWidgets.QFrame()
     line.setFrameShape(QtWidgets.QFrame.HLine)
@@ -134,55 +149,91 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
     def create_menu(self):
         self.menubar = QtWidgets.QMenuBar()
-        import_menu = self.menubar.addMenu('&Import')
-        export_menu = self.menubar.addMenu('&Export')
+        file_menu = self.menubar.addMenu('&File')
         tools_menu = self.menubar.addMenu('&Tools')
         tools_menu.setTearOffEnabled(True)
         help_menu = self.menubar.addMenu('&Help')
 
         # file menu
+        file_import = QtWidgets.QAction('Import', self)
+        file_import.setDisabled(True)
+
         file_import_mesh = QtWidgets.QAction('Load mesh ...', self)
         file_import_mesh.triggered.connect(self.do_import_mesh)
-        # file_import_mesh.setStatusTip('')
+        set_action_icon(file_import_mesh, 'out_polyCube.png')
+
         file_import_anim = QtWidgets.QAction('Load animation ...', self)
         file_import_anim.triggered.connect(self.do_import_anim)
+        set_action_icon(file_import_anim, 'out_renderLayer.png')
+
+        file_export = QtWidgets.QAction('Export', self)
+        file_export.setDisabled(True)
+
         file_export_mesh = QtWidgets.QAction('Save mesh ...', self)
         file_export_mesh.triggered.connect(lambda: self.do_export_mesh(select_path=True))
+        set_action_icon(file_export_mesh, 'out_polyCube.png')
+
         file_export_anim = QtWidgets.QAction('Save animation ...', self)
         file_export_anim.triggered.connect(lambda: self.do_export_anim(select_path=True))
+        set_action_icon(file_export_anim, 'out_renderLayer.png')
 
         # tools menu
         tool_ignore_joints = QtWidgets.QAction('Ignore selected joints', self)
         tool_ignore_joints.triggered.connect(lambda: set_ignore_joints(True))
+
         tool_unignore_joints = QtWidgets.QAction('Un-ignore selected joints', self)
+        tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
 
         tool_show_jnt_localaxes = QtWidgets.QAction('Show all joint axes', self)
         tool_show_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='joint'))
+        set_action_icon(tool_show_jnt_localaxes, 'out_joint.png')
+
         tool_hide_jnt_localaxes = QtWidgets.QAction('Hide all joint axes', self)
         tool_hide_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='joint'))
+
         tool_show_loc_localaxes = QtWidgets.QAction('Show all locator axes', self)
         tool_show_loc_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type='locator'))
+        set_action_icon(tool_show_loc_localaxes, 'out_holder.png')
+
         tool_hide_loc_localaxes = QtWidgets.QAction('Hide all locator axes', self)
         tool_hide_loc_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type='locator'))
-        tool_unignore_joints.triggered.connect(lambda: set_ignore_joints(False))
 
         tool_edit_mesh_order = QtWidgets.QAction('Set mesh order', self)
         tool_edit_mesh_order.triggered.connect(self.edit_mesh_order)
+        set_action_icon(tool_edit_mesh_order, 'sortName.png')
 
         # help menu
         help_version = QtWidgets.QAction('current version {}'.format(github.CURRENT_VERSION), self)
         help_version.setDisabled(True)
-        help_download = QtWidgets.QAction('GET UPDATE {}'.format(github.LATEST_VERSION), self)
-        help_download.triggered.connect(lambda: webbrowser.open(str(github.LATEST_URL)))
+
         help_wiki = QtWidgets.QAction('Tool Wiki', self)
         help_wiki.triggered.connect(lambda: webbrowser.open(bl_info['wiki_url']))
+        set_action_icon(help_wiki, 'help.png')
+
         help_forum = QtWidgets.QAction('Paradox forums', self)
         help_forum.triggered.connect(lambda: webbrowser.open(bl_info['wiki_url']))
+        set_action_icon(help_forum, 'help.png')
+
         help_code = QtWidgets.QAction('Source code', self)
         help_code.triggered.connect(lambda: webbrowser.open(bl_info['project_url']))
+        set_action_icon(help_code, 'help.png')
 
-        import_menu.addActions([file_import_mesh, file_import_anim])
-        export_menu.addActions([file_export_mesh, file_export_anim])
+        # new version sub-menu
+        help_update = QtWidgets.QMenu('NEW UPDATE {}'.format(github.LATEST_VERSION), self)
+        set_action_icon(help_update, 'SE_FavoriteStar.png')
+
+        help_download = QtWidgets.QAction('Download', self)
+        help_download.triggered.connect(lambda: webbrowser.open(str(github.LATEST_URL)))
+        set_action_icon(help_download, 'advancedSettings.png')
+
+        help_about = QtWidgets.QAction('About', self)
+        help_about.triggered.connect(self.show_update_notes)
+        set_action_icon(help_about, 'info.png')
+
+        # add all actions and separators to menus
+        file_menu.addActions([file_import, file_import_mesh, file_import_anim])
+        file_menu.addSeparator()
+        file_menu.addActions([file_export, file_export_mesh, file_export_anim])
 
         tools_menu.addActions([tool_ignore_joints, tool_unignore_joints])
         tools_menu.addSeparator()
@@ -193,10 +244,11 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         help_menu.addActions([help_version])
         if github.AT_LATEST is False:   # update info appears if we aren't at the latest tag version
-            help_menu.addActions([help_download])
-            bold_fnt = help_download.font()
+            help_menu.addMenu(help_update)
+            help_update.addActions([help_download, help_about])
+            bold_fnt = help_update.menuAction().font()
             bold_fnt.setBold(True)
-            help_download.setFont(bold_fnt)
+            help_update.menuAction().setFont(bold_fnt)
         help_menu.addSeparator()
         help_menu.addActions([help_wiki, help_forum, help_code])
 
@@ -220,6 +272,18 @@ class PDXmaya_ui(QtWidgets.QDialog):
         # call any gui refresh functions here
         self.export_ctrls.refresh_mat_list()
         self.export_ctrls.refresh_anim_list()
+
+    @QtCore.Slot()
+    def show_update_notes(self):
+        msg_text = github.LATEST_NOTES
+
+        # split text into multiple label rows if it's wider than the panel
+        txt_lines = []
+        for line in msg_text.splitlines():
+            txt_lines.extend(wrap(line, 450 / 6))
+            txt_lines.append('')
+
+        QtWidgets.QMessageBox.information(self, bl_info['name'], '\n'.join(txt_lines))
 
     @QtCore.Slot()
     def do_import_mesh(self):

@@ -9,6 +9,7 @@ import json
 import inspect
 import importlib
 from collections import OrderedDict
+from textwrap import wrap
 
 import bpy
 from bpy.types import Operator, Panel, UIList
@@ -100,7 +101,8 @@ def set_animation_fps(self, context):
 
 class IOPDX_OT_popup_message(Operator):
     bl_idname = 'io_pdx_mesh.popup_message'
-    bl_label = '[io_pdx_mesh]'
+    bl_label = bl_info['name']
+    bl_description = 'Popup Message'
     bl_options = {'REGISTER'}
 
     msg_text : StringProperty(
@@ -120,8 +122,23 @@ class IOPDX_OT_popup_message(Operator):
         return context.window_manager.invoke_props_dialog(self, width=self.msg_width)
 
     def draw(self, context):
-        self.layout.label(text=self.msg_text, icon=self.msg_icon)
-        self.layout.label(text='')
+        self.layout.operator_context = 'INVOKE_DEFAULT'
+
+        # split text into multiple label rows if it's wider than the panel
+        txt_lines = []
+        for line in self.msg_text.splitlines():
+            txt_lines.extend(wrap(line, self.msg_width / 6))
+            txt_lines.append('')
+
+        col = self.layout.column(align=True)
+        col.label(text=txt_lines[0], icon=self.msg_icon)
+        for line in txt_lines[1:]:
+            if line:
+                col.label(text=line)
+            else:
+                col.separator()
+
+        col.label(text='')
 
 
 class material_popup(object):
@@ -730,10 +747,10 @@ class IOPDX_PT_PDXblender_setup(PDXUI, Panel):
         row.prop(settings, 'setup_fps', text='FPS')
 
 
-class IOPDX_PT_PDXblender_help(PDXUI, Panel):
+class IOPDX_PT_PDXblender_info(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.help'
-    bl_label = 'Help'
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_label = 'Version'
+    # bl_options = {'HIDE_HEADER'}
     panel_order = 5
 
     def draw(self, context):
@@ -741,9 +758,24 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
 
         col.label(text='current version: {}'.format(github.CURRENT_VERSION))
         if github.AT_LATEST is False:   # update info appears if we aren't at the latest tag version
-            btn_txt = 'GET UPDATE {}'.format(github.LATEST_VERSION)
-            col.operator('wm.url_open', icon='FILE_REFRESH', text=btn_txt).url = str(github.LATEST_URL)
-        col.separator()
+            btn_txt = 'NEW UPDATE {}'.format(github.LATEST_VERSION)
+            split = col.split(factor=0.7, align=True)
+            split.operator('wm.url_open', icon='FUND', text=btn_txt).url = str(github.LATEST_URL)
+            popup = split.operator('io_pdx_mesh.popup_message', icon='INFO', text='About')
+            popup.msg_text = github.LATEST_NOTES
+            popup.msg_icon = 'INFO'
+            popup.msg_width = 450
+
+
+class IOPDX_PT_PDXblender_help(PDXUI, Panel):
+    # bl_idname = 'panel.io_pdx_mesh.help'
+    bl_label = 'Help'
+    bl_parent_id = "IOPDX_PT_PDXblender_info"
+    bl_options = {'DEFAULT_CLOSED'}
+    panel_order = 6
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
 
         col.operator('wm.url_open', icon='QUESTION', text='Addon Wiki').url = bl_info['wiki_url']
         col.operator('wm.url_open', icon='QUESTION', text='Paradox forums').url = bl_info['forum_url']
