@@ -257,9 +257,16 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         if tri.material_index != mat_index:
             continue  # skip this triangle if it has the wrong material index
 
+        # implementation note: the official PDX exporter seems to process verts, in vertex order, for each triangle
+        # we must sort the list of loops in vert order, as by default Blender can return a different order
+        # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
+        _sorted = sorted(enumerate(tri.loops), key=lambda x: x[1].vert.index)
+        sorted_indices = [i[0] for i in _sorted]    # track sorting change
+        sorted_loops = [i[1] for i in _sorted]
+
         dict_vert_idx = []
 
-        for loop in tri.loops:
+        for loop in sorted_loops:
             vert = loop.vert
             vert_id = vert.index
 
@@ -327,8 +334,9 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
 
         # tri-faces
         mesh_dict['tri'].extend(
-            [dict_vert_idx[0], dict_vert_idx[2], dict_vert_idx[1]]  # convert handedness to Game space
-        )
+            # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
+            [dict_vert_idx[sorted_indices[0]], dict_vert_idx[sorted_indices[2]], dict_vert_idx[sorted_indices[1]]]
+        )  # convert handedness to Game space
 
     # calculate min and max bounds of mesh
     x_vtx_pos = set([mesh_dict['p'][j] for j in range(0, len(mesh_dict['p']), 3)])
