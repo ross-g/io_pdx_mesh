@@ -340,10 +340,17 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
         for tri in xrange(0, num_triangles):
             tri_vert_ids = mesh.getPolygonTriangleVertices(face_id, tri)  # vertices making this triangle
 
+            # implementation note: the official PDX exporter seems to process verts, in vertex order, for each triangle
+            # we must sort the list of tri-verts in vertex order, as by default Maya can return a different order
+            # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
+            _sorted = sorted(enumerate(tri_vert_ids), key=lambda x: x[1])
+            sorted_indices = [i[0] for i in _sorted]    # track sorting change
+            sorted_tri_vert_ids = [i[1] for i in _sorted]
+
             dict_vert_idx = []
 
             # loop over tri verts
-            for vert_id in tri_vert_ids:
+            for vert_id in sorted_tri_vert_ids:
                 _local_id = face_vert_ids.index(vert_id)  # face relative vertex index
 
                 # position
@@ -413,8 +420,9 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
 
             # tri-faces
             mesh_dict['tri'].extend(
-                [dict_vert_idx[0], dict_vert_idx[2], dict_vert_idx[1]]  # convert handedness to Game space
-            )
+                # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
+                [dict_vert_idx[sorted_indices[0]], dict_vert_idx[sorted_indices[2]], dict_vert_idx[sorted_indices[1]]]
+            )  # convert handedness to Game space
 
     # calculate min and max bounds of mesh
     x_vtx_pos = set([mesh_dict['p'][j] for j in xrange(0, len(mesh_dict['p']), 3)])

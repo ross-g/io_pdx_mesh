@@ -48,9 +48,7 @@
         ],
         "material": [
             "Collision",
-            "AlphaBlend_00",
             "AlphaBlendNoDepth",
-            "AlphaBlendNoDepth_00",
             "PdxMeshAdvanced",
             "PdxMeshAlphaAdditive",
             "PdxMeshAlphaAdditiveAnimateUV",
@@ -73,7 +71,6 @@
             "PdxMeshShieldFlipBook",
             "PdxMeshShieldUVStrech",
             "PdxMeshShip",
-            "PdxMeshship",
             "PdxMeshShipColored",
             "PdxMeshStandard",
             "PdxMeshStar",

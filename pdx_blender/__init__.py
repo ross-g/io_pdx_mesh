@@ -24,12 +24,12 @@ importlib.reload(blender_ui)
 
 
 class PDXBlender_settings(PropertyGroup):
-    setup_engine = EnumProperty(
+    setup_engine : EnumProperty(
         name='Engine',
         description='Engine',
         items=blender_ui.get_engine_list,
     )
-    setup_fps = IntProperty(
+    setup_fps : IntProperty(
         name='Animation fps',
         description='Animation fps',
         min=1,
@@ -39,12 +39,12 @@ class PDXBlender_settings(PropertyGroup):
 
 
 class PDXMaterial_settings(PropertyGroup):
-    mat_name = StringProperty(
+    mat_name : StringProperty(
         name='Material name',
         description='Material name',
         default='',
     )
-    mat_type = StringProperty(
+    mat_type : StringProperty(
         name='Shader type',
         description='Shader type',
         default='',
@@ -52,16 +52,16 @@ class PDXMaterial_settings(PropertyGroup):
 
 
 class PDXObject_Pointer(PropertyGroup):
-    ref = PointerProperty(name='pdx pointer', type=bpy.types.Object)
+    ref : PointerProperty(name='pdx pointer', type=bpy.types.Object)
 
 
 class PDXObject_Group(PropertyGroup):
-    coll = CollectionProperty(type=PDXObject_Pointer)
-    idx = IntProperty()     # index for the collection
+    coll : CollectionProperty(type=PDXObject_Pointer)
+    idx : IntProperty()     # index for the collection
 
 
 class PDXExport_settings(PropertyGroup):
-    custom_range = BoolProperty(
+    custom_range : BoolProperty(
         name='Custom range',
         description='Custom range',
         default=False,

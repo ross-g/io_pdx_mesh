@@ -1,6 +1,6 @@
 """
     IO PDX Mesh Python module.
-    Supports Maya 2015 and up, supports Blender 2.78 and up.
+    Supports Maya 2015 and up, supports Blender 2.80 and up.
 
     author : ross-g
 """
@@ -23,7 +23,7 @@ bl_info = {
     'location': '3D View > Toolbox',
     'category': 'Import-Export',
     'support': 'COMMUNITY',
-    'blender': (2, 78, 0),
+    'blender': (2, 80, 0),
     'maya': (2015),
     'version': (0, 7),
     'warning': 'this add-on is beta',

@@ -631,7 +631,7 @@ General binary format is:
                 q    (float)  initial rotation as quaternion
                 s    (float)  initial scale as single float
         samples    (object)
-            t   (floats)    list of translations (size 3), by bone, by frame (translation is from parent, in parent space)
-            q   (floats)    list of rotations (size 4), by bone, by frame (rotation is from parent, in parent space)
+            t   (floats)    list of translations (size 3), by bone, by frame (translation from parent, in parent space)
+            q   (floats)    list of rotations (size 4), by bone, by frame (rotation from parent, in parent space)
             s   (floats)    list of scales (size 1), by bone, by frame
 """
