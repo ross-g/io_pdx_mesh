@@ -614,7 +614,16 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
     links = node_tree.links
 
     shader_root = nodes.get('Principled BSDF')
+    if shader_root is None:
+        # if we can't find the root node we expect, clear the graph and create from scratch
+        nodes.clear()
+        output = nodes.new(type='ShaderNodeOutputMaterial')
+        shader_root = nodes.new(type='ShaderNodeBsdfPrincipled')
 
+        links.new(shader_root.outputs['BSDF'], output.inputs['Surface'])
+        set_node_pos(output, 1, 0)
+
+    # link up diffuse texture to base-color slot
     if getattr(PDX_material, 'diff', None) or placeholder:
         texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.diff[0])
 
@@ -624,6 +633,7 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
         links.new(albedo_texture.outputs['Color'], shader_root.inputs['Base Color'])
         # links.new(albedo_texture.outputs['Alpha'], shader_root.inputs['Alpha'])  # diffuse.A sometimes used for alpha
 
+    # link up specular texture to roughness, metallic and specular slots
     if getattr(PDX_material, 'spec', None) or placeholder:
         texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.spec[0])
 
@@ -640,6 +650,7 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
         links.new(separate_rgb.outputs['B'], shader_root.inputs['Metallic'])
         links.new(material_texture.outputs['Alpha'], shader_root.inputs['Roughness'])
 
+    # link up normal texture to normal slot
     if getattr(PDX_material, 'n', None) or placeholder:
         texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.n[0])
 
