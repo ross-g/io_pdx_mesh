@@ -737,6 +737,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
     if parent is not None:
         parent_bone = pmc.ls(parent[0], type='joint')
         if parent_bone:
+            # parent the locator to a bone in the scene
             pmc.parent(new_loc, parent_bone[0])
         else:
             # parent bone doesn't exist in scene, build its transform
@@ -759,16 +760,31 @@ def create_locator(PDX_locator, PDX_bone_dict):
                 pmc.delete(new_loc)
                 return
 
-    # set attributes
-    loc_obj = get_MObject(new_loc.name())
-    mFn_Xform = OpenMaya.MFnTransform(loc_obj)
+    # get transform function set
+    loc_MObj = get_MObject(new_loc.name())
+    mFn_Xform = OpenMaya.MFnTransform(loc_MObj)
 
-    # rotation
-    mFn_Xform.setRotationQuaternion(PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2], PDX_locator.q[3])
-    # translation
-    vector = OpenMaya.MVector(PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
-    space = OpenMaya.MSpace.kTransform
-    mFn_Xform.setTranslation(vector, space)
+    # check if full transformation specified
+    if hasattr(PDX_locator, 'tx'):
+        loc_Xform = MTransformationMatrix(
+            MMatrix(
+                (
+                    (PDX_locator.tx[0], PDX_locator.tx[1], PDX_locator.tx[2], PDX_locator.tx[3]),
+                    (PDX_locator.tx[4], PDX_locator.tx[5], PDX_locator.tx[6], PDX_locator.tx[7]),
+                    (PDX_locator.tx[8], PDX_locator.tx[9], PDX_locator.tx[10], PDX_locator.tx[11]),
+                    (PDX_locator.tx[12], PDX_locator.tx[13], PDX_locator.tx[14], PDX_locator.tx[15])
+                )
+            )
+        )
+        mFn_Xform.setTransformation(loc_Xform)
+    # or just rotate and translate
+    else:
+        # rotation
+        quat = MQuaternion(*PDX_locator.q)
+        mFn_Xform.setRotation(quat, OpenMaya.MSpace.kTransform)
+        # translation
+        vector = OpenMaya.MVector(PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
+        mFn_Xform.setTranslation(vector, OpenMaya.MSpace.kTransform)
 
     # apply parent transform
     new_loc.setMatrix(new_loc.getMatrix() * parent_Xform.inverse())

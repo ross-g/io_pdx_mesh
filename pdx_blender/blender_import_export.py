@@ -261,7 +261,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         # we must sort the list of loops in vert order, as by default Blender can return a different order
         # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
         _sorted = sorted(enumerate(tri.loops), key=lambda x: x[1].vert.index)
-        sorted_indices = [i[0] for i in _sorted]    # track sorting change
+        sorted_indices = [i[0] for i in _sorted]  # track sorting change
         sorted_loops = [i[1] for i in _sorted]
 
         dict_vert_idx = []
@@ -687,7 +687,7 @@ def create_material(PDX_material, mesh, texture_path):
 def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
-    new_loc.empty_display_type = 'ARROWS'
+    new_loc.empty_display_type = 'PLAIN_AXES'
     new_loc.empty_display_size = 0.25
     new_loc.show_axis = False
 
@@ -718,14 +718,26 @@ def create_locator(PDX_locator, PDX_bone_dict):
             )
         )
 
-    # compose transform parts
-    _scale = Matrix.Scale(1, 4)
-    _rotation = (
-        Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4()
-    )
-    _translation = Matrix.Translation(PDX_locator.p)
+    # check if full transformation specified
+    if hasattr(PDX_locator, 'tx'):
+        loc_matrix = Matrix(
+            (
+                (PDX_locator.tx[0], PDX_locator.tx[4], PDX_locator.tx[8], PDX_locator.tx[12]),
+                (PDX_locator.tx[1], PDX_locator.tx[5], PDX_locator.tx[9], PDX_locator.tx[13]),
+                (PDX_locator.tx[2], PDX_locator.tx[6], PDX_locator.tx[10], PDX_locator.tx[14]),
+                (PDX_locator.tx[3], PDX_locator.tx[7], PDX_locator.tx[11], PDX_locator.tx[15]),
+            )
+        )
+    # or just rotate and translate
+    else:
+        # compose transform parts
+        _scale = Matrix.Scale(1, 4)
+        _rotation = (
+            Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4()
+        )
+        _translation = Matrix.Translation(PDX_locator.p)
 
-    loc_matrix = _translation @ _rotation @ _scale
+        loc_matrix = _translation @ _rotation @ _scale
 
     # apply parent transform (must be multiplied in transposed form, then re-transposed before being applied)
     final_matrix = (loc_matrix.transposed() @ parent_Xform.inverted_safe().transposed()).transposed()
