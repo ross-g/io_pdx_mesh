@@ -31,9 +31,9 @@ class PDXsettings(object):
                 os.makedirs(path.dirname(filepath))
                 with open(filepath, 'w') as _:
                     pass
-            except OSError as e:
-                if e.errno != errno.EEXIST:
-                    print(e)
+            except OSError as err:
+                if err.errno != errno.EEXIST:
+                    print(err)
         # default settings
         self.config_path = filepath
         self.app = sys.executable
@@ -49,7 +49,8 @@ class PDXsettings(object):
             return None
 
     def load_settings_file(self, filepath):
-        settings_dict = json.load(open(filepath))
+        with open(filepath) as f:
+            settings_dict = json.load(f)
         self.config_path = filepath
         for k, v in settings_dict.items():
             setattr(self, k, v)
