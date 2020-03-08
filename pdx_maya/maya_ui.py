@@ -6,12 +6,8 @@
 
 import os
 import sys
-import json
-import inspect
-import zipfile
 import webbrowser
 from imp import reload
-from collections import OrderedDict
 from textwrap import wrap
 
 import pymel.core as pmc
@@ -25,7 +21,7 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
+from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
 
@@ -64,10 +60,6 @@ if sys.version_info >= (3, 0):
     Variables and Helper functions.
 ========================================================================================================================
 """
-
-
-_script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
 
 
 def get_mayamainwindow():
@@ -114,7 +106,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         super(PDXmaya_ui, self).__init__(parent)
         self.popup = None  # reference for popup widget
-        self.settings = self.load_settings()  # settings from json
         self.create_ui()
         self.setStyleSheet(
             'QGroupBox {'
@@ -433,33 +424,6 @@ class PDXmaya_ui(QtWidgets.QDialog):
         self.popup = meshindex_popup(parent=self)
         self.popup.show()
 
-    def load_settings(self):
-        # load the JSON settings
-        try:
-            if '.zip' in settings_file:
-                zipped = settings_file.split('.zip')[0] + '.zip'
-                with zipfile.ZipFile(zipped, 'r') as z:
-                    f = z.open('io_pdx_mesh/clausewitz.json')
-                    settings = json.loads(f.read(), object_pairs_hook=OrderedDict)
-                    return settings
-
-            else:
-                with open(settings_file, 'rt') as f:
-                    settings = json.load(f, object_pairs_hook=OrderedDict)
-                    return settings
-
-        except Exception as err:
-            QtWidgets.QMessageBox.critical(
-                self, 'WARNING',
-                'Your "clausewitz.json" settings file has errors and is unreadable.\n'
-                'Check the Maya script output for details.\n\n'
-                'Some functions of the tool will not work without these settings.',
-                QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok
-            )
-            IO_PDX_LOG.info("CRITICAL ERROR!")
-            IO_PDX_LOG.error(err)
-            return {}
-
 
 class export_controls(QtWidgets.QWidget):
 
@@ -491,7 +455,7 @@ class export_controls(QtWidgets.QWidget):
         # settings
         lbl_engine = QtWidgets.QLabel('Game engine:')
         self.setup_engine = QtWidgets.QComboBox()
-        self.setup_engine.addItems(self.parent.settings.keys())
+        self.setup_engine.addItems(ENGINE_SETTINGS.keys())
         lbl_fps = QtWidgets.QLabel('Animation fps:')
         self.setup_fps = QtWidgets.QDoubleSpinBox()     # TODO: this should set Maya prefs and read/load from presets
         self.setup_fps.setMinimum(0.0)
@@ -922,7 +886,7 @@ class material_popup(QtWidgets.QWidget):
 
     def get_shader_presets(self):
         sel_engine = self.parent.export_ctrls.setup_engine.currentText()
-        return self.parent.settings[sel_engine]['material']
+        return ENGINE_SETTINGS[sel_engine]['material']
 
     def save_mat(self):
         # editing a selected material

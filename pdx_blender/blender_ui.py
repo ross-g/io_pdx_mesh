@@ -4,11 +4,7 @@
     author : ross-g
 """
 
-import os
-import json
-import inspect
 import importlib
-from collections import OrderedDict
 from textwrap import wrap
 
 import bpy
@@ -16,7 +12,7 @@ from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
-from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
+from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
 
@@ -46,29 +42,8 @@ except Exception as err:
 """
 
 
-_script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
-
-engine_list = ()
-
-
-def load_settings():
-    global settings_file
-    with open(settings_file, 'rt') as f:
-        try:
-            settings = json.load(f, object_pairs_hook=OrderedDict)
-            return settings
-        except Exception as err:
-            IO_PDX_LOG.info("CRITICAL ERROR!")
-            IO_PDX_LOG.error(err)
-            return {}
-
-
 def get_engine_list(self, context):
-    global engine_list
-
-    settings = load_settings()  # settings from json
-    engine_list = ((engine, engine, engine) for engine in settings.keys())
+    engine_list = ((engine, engine, engine) for engine in ENGINE_SETTINGS.keys())
 
     return engine_list
 
@@ -76,8 +51,7 @@ def get_engine_list(self, context):
 def get_material_list(self, context):
     sel_engine = context.scene.io_pdx_settings.setup_engine
 
-    settings = load_settings()  # settings from json
-    material_list = [(material, material, material) for material in settings[sel_engine]['material']]
+    material_list = [(material, material, material) for material in ENGINE_SETTINGS[sel_engine]['material']]
     material_list.insert(0, ('__NONE__', '', ''))
 
     return material_list
