@@ -39,14 +39,20 @@ class PDXsettings(object):
         self.app = sys.executable
 
     def __setattr__(self, name, value):
-        super(PDXsettings, self).__setattr__(name, value)
+        result = super(PDXsettings, self).__setattr__(name, value)
         self.save_settings_file()
+        return result
 
-    def __getattribute__(self, attr):
+    def __getattr__(self, attr):
         try:
-            return super(PDXsettings, self).__getattribute__(attr)
+            return super(PDXsettings, self).__getattr__(attr)
         except AttributeError:
             return None
+
+    def __delattr__(self, name):
+        result = super(PDXsettings, self).__delattr__(name)
+        self.save_settings_file()
+        return result
 
     def load_settings_file(self, filepath):
         with open(filepath) as f:
