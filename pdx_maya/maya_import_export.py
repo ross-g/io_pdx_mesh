@@ -344,7 +344,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
             # we must sort the list of tri-verts in vertex order, as by default Maya can return a different order
             # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
             _sorted = sorted(enumerate(tri_vert_ids), key=lambda x: x[1])
-            sorted_indices = [i[0] for i in _sorted]    # track sorting change
+            sorted_indices = [i[0] for i in _sorted]  # track sorting change
             sorted_tri_vert_ids = [i[1] for i in _sorted]
 
             dict_vert_idx = []
@@ -418,11 +418,11 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                 # store the tri-vert reference
                 dict_vert_idx.append(i)
 
-            # tri-faces
+            # tri-faces (converting handedness to Game space)
             mesh_dict['tri'].extend(
                 # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
                 [dict_vert_idx[sorted_indices[0]], dict_vert_idx[sorted_indices[2]], dict_vert_idx[sorted_indices[1]]]
-            )  # convert handedness to Game space
+            )
 
     # calculate min and max bounds of mesh
     x_vtx_pos = set([mesh_dict['p'][j] for j in xrange(0, len(mesh_dict['p']), 3)])
@@ -580,16 +580,27 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
     # store transform for each bone over the frame range
     frames_data = defaultdict(list)
 
-    for f in xrange(startframe, endframe + 1):
-        pmc.currentTime(f, edit=True)
-        for bone in export_bones:
-            # convert to Game space
-            _translation = swap_coord_space(bone.getTranslation())
-            # bone rotation must be pre-multiplied by joint orientation
-            _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
-            _scale = bone.getScale()
+    try:
+        cmds.refresh(suspend=True)
+        for f in xrange(startframe, endframe + 1):
+            pmc.currentTime(f, edit=True)
+            for bone in export_bones:
+                # TODO: this is slow, don't use PyMel here or check f-curves directly
+                # convert to Game space
+                _translation = swap_coord_space(bone.getTranslation())
+                # bone rotation must be pre-multiplied by joint orientation
+                _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
+                _scale = bone.getScale()
 
-            frames_data[bone.name()].append((_translation, _rotation, _scale))
+                frames_data[bone.name()].append((_translation, _rotation, _scale))
+
+    except Exception as err:
+        IO_PDX_LOG.error(err)
+        raise
+
+    finally:
+        cmds.refresh(suspend=False)
+        cmds.refresh(force=True)
 
     # create an ordered dictionary of all animated bones to store sample data
     all_bone_keyframes = OrderedDict()
@@ -752,8 +763,8 @@ def create_locator(PDX_locator, PDX_bone_dict):
                 )
                 # fmt: on
             else:
-                IO_PDX_LOG.info(
-                    "ERROR! unable to create locator '{0}' (missing parent '{1}' in file data)".format(
+                IO_PDX_LOG.warning(
+                    "Warning! unable to create locator '{0}' (missing parent '{1}' in file data)".format(
                         PDX_locator.name, parent[0]
                     )
                 )
@@ -791,6 +802,8 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
     # convert to Maya space
     new_loc.setMatrix(swap_coord_space(new_loc.getMatrix()))
+
+    return new_loc
 
 
 def create_skeleton(PDX_bone_list):
@@ -1195,7 +1208,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
     # go through shapes
     for i, node in enumerate(shapes):
-        IO_PDX_LOG.info("creating node - {0}".format(node.tag))
+        IO_PDX_LOG.info("creating node {0}/{1} - {2}".format(i + 1, len(shapes), node.tag))
         if progress_fn:
             progress.update(1, 'creating node')
 
@@ -1248,12 +1261,12 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
     # go through locators
     if imp_locs and locators:
-        IO_PDX_LOG.info("creating locators -")
         if progress_fn:
             progress.update(1, 'creating locators')
-        for loc in locators:
+        for i, loc in enumerate(locators):
+            IO_PDX_LOG.info("creating locator {0}/{1} - {2}".format(i + 1, len(locators), loc.tag))
             pdx_locator = pdx_data.PDXData(loc)
-            create_locator(pdx_locator, complete_bone_dict)
+            obj = create_locator(pdx_locator, complete_bone_dict)
 
     pmc.select(None)
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
@@ -1280,6 +1293,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     maya_meshes = list_scene_pdx_meshes()
     # sort meshes for export by index
     maya_meshes.sort(key=lambda mesh: get_mesh_index(mesh))
+
+    if len(maya_meshes) == 0:
+        raise RuntimeError("Nothing to export, found no meshes with PDX materials applied.")
 
     for shape in maya_meshes:
         IO_PDX_LOG.info("writing node - {0}".format(shape.name()))
@@ -1309,7 +1325,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 mesh = [m for m in group.members(flatten=True) if m.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts, True)
+                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts, False)
 
                 # populate mesh attributes
                 for key in ['p', 'n', 'ta', 'u0', 'u1', 'u2', 'u3', 'tri']:
@@ -1585,12 +1601,13 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
         progress.update(1, 'writing initial bone transforms')
     pmc.currentTime(timestart, edit=True)
     for bone in export_bones:
-        bone_xml = Xml.SubElement(info_xml, bone.name())
+        bone_name = bone.name()
+        bone_xml = Xml.SubElement(info_xml, bone_name)
 
         # check sample types
         sample_types = ''
         for attr in ['t', 'q', 's']:
-            if attr in all_bone_keyframes[bone.name()]:
+            if attr in all_bone_keyframes[bone_name]:
                 sample_types += attr
         bone_xml.set('sa', [sample_types])
 
