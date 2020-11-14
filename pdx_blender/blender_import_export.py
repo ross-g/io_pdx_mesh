@@ -112,9 +112,12 @@ def get_rig_from_mesh(blender_obj):
     return rig
 
 
-def list_scene_pdx_meshes():
+def list_scene_pdx_meshes(selected_only):
+    objs = bpy.context.scene.objects
+    if selected_only: 
+        objs = [obj for obj in bpy.context.scene.objects if obj.select_get()]
     # restrict to current scene, so use bpy.context.scene.objects not bpy.data.objects
-    return [obj for obj in bpy.context.scene.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
+    return [obj for obj in objs if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
 
 
 def set_local_axis_display(state, data_type):
@@ -1137,7 +1140,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, selected_only=False):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(meshpath))
 
@@ -1149,7 +1152,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     object_xml = Xml.SubElement(root_xml, 'object')
 
     # populate object data
-    blender_meshobjs = list_scene_pdx_meshes()
+    blender_meshobjs = list_scene_pdx_meshes(selected_only)
     # sort meshes for export by index
     blender_meshobjs.sort(key=lambda obj: get_mesh_index(obj.data))
 

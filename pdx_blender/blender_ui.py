@@ -497,6 +497,11 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         description='Merge vertices',
         default=True,
     )
+    chk_selected : BoolProperty(
+        name='Export selected only',
+        description='Export selected only',
+        default=False,
+    )
 
     def draw(self, context):
         box = self.layout.box()
@@ -505,6 +510,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         box.prop(self, 'chk_skel')
         box.prop(self, 'chk_locs')
         box.prop(self, 'chk_merge')
+        box.prop(self, 'chk_selected')
 
     def execute(self, context):
         try:
@@ -513,7 +519,8 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_mesh=self.chk_mesh,
                 exp_skel=self.chk_skel,
                 exp_locs=self.chk_locs,
-                merge_verts=self.chk_merge
+                merge_verts=self.chk_merge,
+                selected_only=self.chk_selected
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
             IO_PDX_SETTINGS.last_export_mesh = self.filepath
