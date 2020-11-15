@@ -8,7 +8,6 @@
 import os
 import sys
 import json
-import errno
 import os.path as path
 
 
@@ -24,7 +23,6 @@ class PDXsettings(object):
         if path.exists(filepath):
             # read settings file
             self.load_settings_file(filepath)
-
         else:
             # new settings file
             try:
@@ -32,8 +30,8 @@ class PDXsettings(object):
                 with open(filepath, 'w') as _:
                     pass
             except OSError as err:
-                if err.errno != errno.EEXIST:
-                    print(err)
+                print(err)
+
         # default settings
         self.config_path = filepath
         self.app = sys.executable
@@ -55,8 +53,14 @@ class PDXsettings(object):
         return result
 
     def load_settings_file(self, filepath):
+        # default to empty settings dictionary
+        settings_dict = {}
         with open(filepath) as f:
-            settings_dict = json.load(f)
+            try:
+                settings_dict = json.load(f)
+            except Exception as err:
+                print(err)
+
         self.config_path = filepath
         for k, v in settings_dict.items():
             setattr(self, k, v)
@@ -65,5 +69,5 @@ class PDXsettings(object):
         try:
             with open(self.config_path, 'w') as f:
                 json.dump(self.__dict__, f, sort_keys=True, indent=4)
-        except Exception as e:
-            print(e)
+        except Exception as err:
+            print(err)
