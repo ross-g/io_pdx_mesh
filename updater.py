@@ -80,6 +80,7 @@ class Github_API(object):
             except Exception as err:
                 IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
                 return
+            self.LATEST_RELEASE = release_list[0]
 
             latest = release_list[0]
 

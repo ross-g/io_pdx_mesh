@@ -8,7 +8,6 @@
 import os
 import sys
 import json
-import errno
 import os.path as path
 
 
@@ -24,32 +23,44 @@ class PDXsettings(object):
         if path.exists(filepath):
             # read settings file
             self.load_settings_file(filepath)
-
         else:
             # new settings file
             try:
                 os.makedirs(path.dirname(filepath))
                 with open(filepath, 'w') as _:
                     pass
-            except OSError as e:
-                if e.errno != errno.EEXIST:
-                    print(e)
+            except OSError as err:
+                print(err)
+
         # default settings
         self.config_path = filepath
         self.app = sys.executable
 
     def __setattr__(self, name, value):
-        super(PDXsettings, self).__setattr__(name, value)
+        result = super(PDXsettings, self).__setattr__(name, value)
         self.save_settings_file()
+        return result
 
-    def __getattribute__(self, attr):
+    def __getattr__(self, attr):
         try:
-            return super(PDXsettings, self).__getattribute__(attr)
+            return super(PDXsettings, self).__getattr__(attr)
         except AttributeError:
             return None
 
+    def __delattr__(self, name):
+        result = super(PDXsettings, self).__delattr__(name)
+        self.save_settings_file()
+        return result
+
     def load_settings_file(self, filepath):
-        settings_dict = json.load(open(filepath))
+        # default to empty settings dictionary
+        settings_dict = {}
+        with open(filepath) as f:
+            try:
+                settings_dict = json.load(f)
+            except Exception as err:
+                print(err)
+
         self.config_path = filepath
         for k, v in settings_dict.items():
             setattr(self, k, v)
@@ -58,5 +69,5 @@ class PDXsettings(object):
         try:
             with open(self.config_path, 'w') as f:
                 json.dump(self.__dict__, f, sort_keys=True, indent=4)
-        except Exception as e:
-            print(e)
+        except Exception as err:
+            print(err)

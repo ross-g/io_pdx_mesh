@@ -7,11 +7,14 @@
 
 import sys
 import site
+import json
 import inspect
 import logging
+import zipfile
 import traceback
 import os.path as path
 from imp import reload
+from collections import OrderedDict
 
 from .settings import PDXsettings
 
@@ -25,11 +28,12 @@ bl_info = {
     'support': 'COMMUNITY',
     'blender': (2, 80, 0),
     'maya': (2015),
-    'version': (0, 7),
+    'version': (0, 71),
     'warning': 'this add-on is beta',
     'project_name': 'io_pdx_mesh',
     'project_url': 'https://github.com/ross-g/io_pdx_mesh',
     'wiki_url': 'https://github.com/ross-g/io_pdx_mesh/wiki',
+    'tracker_url': 'https://github.com/ross-g/io_pdx_mesh/issues',
     'forum_url': 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/',
 }
 
@@ -52,6 +56,26 @@ from appdirs import user_data_dir  # noqa
 
 config_path = path.join(user_data_dir(bl_info['project_name'], False), 'settings.json')
 IO_PDX_SETTINGS = PDXsettings(config_path)
+
+# setup engine/export settings
+export_settings = path.join(root_path, 'clausewitz.json')
+ENGINE_SETTINGS = {}
+try:
+    if '.zip' in export_settings:
+        zipped = export_settings.split('.zip')[0] + '.zip'
+        with zipfile.ZipFile(zipped, 'r') as z:
+            f = z.open('io_pdx_mesh/clausewitz.json')
+            ENGINE_SETTINGS = json.loads(f.read(), object_pairs_hook=OrderedDict)
+    else:
+        with open(export_settings, 'rt') as f:
+            ENGINE_SETTINGS = json.load(f, object_pairs_hook=OrderedDict)
+except Exception as err:
+    print(err)
+    msg = (
+        "CRITICAL ERROR! Your 'clausewitz.json' settings file has errors and is unreadable."
+        "Some functions of the tool will not work without these settings."
+    )
+    raise RuntimeError(msg)
 
 
 """ ====================================================================================================================

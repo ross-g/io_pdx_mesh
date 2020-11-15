@@ -261,7 +261,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
         # we must sort the list of loops in vert order, as by default Blender can return a different order
         # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
         _sorted = sorted(enumerate(tri.loops), key=lambda x: x[1].vert.index)
-        sorted_indices = [i[0] for i in _sorted]    # track sorting change
+        sorted_indices = [i[0] for i in _sorted]  # track sorting change
         sorted_loops = [i[1] for i in _sorted]
 
         dict_vert_idx = []
@@ -272,7 +272,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
 
             # position
             _position = vert.co
-            _position = tuple(swap_coord_space(_position))  # convert to Game space
+            _position = tuple(swap_coord_space(_position))
             if round_data:
                 _position = util_round(_position, PDX_DECIMALPTS)
 
@@ -280,7 +280,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # FIXME : seems like custom normal per face-vertex is not available through bmesh?
             # _normal = loop.calc_normal()
             _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices!
-            _normal = tuple(swap_coord_space(_normal))  # convert to Game space
+            _normal = tuple(swap_coord_space(_normal))
             if round_data:
                 _normal = util_round(_normal, PDX_DECIMALPTS)
 
@@ -289,7 +289,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             for i, uv_set in enumerate(uv_setnames):
                 uv_layer = bm.loops.layers.uv[uv_set]
                 uv = loop[uv_layer].uv
-                uv = tuple(swap_coord_space(tuple(uv)))  # convert to Game space
+                uv = tuple(swap_coord_space(tuple(uv)))
                 if round_data:
                     uv = util_round(uv, PDX_DECIMALPTS)
                 _uv_coords += (uv,)
@@ -299,7 +299,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
                 # _tangent = loop.calc_tangent()
                 _bitangent_sign = mesh.loops[loop.index].bitangent_sign
                 _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices!
-                _tangent = tuple(swap_coord_space(_tangent))  # convert to Game space
+                _tangent = tuple(swap_coord_space(_tangent))
                 if round_data:
                     _tangent = util_round(_tangent, PDX_DECIMALPTS)
 
@@ -332,11 +332,11 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
             # store the tri-vert reference
             dict_vert_idx.append(i)
 
-        # tri-faces
+        # tri-faces (converting handedness to Game space)
         mesh_dict['tri'].extend(
             # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
             [dict_vert_idx[sorted_indices[0]], dict_vert_idx[sorted_indices[2]], dict_vert_idx[sorted_indices[1]]]
-        )  # convert handedness to Game space
+        )
 
     # calculate min and max bounds of mesh
     x_vtx_pos = set([mesh_dict['p'][j] for j in range(0, len(mesh_dict['p']), 3)])
@@ -448,7 +448,7 @@ def get_mesh_skeleton_info(blender_obj):
             bone_list[i]['pa'] = [all_bones.index(bone.parent)]
 
         # bone inverse world-space transform
-        mat = swap_coord_space(rig.matrix_world @ bone.matrix_local).inverted_safe()  # convert to Game space
+        mat = swap_coord_space(rig.matrix_world @ bone.matrix_local).inverted_safe()
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
         bone_list[i]['tx'] = []
@@ -458,6 +458,41 @@ def get_mesh_skeleton_info(blender_obj):
         bone_list[i]['tx'].extend(mat[12:15])
 
     return bone_list
+
+
+def get_locators_info(blender_empties):
+    # build a list of locator information dictionaries for the exporter
+    locator_list = [{'name': x.name} for x in blender_empties]
+
+    for i, obj in enumerate(blender_empties):
+        # unparented, use worldspace position/rotation
+        _transform = obj.matrix_world
+
+        # parented to bone, use local position/rotation
+        if obj.parent and obj.parent_type == 'BONE':
+            locator_list[i]['pa'] = obj.parent_bone
+            rig = obj.parent
+            bone_matrix = rig.matrix_world @ rig.data.bones[obj.parent_bone].matrix_local
+            # TODO: test if this should be .matrix_world or .matrix_local
+            _transform = bone_matrix.inverted_safe() @ obj.matrix_world
+
+        _position, _rotation, _scale = swap_coord_space(_transform).decompose()
+
+        locator_list[i]['p'] = list(_position)
+        locator_list[i]['q'] = list([_rotation[1], _rotation[2], _rotation[3], _rotation[0]])  # convert from wxyz to xyzw
+
+        is_scaled = util_round(list(_scale), PDX_ROUND_SCALE) != (1.0, 1.0, 1.0)
+        # TODO: check engine config here to see if full 'tx' attribute is supported
+        if is_scaled:
+            transform = swap_coord_space(_transform)
+            locator_list[i]['tx'] = [
+                transform[0][0], transform[1][0], transform[2][0], transform[3][0],
+                transform[0][1], transform[1][1], transform[2][1], transform[3][1],
+                transform[0][2], transform[1][2], transform[2][2], transform[3][2],
+                transform[0][3], transform[1][3], transform[2][3], transform[3][3],
+            ]
+
+    return locator_list
 
 
 def get_skeleton_hierarchy(rig):
@@ -500,7 +535,7 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
                 pose_bone=pose_bone, matrix=pose_bone.matrix, from_space='POSE', to_space='WORLD'
             )
             offset_matrix = parent_matrix.inverted_safe() @ pose_matrix
-            _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # Convert to Game space
+            _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()
 
             frames_data[bone.name].append((_translation, _rotation, _scale))
 
@@ -614,7 +649,16 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
     links = node_tree.links
 
     shader_root = nodes.get('Principled BSDF')
+    if shader_root is None:
+        # if we can't find the root node we expect, clear the graph and create from scratch
+        nodes.clear()
+        output = nodes.new(type='ShaderNodeOutputMaterial')
+        shader_root = nodes.new(type='ShaderNodeBsdfPrincipled')
 
+        links.new(shader_root.outputs['BSDF'], output.inputs['Surface'])
+        set_node_pos(output, 1, 0)
+
+    # link up diffuse texture to base-color slot
     if getattr(PDX_material, 'diff', None) or placeholder:
         texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.diff[0])
 
@@ -624,6 +668,7 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
         links.new(albedo_texture.outputs['Color'], shader_root.inputs['Base Color'])
         # links.new(albedo_texture.outputs['Alpha'], shader_root.inputs['Alpha'])  # diffuse.A sometimes used for alpha
 
+    # link up specular texture to roughness, metallic and specular slots
     if getattr(PDX_material, 'spec', None) or placeholder:
         texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.spec[0])
 
@@ -640,6 +685,7 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
         links.new(separate_rgb.outputs['B'], shader_root.inputs['Metallic'])
         links.new(material_texture.outputs['Alpha'], shader_root.inputs['Roughness'])
 
+    # link up normal texture to normal slot
     if getattr(PDX_material, 'n', None) or placeholder:
         texture_path = '' if placeholder else os.path.join(texture_dir, PDX_material.n[0])
 
@@ -676,15 +722,15 @@ def create_material(PDX_material, mesh, texture_path):
 def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
-    new_loc.empty_display_type = 'ARROWS'
-    new_loc.empty_display_size = 0.25
+    new_loc.empty_display_type = 'PLAIN_AXES'
+    new_loc.empty_display_size = 0.4
     new_loc.show_axis = False
 
     bpy.context.scene.collection.objects.link(new_loc)
 
     # check for a parent relationship
     parent = getattr(PDX_locator, 'pa', None)
-    parent_Xform = Matrix()
+    parent_Xform = None
 
     if parent is not None:
         # parent the locator to a bone in the armature
@@ -707,19 +753,34 @@ def create_locator(PDX_locator, PDX_bone_dict):
             )
         )
 
-    # compose transform parts
-    _scale = Matrix.Scale(1, 4)
-    _rotation = (
-        Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4()
-    )
-    _translation = Matrix.Translation(PDX_locator.p)
+    # if full transformation is available, set transformation directly
+    if hasattr(PDX_locator, 'tx'):
+        # fmt: off
+        loc_matrix = Matrix((
+            (PDX_locator.tx[0], PDX_locator.tx[4], PDX_locator.tx[8], PDX_locator.tx[12]),
+            (PDX_locator.tx[1], PDX_locator.tx[5], PDX_locator.tx[9], PDX_locator.tx[13]),
+            (PDX_locator.tx[2], PDX_locator.tx[6], PDX_locator.tx[10], PDX_locator.tx[14]),
+            (PDX_locator.tx[3], PDX_locator.tx[7], PDX_locator.tx[11], PDX_locator.tx[15]),
+        ))
+        # fmt: on
+    # otherwise just rotate and translate components
+    else:
+        # compose transform parts
+        _scale = Matrix.Scale(1, 4)
+        _rotation = (
+            Quaternion((PDX_locator.q[3], PDX_locator.q[0], PDX_locator.q[1], PDX_locator.q[2])).to_matrix().to_4x4()
+        )
+        _translation = Matrix.Translation(PDX_locator.p)
 
-    loc_matrix = _translation @ _rotation @ _scale
+        loc_matrix = _translation @ _rotation @ _scale
 
-    # apply parent transform (must be multiplied in transposed form, then re-transposed before being applied)
-    final_matrix = (loc_matrix.transposed() @ parent_Xform.inverted_safe().transposed()).transposed()
+    # apply parent transform
+    if parent_Xform is not None:
+        # TODO: why is the transposed multiplication needed?
+        # must be multiplied in transposed form, then re-transposed before being applied
+        loc_matrix = (loc_matrix.transposed() @ parent_Xform.inverted_safe().transposed()).transposed()
 
-    new_loc.matrix_world = swap_coord_space(final_matrix)  # convert to Blender space
+    new_loc.matrix_world = swap_coord_space(loc_matrix)
     new_loc.rotation_mode = 'XYZ'
 
     bpy.context.view_layer.update()
@@ -774,14 +835,14 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
             new_bone.use_connect = False
 
         # determine bone head transform
-        mat = Matrix(
-            (
-                (transform[0], transform[3], transform[6], transform[9]),
-                (transform[1], transform[4], transform[7], transform[10]),
-                (transform[2], transform[5], transform[8], transform[11]),
-                (0.0, 0.0, 0.0, 1.0),
-            )
-        )
+        # fmt: off
+        mat = Matrix((
+            (transform[0], transform[3], transform[6], transform[9]),
+            (transform[1], transform[4], transform[7], transform[10]),
+            (transform[2], transform[5], transform[8], transform[11]),
+            (0.0, 0.0, 0.0, 1.0),
+        ))
+        # fmt: on
         # rescale or recompose matrix so we always import bones at 1.0 scale
         loc, rot, scale = mat.decompose()
         try:
@@ -794,14 +855,14 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         bone_dists = []
         for child in bone_children:
             child_transform = child.tx
-            c_mat = Matrix(
-                (
-                    (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
-                    (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
-                    (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
-                    (0.0, 0.0, 0.0, 1.0),
-                )
-            )
+            # fmt: off
+            c_mat = Matrix((
+                (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
+                (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
+                (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
+                (0.0, 0.0, 0.0, 1.0),
+            ))
+            # fmt: on
             c_dist = c_mat.to_translation() - safemat.to_translation()
             bone_dists.append(math.sqrt(c_dist.x ** 2 + c_dist.y ** 2 + c_dist.z ** 2))
 
@@ -813,9 +874,9 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         # set bone tail offset first
         new_bone.tail = Vector((0.0, 0.0, avg_dist))
         # set matrix directly as this includes bone roll/rotation
-        new_bone.matrix = swap_coord_space(safemat.inverted_safe())  # convert to Blender space
+        new_bone.matrix = swap_coord_space(safemat.inverted_safe())
         if convert_bonespace:
-            new_bone.matrix = swap_coord_space(safemat.inverted_safe()) @ BONESPACE_MATRIX  # convert to Blender space
+            new_bone.matrix = swap_coord_space(safemat.inverted_safe()) @ BONESPACE_MATRIX
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
@@ -899,7 +960,7 @@ def create_mesh(PDX_mesh, name=None):
     # vertices
     vertexArray = []  # array of points
     for i in range(0, len(verts), 3):
-        v = swap_coord_space([verts[i], verts[i + 1], verts[i + 2]])  # convert to Blender space
+        v = swap_coord_space([verts[i], verts[i + 1], verts[i + 2]])
         vertexArray.append(v)
 
     # faces
@@ -930,7 +991,7 @@ def create_mesh(PDX_mesh, name=None):
     if norms:
         normals = []
         for i in range(0, len(norms), 3):
-            n = swap_coord_space([norms[i], norms[i + 1], norms[i + 2]])  # convert to Blender space
+            n = swap_coord_space([norms[i], norms[i + 1], norms[i + 2]])
             normals.append(n)
 
         new_mesh.polygons.foreach_set('use_smooth', [True] * len(new_mesh.polygons))
@@ -998,6 +1059,7 @@ def create_fcurve(armature, bone_name, data_type, index):
 
 
 def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
+    # TODO: this is very slow, create f-curves directly instead of keyframing
     pose_bone = armature.pose.bones[bone_name]
 
     # validate keyframe counts per attribute
@@ -1034,7 +1096,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
         # over-ride initial pose offset based on keyed attributes
         if 's' in key_dict:
             _scale = Matrix.Scale(key_dict['s'][k][0], 4)
-            _scale = swap_coord_space(_scale)  # convert to Blender space
+            _scale = swap_coord_space(_scale)
 
         if 'q' in key_dict:
             _rotation = (
@@ -1042,11 +1104,11 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
                 .to_matrix()
                 .to_4x4()
             )
-            _rotation = swap_coord_space(_rotation)  # convert to Blender space
+            _rotation = swap_coord_space(_rotation)
 
         if 't' in key_dict:
             _translation = Matrix.Translation(key_dict['t'][k])
-            _translation = swap_coord_space(_translation)  # convert to Blender space
+            _translation = swap_coord_space(_translation)
 
         # recompose
         offset_matrix = _translation @ _rotation @ _scale
@@ -1085,7 +1147,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
     # go through shapes
     for i, node in enumerate(shapes):
-        IO_PDX_LOG.info("creating node - {0}".format(node.tag))
+        IO_PDX_LOG.info("creating node {0}/{1} - {2}".format(i + 1, len(shapes), node.tag))
 
         # create the skeleton first, so we can skin the mesh to it
         rig = None
@@ -1128,8 +1190,8 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
 
     # go through locators
     if imp_locs and locators:
-        IO_PDX_LOG.info("creating locators -")
-        for loc in locators:
+        for i, loc in enumerate(locators):
+            IO_PDX_LOG.info("creating locator {0}/{1} - {2}".format(i + 1, len(locators), loc.tag))
             pdx_locator = pdx_data.PDXData(loc)
             obj = create_locator(pdx_locator, scene_bone_dict)
 
@@ -1137,7 +1199,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, exp_selected=False):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(meshpath))
 
@@ -1149,14 +1211,17 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     object_xml = Xml.SubElement(root_xml, 'object')
 
     # populate object data
-    blender_meshobjs = list_scene_pdx_meshes()
-    # sort meshes for export by index
-    blender_meshobjs.sort(key=lambda obj: get_mesh_index(obj.data))
+    blender_meshes = list_scene_pdx_meshes()
+    if exp_selected:
+        blender_meshes = [obj for obj in blender_meshes if obj.select_get()]
 
-    if len(blender_meshobjs) == 0:
+    # sort meshes for export by index
+    blender_meshes.sort(key=lambda obj: get_mesh_index(obj.data))
+
+    if len(blender_meshes) == 0:
         raise RuntimeError("Nothing to export, found no meshes with PDX materials applied.")
 
-    for obj in blender_meshobjs:
+    for obj in blender_meshes:
         IO_PDX_LOG.info("writing node - {0}".format(obj.data.name))
         objnode_xml = Xml.SubElement(object_xml, obj.data.name)
 
@@ -1165,6 +1230,10 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
         if exp_mesh and materials:
             for mat_idx, blender_mat in enumerate(materials):
+                # validate that this material slot is not empty and corresponds to a PDX material, skip otherwise
+                if blender_mat is None or PDX_SHADER not in blender_mat.keys():
+                    continue
+
                 # create parent element for this mesh (mesh here being faces sharing a material, within one object)
                 IO_PDX_LOG.info("writing mesh -")
                 meshnode_xml = Xml.SubElement(objnode_xml, 'mesh')
@@ -1217,31 +1286,21 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
     blender_empties = [obj for obj in bpy.context.scene.objects if obj.data is None]
+    loc_info_list = get_locators_info(blender_empties)
 
-    if exp_locs and blender_empties:
+    if exp_locs and loc_info_list:
         IO_PDX_LOG.info("writing locators -")
-        for loc in blender_empties:
+        for loc_info_dict in loc_info_list:
             # create sub-elements for each locator, populate locator attributes
-            locnode_xml = Xml.SubElement(locator_xml, loc.name)
-
-            loc_transform = loc.matrix_world
-            if exp_skel and loc.parent and loc.parent_type == 'BONE':
-                rig = loc.parent
-                bone_matrix = rig.matrix_world @ rig.data.bones[loc.parent_bone].matrix_local
-                loc_transform = bone_matrix.inverted_safe() @ loc.matrix_world
-
-                locnode_xml.set('pa', [loc.parent_bone])
-
-            _position, _rotation = swap_coord_space(loc_transform).decompose()[0:2]  # convert to Game space
-            position = list(_position)
-            rotation = list(_rotation)
-
-            locnode_xml.set('p', position)
-            locnode_xml.set('q', [rotation[1], rotation[2], rotation[3], rotation[0]])  # convert from wxyz to xyzw
+            locnode_xml = Xml.SubElement(locator_xml, loc_info_dict['name'])
+            for key in ['p', 'q', 'pa', 'tx']:
+                if key in loc_info_dict and loc_info_dict[key]:
+                    locnode_xml.set(key, loc_info_dict[key])
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
 
+    bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.select_all(action='DESELECT')
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
 
@@ -1315,7 +1374,7 @@ def import_animfile(animpath, timestart=1):
             _translation = Matrix.Translation(bone.attrib['t'])
 
             # this matrix describes the transform from parent bone in the initial starting pose
-            offset_matrix = swap_coord_space(_translation @ _rotation @ _scale)  # convert to Blender space
+            offset_matrix = swap_coord_space(_translation @ _rotation @ _scale)
             # determine if we have a parent matrix
             parent_matrix = Matrix()
             if edit_bone.parent:
@@ -1440,7 +1499,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
 
         # calculate the inital pose offset for this bone
         offset_matrix = parent_matrix.inverted_safe() @ pose_bone.matrix
-        _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()  # convert to Game space
+        _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()
 
         # convert quaternions from wxyz to xyzw
         _rotation = [list(_rotation)[1], list(_rotation)[2], list(_rotation)[3], list(_rotation)[0]]
@@ -1465,7 +1524,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     for i in range(frame_samples):
         for bone in all_bone_keyframes:
             if 't' in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO : pop first item is slow?
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))
             if 'q' in all_bone_keyframes[bone]:
                 q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
             if 's' in all_bone_keyframes[bone]:

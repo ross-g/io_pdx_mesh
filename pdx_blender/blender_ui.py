@@ -4,11 +4,7 @@
     author : ross-g
 """
 
-import os
-import json
-import inspect
 import importlib
-from collections import OrderedDict
 from textwrap import wrap
 
 import bpy
@@ -16,7 +12,7 @@ from bpy.types import Operator, Panel, UIList
 from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
-from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
+from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
 
@@ -46,29 +42,8 @@ except Exception as err:
 """
 
 
-_script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-settings_file = os.path.join(os.path.split(_script_dir)[0], 'clausewitz.json')
-
-engine_list = ()
-
-
-def load_settings():
-    global settings_file
-    with open(settings_file, 'rt') as f:
-        try:
-            settings = json.load(f, object_pairs_hook=OrderedDict)
-            return settings
-        except Exception as err:
-            IO_PDX_LOG.info("CRITICAL ERROR!")
-            IO_PDX_LOG.error(err)
-            return {}
-
-
 def get_engine_list(self, context):
-    global engine_list
-
-    settings = load_settings()  # settings from json
-    engine_list = ((engine, engine, engine) for engine in settings.keys())
+    engine_list = ((engine, engine, engine) for engine in ENGINE_SETTINGS.keys())
 
     return engine_list
 
@@ -76,8 +51,7 @@ def get_engine_list(self, context):
 def get_material_list(self, context):
     sel_engine = context.scene.io_pdx_settings.setup_engine
 
-    settings = load_settings()  # settings from json
-    material_list = [(material, material, material) for material in settings[sel_engine]['material']]
+    material_list = [(material, material, material) for material in ENGINE_SETTINGS[sel_engine]['material']]
     material_list.insert(0, ('__NONE__', '', ''))
 
     return material_list
@@ -174,7 +148,7 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
         mat_type = self.mat_type
         if self.use_custom or mat_type == '__NONE__':
             mat_type = self.custom_type
-        # create a mock PDXData object for convenience here to pass to the create_shader function
+        # create a mock PDXData object for convenience here to pass to the create_material function
         mat_pdx = type(
             'Material',
             (PDXData, object),
@@ -479,32 +453,39 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
     # list of operator properties
     chk_mesh : BoolProperty(
         name='Export mesh',
-        description='Export mesh',
+        description='Export meshes',
         default=True,
     )
     chk_skel : BoolProperty(
         name='Export skeleton',
-        description='Export skeleton',
+        description='Export related armatures',
         default=True,
     )
     chk_locs : BoolProperty(
         name='Export locators',
-        description='Export locators',
+        description='Export empties data',
         default=True,
     )
-    chk_merge : BoolProperty(
+    chk_merge_vtx : BoolProperty(
         name='Merge vertices',
-        description='Merge vertices',
+        description='Merge vertices on mesh',
         default=True,
+    )
+    chk_selected : BoolProperty(
+        name='Selected Only',
+        description='Filter export by selection',
+        default=False,
     )
 
     def draw(self, context):
+        self.layout.use_property_split = True
         box = self.layout.box()
         box.label(text='Settings:', icon='EXPORT')
         box.prop(self, 'chk_mesh')
         box.prop(self, 'chk_skel')
         box.prop(self, 'chk_locs')
-        box.prop(self, 'chk_merge')
+        box.prop(self, 'chk_merge_vtx')
+        box.prop(self, 'chk_selected')
 
     def execute(self, context):
         try:
@@ -513,7 +494,8 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_mesh=self.chk_mesh,
                 exp_skel=self.chk_skel,
                 exp_locs=self.chk_locs,
-                merge_verts=self.chk_merge
+                merge_verts=self.chk_merge_vtx,
+                exp_selected=self.chk_selected
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
             IO_PDX_SETTINGS.last_export_mesh = self.filepath
