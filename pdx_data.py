@@ -283,18 +283,22 @@ def read_meshfile(filepath):
 def writeProperty(prop_name, prop_data):
     datastring = b''
 
-    # write starting '!'
-    datastring += struct.pack('c', '!'.encode())
+    try:
+        # write starting '!'
+        datastring += struct.pack('c', '!'.encode())
 
-    # write length of property name
-    prop_name_length = len(prop_name)
-    datastring += struct.pack('b', prop_name_length)
+        # write length of property name
+        prop_name_length = len(prop_name)
+        datastring += struct.pack('b', prop_name_length)
 
-    # write property name as string
-    datastring += writeString(prop_name)
+        # write property name as string
+        datastring += writeString(prop_name)
 
-    # write property data
-    datastring += writeData(prop_data)
+        # write property data
+        datastring += writeData(prop_data)
+    except NotImplementedError as err:
+        print("Failed writing property: {}".format(prop_name))
+        raise err
 
     return datastring
 
@@ -471,7 +475,7 @@ def write_meshfile(filepath, root_xml):
             datastring += writeObject(locnode_xml, current_depth)
 
             # write locator properties
-            for prop in ['p', 'q', 'pa']:
+            for prop in ['p', 'q', 'pa', 'tx']:
                 if locnode_xml.get(prop) is not None:
                     datastring += writeProperty(prop, locnode_xml.get(prop))
 
@@ -572,8 +576,8 @@ General binary format is:
     header    (@@b@ for binary, @@t@ for text)
     pdxasset    (int)  number of assets? file format version?
         object    (object)  parent item for all 3D objects
-            lodperc    (float)  list of LOD switches, percentage size of bounding sphere?  NEW STYLE!
-            loddist    (float)  list of LOD switches, some distance metric?  OLD STYLE! OBSOLETE?
+            lodperc    (float)  list of LOD switches, percentage size of bounding sphere?  [IMPERATOR]
+            loddist    (float)  list of LOD switches, some distance metric?  [EU4/STELLARIS/HOI4]
             shape    (object)
                 ...  multiple shapes, used for meshes under different node transforms
             shape    (object)
@@ -588,7 +592,7 @@ General binary format is:
                     ta    (float)  tangents
                     u0    (float)  UVs
                     tri    (int)  triangles
-                    boundingsphere    (float)  describes centre and radius of mesh spherical bound  NEW STYLE!
+                    boundingsphere    (float)  centre and radius of mesh spherical bounds  [IMPERATOR]
                     aabb    (object)
                         min    (float)  min bounding box
                         max    (float)  max bounding box
@@ -610,7 +614,8 @@ General binary format is:
             node    (object)
                 p    (float)  position
                 q    (float)  quarternion
-                pa    (string)  parent
+                pa    (string)  parent name
+                tx    (float)  worldspace transform, 4*4 matrix (allow locator scale)  [IMPERATOR]
 
 
 .anim file format

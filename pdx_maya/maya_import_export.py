@@ -17,11 +17,15 @@ try:
 except ImportError:
     import xml.etree.ElementTree as Xml
 
+import maya.cmds as cmds
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
-import maya.OpenMaya as OpenMaya  # Maya Python API 1.0
-import maya.OpenMayaAnim as OpenMayaAnim  # Maya Python API 1.0
-from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion  # Maya Python API 2.0
+# Maya Python API 1.0
+import maya.OpenMaya as OpenMaya
+import maya.OpenMayaAnim as OpenMayaAnim
+# Maya Python API 2.0
+import maya.api.OpenMaya as OpenMayaAPI
+from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion
 
 from .. import pdx_data
 from .. import IO_PDX_LOG
@@ -355,14 +359,14 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
 
                 # position
                 _position = vertices[vert_id]
-                _position = swap_coord_space(_position)  # convert to Game space
+                _position = swap_coord_space(_position)
                 if round_data:
                     _position = util_round(list(_position), PDX_DECIMALPTS)
 
                 # normal
                 vert_norm_id = face.normalIndex(_local_id)
                 _normal = list(normals[vert_norm_id])
-                _normal = swap_coord_space(_normal)  # convert to Game space
+                _normal = swap_coord_space(_normal)
                 if round_data:
                     _normal = util_round(list(_normal), PDX_DECIMALPTS)
 
@@ -372,7 +376,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     try:
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
                         uv = uv_coords[i][vert_uv_id]
-                        uv = swap_coord_space(uv)  # convert to Game space
+                        uv = swap_coord_space(uv)
                         if round_data:
                             uv = util_round(list(uv), PDX_DECIMALPTS)
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
@@ -385,12 +389,12 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
                     vert_tangent_id = mesh.getTangentId(face_id, vert_id)
                     _binormal_sign = 1.0 if mFn_Mesh.isRightHandedTangent(vert_tangent_id, uv_setnames[0]) else -1.0
                     _tangent = list(tangents[vert_tangent_id])
-                    _tangent = swap_coord_space(_tangent)  # convert to Game space
+                    _tangent = swap_coord_space(_tangent)
                     if round_data:
                         _tangent = util_round(list(_tangent), PDX_DECIMALPTS)
 
                 # check if this tri-vert is new and unique, or can if we can just use an existing vertex
-                new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
+                new_vert = UniqueVertex(vert_id, tuple(_position), tuple(_normal), _uv_coords)
 
                 # test if we have already stored this vertex in the unique set
                 i = None
@@ -535,6 +539,35 @@ def get_mesh_skeleton_info(maya_mesh):
     return bone_list
 
 
+def get_locators_info(maya_locators):
+    # build a list of locator information dictionaries for the exporter
+    locator_list = [{'name': x.name()} for x in maya_locators]
+
+    for i, loc in enumerate(maya_locators):
+        # unparented, use worldspace position/rotation
+        _position = loc.getTranslation(worldSpace=True)
+        _rotation = loc.getRotation(worldSpace=True, quaternion=True)
+
+        # parented to bone, use local position/rotation
+        loc_parent = loc.getParent()
+        if loc_parent is not None and type(loc_parent) == pmc.nt.Joint:
+            locator_list[i]['pa'] = loc_parent.name()
+            _position = loc.getTranslation()
+            _rotation = loc.getRotation(quaternion=True)
+
+        locator_list[i]['p'] = list(swap_coord_space(_position))
+        locator_list[i]['q'] = list(swap_coord_space(_rotation))
+
+        _scale = loc.getScale()
+        is_scaled = util_round(list(_scale), PDX_ROUND_SCALE) != (1.0, 1.0, 1.0)
+        # TODO: check engine config here to see if full 'tx' attribute is supported
+        if is_scaled:
+            _transform = loc.getMatrix()
+            locator_list[i]['tx'] = list(swap_coord_space(_transform))
+
+    return locator_list
+
+
 def get_skeleton_hierarchy(bone_list):
     root_bone = set()
 
@@ -586,7 +619,6 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
             pmc.currentTime(f, edit=True)
             for bone in export_bones:
                 # TODO: this is slow, don't use PyMel here or check f-curves directly
-                # convert to Game space
                 _translation = swap_coord_space(bone.getTranslation())
                 # bone rotation must be pre-multiplied by joint orientation
                 _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
@@ -741,9 +773,9 @@ def create_locator(PDX_locator, PDX_bone_dict):
     pmc.select(new_loc)
     pmc.rename(new_loc, PDX_locator.name)
 
-    # parent locator to scene bone, or apply parents transform
+    # check for parent, then parent locator to scene bone, or apply parents transform
     parent = getattr(PDX_locator, 'pa', None)
-    parent_Xform = pmdt.Matrix()
+    parent_Xform = None
 
     if parent is not None:
         parent_bone = pmc.ls(parent[0], type='joint')
@@ -759,7 +791,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
                     transform[0], transform[1], transform[2], 0.0,
                     transform[3], transform[4], transform[5], 0.0,
                     transform[6], transform[7], transform[8], 0.0,
-                    transform[9], transform[10], transform[11], 1.0
+                    transform[9], transform[10], transform[11], 1.0,
                 )
                 # fmt: on
             else:
@@ -772,35 +804,38 @@ def create_locator(PDX_locator, PDX_bone_dict):
                 return
 
     # get transform function set
-    loc_MObj = get_MObject(new_loc.name())
-    mFn_Xform = OpenMaya.MFnTransform(loc_MObj)
+    m_SelList = OpenMayaAPI.MSelectionList()  # TODO: replace with get_MObject for API2
+    m_SelList.add(new_loc.name())
+    loc_MObj = m_SelList.getDependNode(0)
 
-    # check if full transformation specified
+    mFn_Xform = OpenMayaAPI.MFnTransform(loc_MObj)
+
+    # if full transformation is available, set transformation directly
     if hasattr(PDX_locator, 'tx'):
+        # fmt: off
         loc_Xform = MTransformationMatrix(
-            MMatrix(
-                (
-                    (PDX_locator.tx[0], PDX_locator.tx[1], PDX_locator.tx[2], PDX_locator.tx[3]),
-                    (PDX_locator.tx[4], PDX_locator.tx[5], PDX_locator.tx[6], PDX_locator.tx[7]),
-                    (PDX_locator.tx[8], PDX_locator.tx[9], PDX_locator.tx[10], PDX_locator.tx[11]),
-                    (PDX_locator.tx[12], PDX_locator.tx[13], PDX_locator.tx[14], PDX_locator.tx[15])
-                )
-            )
+            MMatrix((
+                (PDX_locator.tx[0], PDX_locator.tx[1], PDX_locator.tx[2], PDX_locator.tx[3]),
+                (PDX_locator.tx[4], PDX_locator.tx[5], PDX_locator.tx[6], PDX_locator.tx[7]),
+                (PDX_locator.tx[8], PDX_locator.tx[9], PDX_locator.tx[10], PDX_locator.tx[11]),
+                (PDX_locator.tx[12], PDX_locator.tx[13], PDX_locator.tx[14], PDX_locator.tx[15]),
+            ))
         )
+        # fmt: on
         mFn_Xform.setTransformation(loc_Xform)
-    # or just rotate and translate
+    # otherwise just rotate and translate components
     else:
         # rotation
         quat = MQuaternion(*PDX_locator.q)
-        mFn_Xform.setRotation(quat, OpenMaya.MSpace.kTransform)
+        mFn_Xform.setRotation(quat, OpenMayaAPI.MSpace.kTransform)
         # translation
-        vector = OpenMaya.MVector(PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
-        mFn_Xform.setTranslation(vector, OpenMaya.MSpace.kTransform)
+        vector = MVector(PDX_locator.p[0], PDX_locator.p[1], PDX_locator.p[2])
+        mFn_Xform.setTranslation(vector, OpenMayaAPI.MSpace.kTransform)
 
     # apply parent transform
-    new_loc.setMatrix(new_loc.getMatrix() * parent_Xform.inverse())
+    if parent_Xform is not None:
+        new_loc.setMatrix(new_loc.getMatrix() * parent_Xform.inverse())
 
-    # convert to Maya space
     new_loc.setMatrix(swap_coord_space(new_loc.getMatrix()))
 
     return new_loc
@@ -839,10 +874,9 @@ def create_skeleton(PDX_bone_list):
             transform[0], transform[1], transform[2], 0.0,
             transform[3], transform[4], transform[5], 0.0,
             transform[6], transform[7], transform[8], 0.0,
-            transform[9], transform[10], transform[11], 1.0
+            transform[9], transform[10], transform[11], 1.0,
         )
         # fmt: on
-        # convert to Maya space
         new_bone.setMatrix(swap_coord_space(mat.inverse()), worldSpace=True)  # set to matrix inverse in world-space
         pmc.select(clear=True)
 
@@ -949,7 +983,7 @@ def create_mesh(PDX_mesh, name=None):
     numVertices = 0
     vertexArray = OpenMaya.MFloatPointArray()  # array of points
     for i in xrange(0, len(verts), 3):
-        _verts = swap_coord_space([verts[i], verts[i + 1], verts[i + 2]])  # convert coords to Maya space
+        _verts = swap_coord_space([verts[i], verts[i + 1], verts[i + 2]])
         v = OpenMaya.MFloatPoint(_verts[0], _verts[1], _verts[2])
         vertexArray.append(v)
         numVertices += 1
@@ -1119,7 +1153,6 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_scale_data = OpenMaya.MDoubleArray()
 
         for scale_data in key_dict['s']:
-            # convert to Game space
             x_scale_data.append(scale_data[0])
             y_scale_data.append(scale_data[0])
             z_scale_data.append(scale_data[0])
@@ -1143,7 +1176,6 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_rot_data = OpenMaya.MDoubleArray()
 
         for quat_data in key_dict['q']:
-            # convert to Game space
             q = swap_coord_space(MQuaternion(*quat_data))
             # convert from quaternion to euler, this gives values in radians (which Maya uses internally)
             euler_data = q.asEulerRotation()
@@ -1170,7 +1202,6 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_trans_data = OpenMaya.MDoubleArray()
 
         for trans_data in key_dict['t']:
-            # convert to Game space
             t = swap_coord_space(MVector(*trans_data))
             x_trans_data.append(t[0])
             y_trans_data.append(t[1])
@@ -1381,29 +1412,19 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
-    maya_locators = [pmc.listRelatives(loc, type='transform', parent=True)[0] for loc in pmc.ls(type=pmc.nt.Locator)]
+    maya_locators = [pmc.listRelatives(loc, parent=True, type='transform')[0] for loc in pmc.ls(type=pmc.nt.Locator)]
+    loc_info_list = get_locators_info(maya_locators)
 
-    if exp_locs and maya_locators:
+    if exp_locs and loc_info_list:
         IO_PDX_LOG.info("writing locators -")
         if progress_fn:
             progress.update(1, 'writing locators')
-        for loc in maya_locators:
+        for loc_info_dict in loc_info_list:
             # create sub-elements for each locator, populate locator attributes
-            locnode_xml = Xml.SubElement(locator_xml, loc.name())
-
-            _position = loc.getTranslation(worldSpace=True)
-            _rotation = loc.getRotation(worldSpace=True, quaternion=True)
-            if exp_skel and loc.getParent() and type(loc.getParent()) == pmc.nt.Joint:
-                _position = loc.getTranslation()
-                _rotation = loc.getRotation(quaternion=True)
-
-                locnode_xml.set('pa', [loc.getParent().name()])
-
-            position = list(swap_coord_space(_position))
-            rotation = list(swap_coord_space(_rotation))
-
-            locnode_xml.set('p', position)
-            locnode_xml.set('q', rotation)
+            locnode_xml = Xml.SubElement(locator_xml, loc_info_dict['name'])
+            for key in ['p', 'q', 'pa', 'tx']:
+                if key in loc_info_dict and loc_info_dict[key]:
+                    locnode_xml.set(key, loc_info_dict[key])
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
@@ -1483,7 +1504,6 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
             _rotation = MQuaternion(*bone.attrib['q'])
             _translation = MVector(*bone.attrib['t'])
 
-            # convert to Game space
             bone_joint.setScale(_scale)
             bone_joint.setRotation(swap_coord_space(_rotation))
             bone_joint.setTranslation(swap_coord_space(_translation))
@@ -1615,7 +1635,6 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
                 sample_types += attr
         bone_xml.set('sa', [sample_types])
 
-        # convert to Game space
         _translation = swap_coord_space(bone.getTranslation())
         # bone rotation must be pre-multiplied by joint orientation
         _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
@@ -1639,7 +1658,6 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     t_packed, q_packed, s_packed = [], [], []
     for i in xrange(frame_samples):
         for bone in all_bone_keyframes:
-            # TODO: list.pop(0) can be slow? test deque.popleft() for potential speedup
             if 't' in all_bone_keyframes[bone]:
                 t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))
             if 'q' in all_bone_keyframes[bone]:

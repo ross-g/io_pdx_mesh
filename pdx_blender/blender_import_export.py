@@ -460,6 +460,41 @@ def get_mesh_skeleton_info(blender_obj):
     return bone_list
 
 
+def get_locators_info(blender_empties):
+    # build a list of locator information dictionaries for the exporter
+    locator_list = [{'name': x.name} for x in blender_empties]
+
+    for i, obj in enumerate(blender_empties):
+        # unparented, use worldspace position/rotation
+        _transform = obj.matrix_world
+
+        # parented to bone, use local position/rotation
+        if obj.parent and obj.parent_type == 'BONE':
+            locator_list[i]['pa'] = obj.parent_bone
+            rig = obj.parent
+            bone_matrix = rig.matrix_world @ rig.data.bones[obj.parent_bone].matrix_local
+            # TODO: test if this should be .matrix_world or .matrix_local
+            _transform = bone_matrix.inverted_safe() @ obj.matrix_world
+
+        _position, _rotation, _scale = swap_coord_space(_transform).decompose()
+
+        locator_list[i]['p'] = list(_position)
+        locator_list[i]['q'] = list([_rotation[1], _rotation[2], _rotation[3], _rotation[0]])  # convert from wxyz to xyzw
+
+        is_scaled = util_round(list(_scale), PDX_ROUND_SCALE) != (1.0, 1.0, 1.0)
+        # TODO: check engine config here to see if full 'tx' attribute is supported
+        if is_scaled:
+            transform = swap_coord_space(_transform)
+            locator_list[i]['tx'] = [
+                transform[0][0], transform[1][0], transform[2][0], transform[3][0],
+                transform[0][1], transform[1][1], transform[2][1], transform[3][1],
+                transform[0][2], transform[1][2], transform[2][2], transform[3][2],
+                transform[0][3], transform[1][3], transform[2][3], transform[3][3],
+            ]
+
+    return locator_list
+
+
 def get_skeleton_hierarchy(rig):
     root_bone = rig.data.bones[0]
 
@@ -688,14 +723,14 @@ def create_locator(PDX_locator, PDX_bone_dict):
     # create locator and link to the scene
     new_loc = bpy.data.objects.new(PDX_locator.name, None)
     new_loc.empty_display_type = 'PLAIN_AXES'
-    new_loc.empty_display_size = 0.25
+    new_loc.empty_display_size = 0.4
     new_loc.show_axis = False
 
     bpy.context.scene.collection.objects.link(new_loc)
 
     # check for a parent relationship
     parent = getattr(PDX_locator, 'pa', None)
-    parent_Xform = Matrix()
+    parent_Xform = None
 
     if parent is not None:
         # parent the locator to a bone in the armature
@@ -718,17 +753,17 @@ def create_locator(PDX_locator, PDX_bone_dict):
             )
         )
 
-    # check if full transformation specified
+    # if full transformation is available, set transformation directly
     if hasattr(PDX_locator, 'tx'):
-        loc_matrix = Matrix(
-            (
-                (PDX_locator.tx[0], PDX_locator.tx[4], PDX_locator.tx[8], PDX_locator.tx[12]),
-                (PDX_locator.tx[1], PDX_locator.tx[5], PDX_locator.tx[9], PDX_locator.tx[13]),
-                (PDX_locator.tx[2], PDX_locator.tx[6], PDX_locator.tx[10], PDX_locator.tx[14]),
-                (PDX_locator.tx[3], PDX_locator.tx[7], PDX_locator.tx[11], PDX_locator.tx[15]),
-            )
-        )
-    # or just rotate and translate
+        # fmt: off
+        loc_matrix = Matrix((
+            (PDX_locator.tx[0], PDX_locator.tx[4], PDX_locator.tx[8], PDX_locator.tx[12]),
+            (PDX_locator.tx[1], PDX_locator.tx[5], PDX_locator.tx[9], PDX_locator.tx[13]),
+            (PDX_locator.tx[2], PDX_locator.tx[6], PDX_locator.tx[10], PDX_locator.tx[14]),
+            (PDX_locator.tx[3], PDX_locator.tx[7], PDX_locator.tx[11], PDX_locator.tx[15]),
+        ))
+        # fmt: on
+    # otherwise just rotate and translate components
     else:
         # compose transform parts
         _scale = Matrix.Scale(1, 4)
@@ -739,8 +774,11 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
         loc_matrix = _translation @ _rotation @ _scale
 
-    # apply parent transform (must be multiplied in transposed form, then re-transposed before being applied)
-    final_matrix = (loc_matrix.transposed() @ parent_Xform.inverted_safe().transposed()).transposed()
+    # apply parent transform
+    if parent_Xform is not None:
+        # TODO: why is the transposed multiplication needed?
+        # must be multiplied in transposed form, then re-transposed before being applied
+        loc_matrix = (loc_matrix.transposed() @ parent_Xform.inverted_safe().transposed()).transposed()
 
     new_loc.matrix_world = swap_coord_space(loc_matrix)
     new_loc.rotation_mode = 'XYZ'
@@ -797,14 +835,14 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
             new_bone.use_connect = False
 
         # determine bone head transform
-        mat = Matrix(
-            (
-                (transform[0], transform[3], transform[6], transform[9]),
-                (transform[1], transform[4], transform[7], transform[10]),
-                (transform[2], transform[5], transform[8], transform[11]),
-                (0.0, 0.0, 0.0, 1.0),
-            )
-        )
+        # fmt: off
+        mat = Matrix((
+            (transform[0], transform[3], transform[6], transform[9]),
+            (transform[1], transform[4], transform[7], transform[10]),
+            (transform[2], transform[5], transform[8], transform[11]),
+            (0.0, 0.0, 0.0, 1.0),
+        ))
+        # fmt: on
         # rescale or recompose matrix so we always import bones at 1.0 scale
         loc, rot, scale = mat.decompose()
         try:
@@ -817,14 +855,14 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         bone_dists = []
         for child in bone_children:
             child_transform = child.tx
-            c_mat = Matrix(
-                (
-                    (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
-                    (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
-                    (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
-                    (0.0, 0.0, 0.0, 1.0),
-                )
-            )
+            # fmt: off
+            c_mat = Matrix((
+                (child_transform[0], child_transform[3], child_transform[6], child_transform[9]),
+                (child_transform[1], child_transform[4], child_transform[7], child_transform[10]),
+                (child_transform[2], child_transform[5], child_transform[8], child_transform[11]),
+                (0.0, 0.0, 0.0, 1.0),
+            ))
+            # fmt: on
             c_dist = c_mat.to_translation() - safemat.to_translation()
             bone_dists.append(math.sqrt(c_dist.x ** 2 + c_dist.y ** 2 + c_dist.z ** 2))
 
@@ -1248,27 +1286,16 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, 'locator')
     blender_empties = [obj for obj in bpy.context.scene.objects if obj.data is None]
+    loc_info_list = get_locators_info(blender_empties)
 
-    if exp_locs and blender_empties:
+    if exp_locs and loc_info_list:
         IO_PDX_LOG.info("writing locators -")
-        for loc in blender_empties:
+        for loc_info_dict in loc_info_list:
             # create sub-elements for each locator, populate locator attributes
-            locnode_xml = Xml.SubElement(locator_xml, loc.name)
-
-            loc_transform = loc.matrix_world
-            if exp_skel and loc.parent and loc.parent_type == 'BONE':
-                rig = loc.parent
-                bone_matrix = rig.matrix_world @ rig.data.bones[loc.parent_bone].matrix_local
-                loc_transform = bone_matrix.inverted_safe() @ loc.matrix_world
-
-                locnode_xml.set('pa', [loc.parent_bone])
-
-            _position, _rotation = swap_coord_space(loc_transform).decompose()[0:2]
-            position = list(_position)
-            rotation = list(_rotation)
-
-            locnode_xml.set('p', position)
-            locnode_xml.set('q', [rotation[1], rotation[2], rotation[3], rotation[0]])  # convert from wxyz to xyzw
+            locnode_xml = Xml.SubElement(locator_xml, loc_info_dict['name'])
+            for key in ['p', 'q', 'pa', 'tx']:
+                if key in loc_info_dict and loc_info_dict[key]:
+                    locnode_xml.set(key, loc_info_dict[key])
 
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
@@ -1497,7 +1524,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     for i in range(frame_samples):
         for bone in all_bone_keyframes:
             if 't' in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))  # TODO : pop first item is slow?
+                t_packed.extend(all_bone_keyframes[bone]['t'].pop(0))
             if 'q' in all_bone_keyframes[bone]:
                 q_packed.extend(all_bone_keyframes[bone]['q'].pop(0))
             if 's' in all_bone_keyframes[bone]:
