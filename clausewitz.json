@@ -1,12 +1,5 @@
 {
     "standard_previewer": {
-        "animation": [
-            "idle",
-            "moving",
-            "attack",
-            "death",
-            "idle2"
-        ],
         "material": [
             "Collision",
             "PdxMeshAlphaAdditive",
@@ -17,13 +10,6 @@
         ]
     },
     "europa_universalis_4": {
-        "animation": [
-            "idle",
-            "moving",
-            "attack",
-            "death",
-            "idle2"
-        ],
         "material": [
             "Collision",
             "PdxMeshAdvanced",
@@ -37,15 +23,6 @@
         ]
     },
     "stellaris": {
-        "animation": [
-            "planet_rotation",
-            "idle",
-            "death",
-            "happy",
-            "happy2",
-            "sad",
-            "sad2"
-        ],
         "material": [
             "Collision",
             "AlphaBlendNoDepth",
@@ -80,12 +57,6 @@
         ]
     },
     "hearts_of_iron_4": {
-        "animation": [
-            "idle",
-            "moving",
-            "attack",
-            "death",
-            "idle2" ],
         "material": [
             "Collision",
             "PdxMeshAdvanced",
@@ -97,8 +68,6 @@
         ]
     },
     "imperator_rome": {
-        "animation": [
-        ],
         "material": [
             "Collision",
             "decal_world",
@@ -121,6 +90,36 @@
             "standard_usercolor",
             "tree",
             "tree_alpha_to_coverage"
+        ]
+    },
+    "crusader_kings_3" :{
+        "material": [
+            "Collision",
+            "PdxMeshColor",
+            "PdxMeshStandard",
+            "PdxMeshTextureAtlas",
+            "decal_local",
+            "lake",
+            "material_test",
+            "portrait_attachment",
+            "portrait_attachment_alpha_to_coverage",
+            "portrait_attachment_pattern",
+            "portrait_attachment_pattern_alpha_to_coverage",
+            "portrait_eye",
+            "portrait_hair",
+            "portrait_hair_opaque",
+            "portrait_skin",
+            "snap_to_terrain",
+            "snap_to_terrain_alpha_to_coverage",
+            "snap_to_terrain_atlas",
+            "snap_to_terrain_atlas_usercolor",
+            "standard",
+            "standard_alpha_blend",
+            "standard_alpha_to_coverage",
+            "standard_atlas",
+            "standard_usercolor",
+            "standard_usercolor_coa",
+            "tree"
         ]
     }
 }
