@@ -453,32 +453,39 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
     # list of operator properties
     chk_mesh : BoolProperty(
         name='Export mesh',
-        description='Export mesh',
+        description='Export meshes',
         default=True,
     )
     chk_skel : BoolProperty(
         name='Export skeleton',
-        description='Export skeleton',
+        description='Export related armatures',
         default=True,
     )
     chk_locs : BoolProperty(
         name='Export locators',
-        description='Export locators',
+        description='Export empties data',
         default=True,
     )
-    chk_merge : BoolProperty(
+    chk_merge_vtx : BoolProperty(
         name='Merge vertices',
-        description='Merge vertices',
+        description='Merge vertices on mesh',
         default=True,
+    )
+    chk_selected : BoolProperty(
+        name='Selected Only',
+        description='Filter export by selection',
+        default=False,
     )
 
     def draw(self, context):
+        self.layout.use_property_split = True
         box = self.layout.box()
         box.label(text='Settings:', icon='EXPORT')
         box.prop(self, 'chk_mesh')
         box.prop(self, 'chk_skel')
         box.prop(self, 'chk_locs')
-        box.prop(self, 'chk_merge')
+        box.prop(self, 'chk_merge_vtx')
+        box.prop(self, 'chk_selected')
 
     def execute(self, context):
         try:
@@ -487,7 +494,8 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_mesh=self.chk_mesh,
                 exp_skel=self.chk_skel,
                 exp_locs=self.chk_locs,
-                merge_verts=self.chk_merge
+                merge_verts=self.chk_merge_vtx,
+                exp_selected=self.chk_selected
             )
             self.report({'INFO'}, '[io_pdx_mesh] Finsihed exporting {}'.format(self.filepath))
             IO_PDX_SETTINGS.last_export_mesh = self.filepath

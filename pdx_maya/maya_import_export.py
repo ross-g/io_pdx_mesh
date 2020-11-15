@@ -1274,7 +1274,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
         progress.finished()
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, progress_fn=None):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, exp_selected=False, progress_fn=None):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(meshpath))
 
@@ -1291,6 +1291,10 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     # populate object data
     maya_meshes = list_scene_pdx_meshes()
+    if exp_selected:
+        current_selection = pmc.selected()
+        maya_meshes = [shape for shape in maya_meshes if pmc.listRelatives(shape, parent=True, type='transform')[0] in current_selection]
+
     # sort meshes for export by index
     maya_meshes.sort(key=lambda mesh: get_mesh_index(mesh))
 

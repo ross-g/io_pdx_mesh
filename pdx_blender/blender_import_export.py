@@ -1161,7 +1161,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, exp_selected=False):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(meshpath))
 
@@ -1174,6 +1174,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
 
     # populate object data
     blender_meshes = list_scene_pdx_meshes()
+    if exp_selected:
+        blender_meshes = [obj for obj in blender_meshes if obj.select_get()]
+
     # sort meshes for export by index
     blender_meshes.sort(key=lambda obj: get_mesh_index(obj.data))
 

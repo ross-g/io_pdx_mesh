@@ -360,9 +360,10 @@ class PDXmaya_ui(QtWidgets.QDialog):
             export_meshfile(
                 meshpath,
                 exp_mesh=export_opts.chk_mesh.isChecked(),
-                exp_skel=export_opts.chk_skeleton.isChecked(),
-                exp_locs=export_opts.chk_locators.isChecked(),
+                exp_skel=export_opts.chk_skel.isChecked(),
+                exp_locs=export_opts.chk_locs.isChecked(),
                 merge_verts=export_opts.chk_merge_vtx.isChecked(),
+                exp_selected=export_opts.chk_selected.isChecked(),
                 progress_fn=MayaProgress,
             )
             QtWidgets.QMessageBox.information(self, 'SUCCESS', 'Mesh export finished!\n\n{0}'.format(meshpath))
@@ -463,14 +464,15 @@ class export_controls(QtWidgets.QWidget):
 
         # export options
         self.chk_mesh = QtWidgets.QCheckBox('Export mesh')
-        self.chk_skeleton = QtWidgets.QCheckBox('Export skeleton')
-        self.chk_locators = QtWidgets.QCheckBox('Export locators')
+        self.chk_skel = QtWidgets.QCheckBox('Export skeleton')
+        self.chk_locs = QtWidgets.QCheckBox('Export locators')
         self.chk_merge_vtx = QtWidgets.QCheckBox('Merge vertices')
         self.chk_merge_obj = QtWidgets.QCheckBox('Merge objects')
+        self.chk_selected = QtWidgets.QCheckBox('Selected Only')
         self.chk_timeline = QtWidgets.QCheckBox('Export current timeline')
         self.chk_animation = QtWidgets.QCheckBox('Export all selected animations')
         self.chk_create_extra = QtWidgets.QCheckBox('Create .gfx and .asset')
-        for ctrl in [self.chk_mesh, self.chk_skeleton, self.chk_locators, self.chk_merge_vtx]:
+        for ctrl in [self.chk_mesh, self.chk_skel, self.chk_locs, self.chk_merge_vtx]:
             ctrl.setChecked(True)
 
         # output settings
@@ -565,10 +567,11 @@ class export_controls(QtWidgets.QWidget):
         right_layout.addWidget(grp_export)
         grp_export.setLayout(grp_export_layout)
         grp_export_layout.addWidget(self.chk_mesh, 1, 1)
-        grp_export_layout.addWidget(self.chk_skeleton, 2, 1)
-        grp_export_layout.addWidget(self.chk_locators, 3, 1)
+        grp_export_layout.addWidget(self.chk_skel, 2, 1)
+        grp_export_layout.addWidget(self.chk_locs, 3, 1)
         grp_export_layout.addWidget(self.chk_merge_vtx, 1, 2)
         grp_export_layout.addWidget(self.chk_merge_obj, 2, 2)
+        grp_export_layout.addWidget(self.chk_selected, 3, 2)
         grp_export_layout.addWidget(h_line(), 4, 1, 1, 2)
         grp_export_layout.addWidget(self.chk_timeline, 5, 1, 1, 2)
         grp_export_layout.addWidget(self.chk_animation, 6, 1, 1, 2)
@@ -698,7 +701,7 @@ class export_controls(QtWidgets.QWidget):
         return filepath, filename
 
     def do_export(self):
-        if self.chk_mesh.isChecked() or self.chk_skeleton.isChecked() or self.chk_locators.isChecked():
+        if self.chk_mesh.isChecked() or self.chk_skel.isChecked() or self.chk_locs.isChecked():
             self.parent.do_export_mesh()
 
         if self.chk_timeline.isChecked() or self.chk_animation.isChecked():
@@ -733,8 +736,8 @@ class import_popup(QtWidgets.QWidget):
         self.btn_cancel = QtWidgets.QPushButton('Cancel', self)
         # mesh specific controls
         self.chk_mesh = QtWidgets.QCheckBox('Mesh')
-        self.chk_skeleton = QtWidgets.QCheckBox('Skeleton')
-        self.chk_locators = QtWidgets.QCheckBox('Locators')
+        self.chk_skel = QtWidgets.QCheckBox('Skeleton')
+        self.chk_locs = QtWidgets.QCheckBox('Locators')
         # anim specific controls
         lbl_starttime = QtWidgets.QLabel('Start frame:')
         lbl_starttime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
@@ -757,7 +760,7 @@ class import_popup(QtWidgets.QWidget):
         main_layout.addSpacing(5)
         # add mode specific import option controls
         if self.pdx_type == '.mesh':
-            for chk_box in [self.chk_mesh, self.chk_skeleton, self.chk_locators]:
+            for chk_box in [self.chk_mesh, self.chk_skel, self.chk_locs]:
                 opts_layout.addWidget(chk_box)
                 chk_box.setChecked(True)
         elif self.pdx_type == '.anim':
@@ -782,8 +785,8 @@ class import_popup(QtWidgets.QWidget):
             import_meshfile(
                 self.pdx_file,
                 imp_mesh=self.chk_mesh.isChecked(),
-                imp_skel=self.chk_skeleton.isChecked(),
-                imp_locs=self.chk_locators.isChecked(),
+                imp_skel=self.chk_skel.isChecked(),
+                imp_locs=self.chk_locs.isChecked(),
                 progress_fn=MayaProgress,
             )
             self.parent.refresh_gui()
