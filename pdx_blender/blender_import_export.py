@@ -1270,6 +1270,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
 
+    bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.select_all(action='DESELECT')
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
 
