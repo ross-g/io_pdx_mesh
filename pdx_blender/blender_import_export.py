@@ -470,7 +470,7 @@ def get_locators_info(blender_empties):
 
         # parented to bone, use local position/rotation
         if obj.parent and obj.parent_type == 'BONE':
-            locator_list[i]['pa'] = obj.parent_bone
+            locator_list[i]['pa'] = [obj.parent_bone]
             rig = obj.parent
             bone_matrix = rig.matrix_world @ rig.data.bones[obj.parent_bone].matrix_local
             # TODO: test if this should be .matrix_world or .matrix_local
@@ -741,17 +741,26 @@ def create_locator(PDX_locator, PDX_bone_dict):
             new_loc.parent_type = 'BONE'
             new_loc.matrix_world = Matrix()  # reset transform after parenting
 
-        # then determine the locators transform
-        transform = PDX_bone_dict[parent[0]]
-        # note we transpose the matrix on creation
-        parent_Xform = Matrix(
-            (
-                (transform[0], transform[3], transform[6], transform[9]),
-                (transform[1], transform[4], transform[7], transform[10]),
-                (transform[2], transform[5], transform[8], transform[11]),
-                (0.0, 0.0, 0.0, 1.0),
+        # determine the locators transform
+        if parent[0] in PDX_bone_dict:
+            transform = PDX_bone_dict[parent[0]]
+            # note we transpose the matrix on creation
+            parent_Xform = Matrix(
+                (
+                    (transform[0], transform[3], transform[6], transform[9]),
+                    (transform[1], transform[4], transform[7], transform[10]),
+                    (transform[2], transform[5], transform[8], transform[11]),
+                    (0.0, 0.0, 0.0, 1.0),
+                )
             )
-        )
+        else:
+            IO_PDX_LOG.warning(
+                "Warning! unable to create locator '{0}' (missing parent '{1}' in file data)".format(
+                    PDX_locator.name, parent[0]
+                )
+            )
+            bpy.data.meshes.remove(new_loc)
+            return
 
     # if full transformation is available, set transformation directly
     if hasattr(PDX_locator, 'tx'):

@@ -551,7 +551,7 @@ def get_locators_info(maya_locators):
         # parented to bone, use local position/rotation
         loc_parent = loc.getParent()
         if loc_parent is not None and type(loc_parent) == pmc.nt.Joint:
-            locator_list[i]['pa'] = loc_parent.name()
+            locator_list[i]['pa'] = [loc_parent.name()]
             _position = loc.getTranslation()
             _rotation = loc.getRotation(quaternion=True)
 
@@ -782,8 +782,8 @@ def create_locator(PDX_locator, PDX_bone_dict):
         if parent_bone:
             # parent the locator to a bone in the scene
             pmc.parent(new_loc, parent_bone[0])
-        else:
-            # parent bone doesn't exist in scene, build its transform
+        else:  # parent bone doesn't exist in current scene
+            # determine the locators transform
             if parent[0] in PDX_bone_dict:
                 transform = PDX_bone_dict[parent[0]]
                 # fmt: off
