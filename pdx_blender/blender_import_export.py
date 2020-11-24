@@ -479,7 +479,8 @@ def get_locators_info(blender_empties):
         _position, _rotation, _scale = swap_coord_space(_transform).decompose()
 
         locator_list[i]['p'] = list(_position)
-        locator_list[i]['q'] = list([_rotation[1], _rotation[2], _rotation[3], _rotation[0]])  # convert from wxyz to xyzw
+        # convert quaternions from wxyz to xyzw
+        locator_list[i]['q'] = list([_rotation[1], _rotation[2], _rotation[3], _rotation[0]])
 
         is_scaled = util_round(list(_scale), PDX_ROUND_SCALE) != (1.0, 1.0, 1.0)
         # TODO: check engine config here to see if full 'tx' attribute is supported
@@ -759,7 +760,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
                     PDX_locator.name, parent[0]
                 )
             )
-            bpy.data.meshes.remove(new_loc)
+            bpy.data.objects.remove(new_loc)
             return
 
     # if full transformation is available, set transformation directly
