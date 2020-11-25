@@ -51,6 +51,7 @@ PDX_ROUND_ROT = 4
 PDX_ROUND_TRANS = 3
 PDX_ROUND_SCALE = 2
 
+maya_up = cmds.upAxis(query=True, axis=True)
 # fmt: off
 SPACE_MATRIX = MMatrix((
     (1, 0, 0, 0),
@@ -58,6 +59,13 @@ SPACE_MATRIX = MMatrix((
     (0, 0, -1, 0),
     (0, 0, 0, 1)
 ))
+if maya_up == "z":
+    SPACE_MATRIX = MMatrix((
+        (1, 0, 0, 0),
+        (0, 0, 1, 0),
+        (0, 1, 0, 0),
+        (0, 0, 0, 1)
+    ))
 # fmt: on
 
 # simple datatype for animation clips
@@ -1254,7 +1262,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
                 complete_bone_dict[pdx_bone.name] = pdx_bone.tx
 
             if imp_skel:
-                IO_PDX_LOG.info("creating skeleton -")
+                IO_PDX_LOG.info("creating skeleton - {0} bones".format(len(pdx_bone_list)))
                 if progress_fn:
                     progress.update(1, 'creating skeleton')
                 joints = create_skeleton(pdx_bone_list)
@@ -1278,7 +1286,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
                 # create the material
                 if pdx_material:
-                    IO_PDX_LOG.info("creating material -")
+                    IO_PDX_LOG.info("creating material - {0}".format(pdx_material.name))
                     if progress_fn:
                         progress.update(1, 'creating material')
                     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
