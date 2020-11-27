@@ -43,7 +43,7 @@ bl_info = {
 ========================================================================================================================
 """
 
-app = path.split(sys.executable)[1]
+environment = sys.executable.lower()
 root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 
 # setup module logging
@@ -83,14 +83,14 @@ except Exception as err:
 ========================================================================================================================
 """
 
-# check if running in Blender
-if 'blender' in app.lower():
+# check if running from Blender
+if 'blender' in environment:
     import bpy  # noqa
 
     logging.basicConfig(level=logging.DEBUG, format=log_format)
     IO_PDX_LOG = logging.getLogger(log_name)
 
-    IO_PDX_LOG.info("Running from {0}".format(app))
+    IO_PDX_LOG.info("Running from {0}".format(bpy.app.binary_path.lower()))
     IO_PDX_LOG.info(root_path)
 
     try:
@@ -100,8 +100,8 @@ if 'blender' in app.lower():
         traceback.print_exc()
         raise e
 
-# otherwise running in Maya
-if 'maya' in app.lower():
+# or running from Maya
+elif 'maya' in environment:
     import maya.cmds  # noqa
 
     IO_PDX_LOG = logging.getLogger(log_name)
@@ -112,7 +112,7 @@ if 'maya' in app.lower():
     console.setFormatter(logging.Formatter(log_format))
     IO_PDX_LOG.addHandler(console)
 
-    IO_PDX_LOG.info("Running from {0}".format(app))
+    IO_PDX_LOG.info("Running from {0}".format(environment))
     IO_PDX_LOG.info(root_path)
 
     try:
@@ -124,3 +124,7 @@ if 'maya' in app.lower():
     except Exception as e:
         traceback.print_exc()
         raise e
+
+# otherwise, we don't support running elsewhere
+else:
+    raise NotImplementedError('Running from unknown environment "{0}"'.format(environment))
