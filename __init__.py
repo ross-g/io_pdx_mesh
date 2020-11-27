@@ -20,21 +20,21 @@ from .settings import PDXsettings
 
 
 bl_info = {
-    'author': 'ross-g',
-    'name': 'IO PDX Mesh',
-    'description': 'Import/Export Paradox asset files for the Clausewitz game engine.',
-    'location': '3D View > Toolbox',
-    'category': 'Import-Export',
-    'support': 'COMMUNITY',
-    'blender': (2, 80, 0),
-    'maya': (2015),
-    'version': (0, 72),
-    'warning': 'this add-on is beta',
-    'project_name': 'io_pdx_mesh',
-    'project_url': 'https://github.com/ross-g/io_pdx_mesh',
-    'wiki_url': 'https://github.com/ross-g/io_pdx_mesh/wiki',
-    'tracker_url': 'https://github.com/ross-g/io_pdx_mesh/issues',
-    'forum_url': 'https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/',
+    "author": "ross-g",
+    "name": "IO PDX Mesh",
+    "description": "Import/Export Paradox asset files for the Clausewitz game engine.",
+    "location": "3D View > Toolbox",
+    "category": "Import-Export",
+    "support": "COMMUNITY",
+    "blender": (2, 80, 0),
+    "maya": (2015),
+    "version": (0, 72),
+    "warning": "this add-on is beta",
+    "project_name": "io_pdx_mesh",
+    "project_url": "https://github.com/ross-g/io_pdx_mesh",
+    "wiki_url": "https://github.com/ross-g/io_pdx_mesh/wiki",
+    "tracker_url": "https://github.com/ross-g/io_pdx_mesh/issues",
+    "forum_url": "https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/",
 }
 
 
@@ -47,27 +47,27 @@ environment = sys.executable.lower()
 root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 
 # setup module logging
-log_name = bl_info['project_name']
-log_format = '[%(name)s] %(levelname)s:  %(message)s'
+log_name = bl_info["project_name"]
+log_format = "[%(name)s] %(levelname)s:  %(message)s"
 
 # setup module preferences
-site.addsitedir(path.join(root_path, 'external'))
+site.addsitedir(path.join(root_path, "external"))
 from appdirs import user_data_dir  # noqa
 
-config_path = path.join(user_data_dir(bl_info['project_name'], False), 'settings.json')
+config_path = path.join(user_data_dir(bl_info["project_name"], False), "settings.json")
 IO_PDX_SETTINGS = PDXsettings(config_path)
 
 # setup engine/export settings
-export_settings = path.join(root_path, 'clausewitz.json')
+export_settings = path.join(root_path, "clausewitz.json")
 ENGINE_SETTINGS = {}
 try:
-    if '.zip' in export_settings:
-        zipped = export_settings.split('.zip')[0] + '.zip'
-        with zipfile.ZipFile(zipped, 'r') as z:
-            f = z.open('io_pdx_mesh/clausewitz.json')
+    if ".zip" in export_settings:
+        zipped = export_settings.split(".zip")[0] + ".zip"
+        with zipfile.ZipFile(zipped, "r") as z:
+            f = z.open("io_pdx_mesh/clausewitz.json")
             ENGINE_SETTINGS = json.loads(f.read(), object_pairs_hook=OrderedDict)
     else:
-        with open(export_settings, 'rt') as f:
+        with open(export_settings, "rt") as f:
             ENGINE_SETTINGS = json.load(f, object_pairs_hook=OrderedDict)
 except Exception as err:
     print(err)
@@ -84,7 +84,7 @@ except Exception as err:
 """
 
 # check if running from Blender
-if 'blender' in environment:
+if "blender" in environment:
     import bpy  # noqa
 
     logging.basicConfig(level=logging.DEBUG, format=log_format)
@@ -101,7 +101,7 @@ if 'blender' in environment:
         raise e
 
 # or running from Maya
-elif 'maya' in environment:
+elif "maya" in environment:
     import maya.cmds  # noqa
 
     IO_PDX_LOG = logging.getLogger(log_name)

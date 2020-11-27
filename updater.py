@@ -24,7 +24,7 @@ from . import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
 """
 
 TIMEOUT = 1.0  # seconds
-API_URL = 'https://api.github.com'
+API_URL = "https://api.github.com"
 
 
 """ ====================================================================================================================
@@ -42,12 +42,12 @@ class Github_API(object):
         self.LATEST_VERSION = None
         self.LATEST_URL = None
         self.AT_LATEST = None
-        self.CURRENT_VERSION = float('.'.join(map(str, bl_info['version'])))
+        self.CURRENT_VERSION = float(".".join(map(str, bl_info["version"])))
 
         self.api = API_URL
-        self.owner = bl_info['author']
-        self.repo = bl_info['project_name']
-        self.args = {'owner': self.owner, 'repo': self.repo, 'api': self.api}
+        self.owner = bl_info["author"]
+        self.repo = bl_info["project_name"]
+        self.args = {"owner": self.owner, "repo": self.repo, "api": self.api}
         self.refresh()
 
     @staticmethod
@@ -71,7 +71,7 @@ class Github_API(object):
             start = time.time()
 
             # get latest release data
-            releases_url = '{api}/repos/{owner}/{repo}/releases'.format(**self.args)
+            releases_url = "{api}/repos/{owner}/{repo}/releases".format(**self.args)
             try:
                 release_list = self.get_data(releases_url, TIMEOUT)
             except URLError as err:
@@ -85,10 +85,10 @@ class Github_API(object):
             latest = release_list[0]
 
             # store data
-            self.LATEST_VERSION = float(latest['tag_name'])
-            self.LATEST_URL = latest['assets'][0]['browser_download_url']
-            self.LATEST_NOTES = '{0}\r\nRelease version: {1}\r\n{2}'.format(
-                latest['published_at'].split('T')[0], latest['tag_name'], latest['body']
+            self.LATEST_VERSION = float(latest["tag_name"])
+            self.LATEST_URL = latest["assets"][0]["browser_download_url"]
+            self.LATEST_NOTES = "{0}\r\nRelease version: {1}\r\n{2}".format(
+                latest["published_at"].split("T")[0], latest["tag_name"], latest["body"]
             )
 
             # cache data to settings
