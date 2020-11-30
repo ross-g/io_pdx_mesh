@@ -766,11 +766,15 @@ def create_locator(PDX_locator, PDX_bone_dict):
                     (0.0, 0.0, 0.0, 1.0),
                 )
             )
+            # rescale or recompose matrix so we always treat bones at 1.0 scale on import
+            loc, rot, scale = parent_Xform.decompose()
+            try:
+                parent_Xform = Matrix.Scale(1.0 / scale[0], 4) @ mat
+            except ZeroDivisionError:  # guard against zero scale bones...
+                parent_Xform = Matrix.Translation(loc) @ rot.to_matrix().to_4x4() @ Matrix.Scale(1.0, 4)
         else:
             IO_PDX_LOG.warning(
-                "Warning! unable to create locator '{0}' (missing parent '{1}' in file data)".format(
-                    PDX_locator.name, parent[0]
-                )
+                "unable to create locator '{0}' (missing parent '{1}' in file data)".format(PDX_locator.name, parent[0])
             )
             bpy.data.objects.remove(new_loc)
             return
@@ -848,6 +852,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         # create joint
         new_bone = armt.edit_bones.new(name=unique_name)
         new_bone.select = True
+        new_bone.inherit_scale = "NONE"
         bone_list[index] = new_bone
 
         # connect to parent
@@ -870,6 +875,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         try:
             safemat = Matrix.Scale(1.0 / scale[0], 4) @ mat
         except ZeroDivisionError:  # guard against zero scale bones...
+            IO_PDX_LOG.warning("bad transform found on bone '{0}' (defaulting to bone scale 1.0)".format(unique_name))
             safemat = Matrix.Translation(loc) @ rot.to_matrix().to_4x4() @ Matrix.Scale(1.0, 4)
 
         # determine avg distance to any children
