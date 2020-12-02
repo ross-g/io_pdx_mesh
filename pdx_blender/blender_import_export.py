@@ -769,7 +769,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
             # rescale or recompose matrix so we always treat bones at 1.0 scale on import
             loc, rot, scale = parent_Xform.decompose()
             try:
-                parent_Xform = Matrix.Scale(1.0 / scale[0], 4) @ mat
+                parent_Xform = Matrix.Scale(1.0 / scale[0], 4) @ parent_Xform
             except ZeroDivisionError:  # guard against zero scale bones...
                 parent_Xform = Matrix.Translation(loc) @ rot.to_matrix().to_4x4() @ Matrix.Scale(1.0, 4)
         else:
