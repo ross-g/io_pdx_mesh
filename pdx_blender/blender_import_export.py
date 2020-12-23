@@ -90,9 +90,15 @@ def get_bmesh(mesh_data):
 
 
 def get_rig_from_bone_name(bone_name):
-    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature]
+    """
+        Attempt to grab rig from selection. If none exist then select from scene
+    """
+    active_rigs = [obj for obj in bpy.context.selected_objects if type(obj.data) == bpy.types.Armature]
 
-    for rig in scene_rigs:
+    if not active_rigs:
+        active_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature]
+
+    for rig in active_rigs:
         armt = rig.data
         if bone_name in [b.name for b in armt.bones]:
             return rig
@@ -1365,7 +1371,7 @@ def import_animfile(animpath, timestart=1):
     matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.tag)) for bone in info]
     matching_rigs = list(set(rig for rig in matching_rigs if rig))
     if len(matching_rigs) != 1:
-        raise RuntimeError("Missing unique armature required for animation: {0}".format(matching_rigs))
+        raise RuntimeError("Missing unique armature required for animation: {0}. Try selecting the rig first".format(matching_rigs))
     rig = matching_rigs[0]
 
     # clear any current pose before attempting to load the animation
