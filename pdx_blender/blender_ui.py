@@ -724,7 +724,7 @@ class IOPDX_PT_PDXblender_setup(PDXUI, Panel):
 
 class IOPDX_PT_PDXblender_info(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.help'
-    bl_label = "Version"
+    bl_label = "Info"
     # bl_options = {'HIDE_HEADER'}
     panel_order = 5
 
@@ -755,4 +755,3 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
         col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = bl_info["wiki_url"]
         col.operator("wm.url_open", icon="QUESTION", text="Paradox forums").url = bl_info["forum_url"]
         col.operator("wm.url_open", icon="QUESTION", text="Source code").url = bl_info["project_url"]
-

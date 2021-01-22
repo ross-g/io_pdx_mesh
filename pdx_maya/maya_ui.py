@@ -4,11 +4,14 @@
     author : ross-g
 """
 
+from __future__ import print_function
+
 import os
 import sys
 import webbrowser
 from imp import reload
 from textwrap import wrap
+from functools import partial
 
 import pymel.core as pmc
 import maya.OpenMayaUI as omUI
@@ -63,12 +66,12 @@ if sys.version_info >= (3, 0):
 """
 
 
-def get_mayamainwindow():
+def get_maya_mainWindow():
     pointer = omUI.MQtUtil.mainWindow()
     return wrapInstance(long(pointer), QtWidgets.QMainWindow)
 
 
-def set_action_icon(action, icon_name):
+def set_widget_icon(widget, icon_name):
     """ to visually browse for Mayas internal icon set
             import maya.app.general.resourceBrowser as resourceBrowser
             resBrowser = resourceBrowser.resourceBrowser()
@@ -77,22 +80,313 @@ def set_action_icon(action, icon_name):
             cmds.resourceManager()
     """
     try:
-        action.setIcon(QtGui.QIcon(":/{}".format(icon_name)))
+        widget.setIcon(QtGui.QIcon(":/{}".format(icon_name)))
     except Exception as err:
         IO_PDX_LOG.error(err)
 
 
-def h_line():
-    line = QtWidgets.QFrame()
-    line.setFrameShape(QtWidgets.QFrame.HLine)
-    line.setFrameShadow(QtWidgets.QFrame.Sunken)
-    return line
+class HLine(QtWidgets.QFrame):
+    def __init__(self):
+        super(HLine, self).__init__()
+        self.setFrameShape(QtWidgets.QFrame.HLine)
+        self.setFrameShadow(QtWidgets.QFrame.Sunken)
+
+
+class CollapsingGroupBox(QtWidgets.QGroupBox):
+    def __init__(self, title, parent=None, layout=None, **kwargs):
+        super(CollapsingGroupBox, self).__init__(title, parent, **kwargs)
+        self.parent = parent
+        self.line = HLine()
+
+        layout = layout or QtWidgets.QGridLayout
+        self.inner = QtWidgets.QWidget(self.parent)
+        self.inner.setLayout(layout())
+
+        self.setStyleSheet(
+            "QGroupBox {"
+            "border: 1px solid;"
+            "border-color: rgba(0, 0, 0, 64);"
+            "border-radius: 6px;"
+            "background-color: rgb(78, 80, 82);"
+            "font-weight: bold;"
+            "}"
+            "QGroupBox::title {"
+            "subcontrol-origin: margin;"
+            "left: 6px;"
+            "top: 4px;"
+            "}"
+        )
+
+        self.setCheckable(True)
+        self.setChecked(True)
+        self.setFlat(True)
+
+        self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().setContentsMargins(4, 18, 4, 4)
+        self.layout().setSpacing(0)
+        self.layout().addWidget(self.line)
+        self.layout().addWidget(self.inner)
+
+        # configure checkable groupbox as show/hide panel
+        self.toggled.connect(self.on_toggle)
+
+    def on_toggle(self, state):
+        self.inner.setVisible(state)
+        self.line.setVisible(state)
+        if state:
+            self.layout().setContentsMargins(4, 18, 4, 4)
+        else:
+            self.layout().setContentsMargins(4, 0, 4, 4)
+
+        QtCore.QCoreApplication.processEvents()
+        self.parent.resize(self.parent.layout().sizeHint())
+
+    def sizeHint(self):
+        if self.isChecked():
+            return super(CollapsingGroupBox, self).sizeHint()
+        else:
+            return QtCore.QSize(self.width(), 22)
 
 
 """ ====================================================================================================================
     UI classes for the import/export tool.
 ========================================================================================================================
 """
+
+
+class PDXUI(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        # parent to the Maya main window.
+        parent = parent or get_maya_mainWindow()
+
+        super(PDXUI, self).__init__(parent)
+        self.popup = None  # type: QtWidgets.QWidget
+        self.settings = None  # type: QtCore.QSettings
+        self.create_ui()
+        self.read_ui_settings()
+
+    def create_ui(self):
+        # window properties
+        self.setWindowTitle("PDX Maya Tools")
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+
+        # populate and connect controls
+        self.create_controls()
+        self.connect_signals()
+
+    def create_controls(self):
+        # File panel
+        grp_File = CollapsingGroupBox("File", self)
+        grp_File.setObjectName("grpFile")
+
+        lbl_Import = QtWidgets.QLabel("Import:", self)
+        self.import_mesh = btn_ImportMesh = QtWidgets.QPushButton("Load mesh ...", self)
+        set_widget_icon(btn_ImportMesh, "out_polyCube.png")
+        self.import_anim = btn_ImportAnim = QtWidgets.QPushButton("Load anim ...", self)
+        set_widget_icon(btn_ImportAnim, "out_renderLayer.png")
+        lbl_Export = QtWidgets.QLabel("Export:", self)
+        self.export_mesh = btn_ExportMesh = QtWidgets.QPushButton("Save mesh ...", self)
+        set_widget_icon(btn_ExportMesh, "out_polyCube.png")
+        self.export_anim = btn_ExportAnim = QtWidgets.QPushButton("Save anim ...", self)
+        set_widget_icon(btn_ExportAnim, "out_renderLayer.png")
+
+        grp_File.inner.layout().addWidget(lbl_Import, 0, 0, 1, 2)
+        grp_File.inner.layout().addWidget(btn_ImportMesh, 1, 0)
+        grp_File.inner.layout().addWidget(btn_ImportAnim, 1, 1)
+        grp_File.inner.layout().addWidget(lbl_Export, 2, 0, 1, 2)
+        grp_File.inner.layout().addWidget(btn_ExportMesh, 3, 0)
+        grp_File.inner.layout().addWidget(btn_ExportAnim, 3, 1)
+
+        # Tools panel
+        grp_Tools = CollapsingGroupBox("Tools", self)
+        grp_Tools.setObjectName("grpTools")
+
+        lbl_Materials = QtWidgets.QLabel("PDX materials:", self)
+        self.material_create_popup = btn_MaterialCreate = QtWidgets.QPushButton("Create", self)
+        set_widget_icon(btn_MaterialCreate, "blinn.svg")
+        self.material_edit_popup = btn_MaterialEdit = QtWidgets.QPushButton("Edit", self)
+        set_widget_icon(btn_MaterialEdit, "hypershadeIcon.png")
+        lbl_Bones = QtWidgets.QLabel("PDX bones:", self)
+        self.ignore_bone = btn_BoneIgnore = QtWidgets.QPushButton("Ignore bones", self)
+        set_widget_icon(btn_BoneIgnore, "joint.svg")
+        self.unignore_bone = btn_BoneUnignore = QtWidgets.QPushButton("Unignore bones", self)
+        set_widget_icon(btn_BoneUnignore, "joint.svg")
+        lbl_Meshes = QtWidgets.QLabel("PDX meshes:", self)
+        self.mesh_index_popup = btn_MeshOrder = QtWidgets.QPushButton("Set mesh order ...", self)
+        set_widget_icon(btn_MeshOrder, "sortName.png")
+
+        grp_Tools.inner.layout().addWidget(lbl_Materials, 0, 0, 1, 2)
+        grp_Tools.inner.layout().addWidget(btn_MaterialCreate, 1, 0)
+        grp_Tools.inner.layout().addWidget(btn_MaterialEdit, 1, 1)
+        grp_Tools.inner.layout().addWidget(lbl_Bones, 2, 0, 1, 2)
+        grp_Tools.inner.layout().addWidget(btn_BoneIgnore, 3, 0)
+        grp_Tools.inner.layout().addWidget(btn_BoneUnignore, 3, 1)
+        grp_Tools.inner.layout().addWidget(lbl_Meshes, 4, 0, 1, 2)
+        grp_Tools.inner.layout().addWidget(btn_MeshOrder, 5, 0, 1, 2)
+
+        # Display panel
+        grp_Display = CollapsingGroupBox("Display", self)
+        grp_Display.setObjectName("grpDisplay")
+
+        lbl_Display = QtWidgets.QLabel("Display local axes:", self)
+        self.show_axis_bones = btn_ShowBones = QtWidgets.QPushButton("Show on bones", self)
+        set_widget_icon(btn_ShowBones, "out_joint.png")
+        self.hide_axis_bones = btn_HideBones = QtWidgets.QPushButton("Hide on bones", self)
+        set_widget_icon(btn_HideBones, "out_joint.png")
+        self.show_axis_locators = btn_ShowLocators = QtWidgets.QPushButton("Show on locators", self)
+        set_widget_icon(btn_ShowLocators, "out_holder.png")
+        self.hide_axis_locators = btn_HideLocators = QtWidgets.QPushButton("Hide on locators", self)
+        set_widget_icon(btn_HideLocators, "out_holder.png")
+
+        grp_Display.inner.layout().addWidget(lbl_Display, 0, 0, 1, 2)
+        grp_Display.inner.layout().addWidget(btn_ShowBones, 1, 0)
+        grp_Display.inner.layout().addWidget(btn_HideBones, 1, 1)
+        grp_Display.inner.layout().addWidget(btn_ShowLocators, 2, 0)
+        grp_Display.inner.layout().addWidget(btn_HideLocators, 2, 1)
+
+        # Setup panel
+        grp_Setup = CollapsingGroupBox("Setup", self)
+        grp_Setup.setObjectName("grpSetup")
+
+        lbl_SetupEngine = QtWidgets.QLabel("Engine:", self)
+        ddl_EngineSelect = QtWidgets.QComboBox(self)
+        lbl_SetupAnimation = QtWidgets.QLabel("Animation:", self)
+        spn_AnimationFps = QtWidgets.QDoubleSpinBox(self)
+
+        grp_Setup.inner.layout().addWidget(lbl_SetupEngine, 0, 0)
+        grp_Setup.inner.layout().addWidget(ddl_EngineSelect, 0, 1)
+        grp_Setup.inner.layout().addWidget(lbl_SetupAnimation, 1, 0)
+        grp_Setup.inner.layout().addWidget(spn_AnimationFps, 1, 1)
+        grp_Setup.inner.layout().setColumnStretch(1, 1)
+
+        # Info panel
+        grp_Info = CollapsingGroupBox("Info", self)
+        grp_Info.setObjectName("grpInfo")
+
+        lbl_Current = QtWidgets.QLabel("current version: {}".format(github.CURRENT_VERSION), self)
+        self.update_version, self.about_popup = None, None
+        if github.AT_LATEST is False:  # update info appears if we aren't at the latest tag version
+            self.update_version = btn_UpdateVersion = QtWidgets.QPushButton(
+                "NEW UPDATE {}".format(github.LATEST_VERSION), self
+            )
+            set_widget_icon(btn_UpdateVersion, "SE_FavoriteStar.png")
+            self.about_popup = btn_AboutVersion = QtWidgets.QPushButton("About", self)
+            set_widget_icon(btn_AboutVersion, "info.png")
+
+        # Help sub panel
+        grp_Help = CollapsingGroupBox("Help", self)
+        grp_Help.setObjectName("grpHelp")
+
+        self.help_wiki = btn_HelpWiki = QtWidgets.QPushButton("Tool Wiki", self)
+        set_widget_icon(btn_HelpWiki, "help.png")
+        self.help_forum = btn_HelpForum = QtWidgets.QPushButton("Paradox forums", self)
+        set_widget_icon(btn_HelpForum, "help.png")
+        self.help_source = btn_HelpSource = QtWidgets.QPushButton("Source code", self)
+        set_widget_icon(btn_HelpSource, "help.png")
+
+        grp_Help.inner.layout().addWidget(btn_HelpWiki, 0, 0)
+        grp_Help.inner.layout().addWidget(btn_HelpForum, 1, 0)
+        grp_Help.inner.layout().addWidget(btn_HelpSource, 2, 0)
+        grp_Help.inner.layout().setContentsMargins(0, 0, 0, 0)
+        grp_Help.inner.layout().setSpacing(4)
+
+        grp_Info.inner.layout().addWidget(lbl_Current, 0, 0, 1, 2)
+        if github.AT_LATEST is False:
+            grp_Info.inner.layout().addWidget(btn_UpdateVersion, 1, 0)
+            grp_Info.inner.layout().addWidget(btn_AboutVersion, 1, 1)
+            grp_Info.inner.layout().setColumnStretch(0, 1)
+        grp_Info.inner.layout().addWidget(grp_Help, 3, 0, 1, 2)
+        grp_Info.inner.layout().setRowMinimumHeight(2, 4)
+
+        # main layout
+        self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
+        self.layout().setContentsMargins(4, 4, 4, 4)
+        self.layout().setSpacing(6)
+        for group_widget in [grp_File, grp_Tools, grp_Display, grp_Setup, grp_Info]:
+            group_widget.inner.layout().setContentsMargins(0, 0, 0, 0)
+            group_widget.inner.layout().setSpacing(4)
+            self.layout().addWidget(group_widget)
+
+        self.layout().addStretch()
+
+        for btn in self.findChildren(QtWidgets.QPushButton):
+            btn.setMaximumHeight(22)
+
+    def connect_signals(self):
+        self.import_mesh.clicked.connect(partial(print, "import_mesh"))
+        self.import_anim.clicked.connect(partial(print, "import_anim"))
+        self.export_mesh.clicked.connect(partial(print, "export_mesh"))
+        self.export_anim.clicked.connect(partial(print, "export_anim"))
+
+        self.material_create_popup.clicked.connect(self.create_material)
+        self.material_edit_popup.clicked.connect(partial(print, "material_edit_popup"))
+        self.ignore_bone.clicked.connect(partial(set_ignore_joints, True))
+        self.unignore_bone.clicked.connect(partial(set_ignore_joints, False))
+        self.mesh_index_popup.clicked.connect(self.edit_mesh_order)
+
+        self.show_axis_bones.clicked.connect(partial(set_local_axis_display, True, object_type="joint"))
+        self.hide_axis_bones.clicked.connect(partial(set_local_axis_display, False, object_type="joint"))
+        self.show_axis_locators.clicked.connect(partial(set_local_axis_display, True, object_type="locator"))
+        self.hide_axis_locators.clicked.connect(partial(set_local_axis_display, False, object_type="locator"))
+
+        if self.update_version:
+            self.update_version.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
+        if self.about_popup:
+            self.about_popup.clicked.connect(self.show_update_notes)
+        self.help_wiki.clicked.connect(partial(webbrowser.open, bl_info["wiki_url"]))
+        self.help_forum.clicked.connect(partial(webbrowser.open, bl_info["forum_url"]))
+        self.help_source.clicked.connect(partial(webbrowser.open, bl_info["project_url"]))
+
+    def closeEvent(self, event):
+        self.write_ui_settings()
+        event.accept()
+
+    def read_ui_settings(self):
+        self.settings = QtCore.QSettings(
+            QtCore.QSettings.NativeFormat, QtCore.QSettings.UserScope, "IO_PDX_MESH", "MAYA"
+        )
+        # restore groupbox panels expand state
+        for grp in self.findChildren(QtWidgets.QGroupBox):
+            state = True
+            if self.settings.contains("ui/isChecked_{0}".format(grp.objectName())):
+                state = self.settings.value("ui/isChecked_{0}".format(grp.objectName())) == "true"
+            grp.setChecked(state)
+        # restore dialog size, position
+        self.restoreGeometry(self.settings.value("ui/geometry", ""))
+
+    def write_ui_settings(self):
+        # store groupbox panels expand state
+        for grp in self.findChildren(QtWidgets.QGroupBox):
+            self.settings.setValue("ui/isChecked_{0}".format(grp.objectName()), grp.isChecked())
+        # store dialog size, position
+        self.settings.setValue("ui/geometry", self.saveGeometry())
+
+    @QtCore.Slot()
+    def create_material(self):
+        if self.popup:
+            self.popup.close()
+        self.popup = material_popup(parent=self)
+        self.popup.show()
+
+    @QtCore.Slot()
+    def edit_mesh_order(self):
+        if self.popup:
+            self.popup.close()
+        self.popup = meshindex_popup(parent=self)
+        self.popup.show()
+
+    @QtCore.Slot()
+    def show_update_notes(self):
+        msg_text = github.LATEST_NOTES
+
+        # split text into multiple label rows if it's wider than the panel
+        txt_lines = []
+        for line in msg_text.splitlines():
+            txt_lines.extend(wrap(line, 450 / 6))
+            txt_lines.append("")
+
+        QtWidgets.QMessageBox.information(self, bl_info["name"], "\n".join(txt_lines))
 
 
 class PDXmaya_ui(QtWidgets.QDialog):
@@ -103,7 +397,7 @@ class PDXmaya_ui(QtWidgets.QDialog):
     def __init__(self, parent=None):
         # parent to the Maya main window.
         if not parent:
-            parent = get_mayamainwindow()
+            parent = get_maya_mainWindow()
 
         super(PDXmaya_ui, self).__init__(parent)
         self.popup = None  # reference for popup widget
@@ -152,22 +446,22 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         file_import_mesh = QtWidgets.QAction("Load mesh ...", self)
         file_import_mesh.triggered.connect(self.do_import_mesh)
-        set_action_icon(file_import_mesh, "out_polyCube.png")
+        set_widget_icon(file_import_mesh, "out_polyCube.png")
 
         file_import_anim = QtWidgets.QAction("Load animation ...", self)
         file_import_anim.triggered.connect(self.do_import_anim)
-        set_action_icon(file_import_anim, "out_renderLayer.png")
+        set_widget_icon(file_import_anim, "out_renderLayer.png")
 
         file_export = QtWidgets.QAction("Export", self)
         file_export.setDisabled(True)
 
         file_export_mesh = QtWidgets.QAction("Save mesh ...", self)
         file_export_mesh.triggered.connect(lambda: self.do_export_mesh(select_path=True))
-        set_action_icon(file_export_mesh, "out_polyCube.png")
+        set_widget_icon(file_export_mesh, "out_polyCube.png")
 
         file_export_anim = QtWidgets.QAction("Save animation ...", self)
         file_export_anim.triggered.connect(lambda: self.do_export_anim(select_path=True))
-        set_action_icon(file_export_anim, "out_renderLayer.png")
+        set_widget_icon(file_export_anim, "out_renderLayer.png")
 
         # tools menu
         tool_ignore_joints = QtWidgets.QAction("Ignore selected joints", self)
@@ -178,21 +472,21 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         tool_show_jnt_localaxes = QtWidgets.QAction("Show all joint axes", self)
         tool_show_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type="joint"))
-        set_action_icon(tool_show_jnt_localaxes, "out_joint.png")
+        set_widget_icon(tool_show_jnt_localaxes, "out_joint.png")
 
         tool_hide_jnt_localaxes = QtWidgets.QAction("Hide all joint axes", self)
         tool_hide_jnt_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type="joint"))
 
         tool_show_loc_localaxes = QtWidgets.QAction("Show all locator axes", self)
         tool_show_loc_localaxes.triggered.connect(lambda: set_local_axis_display(True, object_type="locator"))
-        set_action_icon(tool_show_loc_localaxes, "out_holder.png")
+        set_widget_icon(tool_show_loc_localaxes, "out_holder.png")
 
         tool_hide_loc_localaxes = QtWidgets.QAction("Hide all locator axes", self)
         tool_hide_loc_localaxes.triggered.connect(lambda: set_local_axis_display(False, object_type="locator"))
 
         tool_edit_mesh_order = QtWidgets.QAction("Set mesh order", self)
         tool_edit_mesh_order.triggered.connect(self.edit_mesh_order)
-        set_action_icon(tool_edit_mesh_order, "sortName.png")
+        set_widget_icon(tool_edit_mesh_order, "sortName.png")
 
         # help menu
         help_version = QtWidgets.QAction("current version {}".format(github.CURRENT_VERSION), self)
@@ -200,27 +494,27 @@ class PDXmaya_ui(QtWidgets.QDialog):
 
         help_wiki = QtWidgets.QAction("Tool Wiki", self)
         help_wiki.triggered.connect(lambda: webbrowser.open(bl_info["wiki_url"]))
-        set_action_icon(help_wiki, "help.png")
+        set_widget_icon(help_wiki, "help.png")
 
         help_forum = QtWidgets.QAction("Paradox forums", self)
         help_forum.triggered.connect(lambda: webbrowser.open(bl_info["wiki_url"]))
-        set_action_icon(help_forum, "help.png")
+        set_widget_icon(help_forum, "help.png")
 
         help_code = QtWidgets.QAction("Source code", self)
         help_code.triggered.connect(lambda: webbrowser.open(bl_info["project_url"]))
-        set_action_icon(help_code, "help.png")
+        set_widget_icon(help_code, "help.png")
 
         # new version sub-menu
         help_update = QtWidgets.QMenu("NEW UPDATE {}".format(github.LATEST_VERSION), self)
-        set_action_icon(help_update, "SE_FavoriteStar.png")
+        set_widget_icon(help_update, "SE_FavoriteStar.png")
 
         help_download = QtWidgets.QAction("Download", self)
         help_download.triggered.connect(lambda: webbrowser.open(str(github.LATEST_URL)))
-        set_action_icon(help_download, "advancedSettings.png")
+        set_widget_icon(help_download, "advancedSettings.png")
 
         help_about = QtWidgets.QAction("About", self)
         help_about.triggered.connect(self.show_update_notes)
-        set_action_icon(help_about, "info.png")
+        set_widget_icon(help_about, "info.png")
 
         # add all actions and separators to menus
         file_menu.addActions([file_import, file_import_mesh, file_import_anim])
@@ -580,12 +874,12 @@ class export_controls(QtWidgets.QWidget):
         grp_export_layout.addWidget(self.chk_merge_vtx, 1, 2)
         grp_export_layout.addWidget(self.chk_merge_obj, 2, 2)
         grp_export_layout.addWidget(self.chk_selected, 3, 2)
-        grp_export_layout.addWidget(h_line(), 4, 1, 1, 2)
+        grp_export_layout.addWidget(HLine(), 4, 1, 1, 2)
         grp_export_layout.addWidget(self.chk_timeline, 5, 1, 1, 2)
         grp_export_layout.addWidget(self.chk_animation, 6, 1, 1, 2)
-        grp_export_layout.addWidget(h_line(), 7, 1, 1, 2)
+        grp_export_layout.addWidget(HLine(), 7, 1, 1, 2)
         grp_export_layout.addWidget(self.chk_create_extra, 8, 1, 1, 2)
-        grp_export_layout.addWidget(h_line(), 9, 1, 1, 2)
+        grp_export_layout.addWidget(HLine(), 9, 1, 1, 2)
         grp_export_layout.addLayout(grp_export_fields_layout, 10, 1, 1, 2)
         grp_export_fields_layout.addWidget(lbl_path, 1, 1)
         grp_export_fields_layout.addWidget(self.txt_path, 1, 2)
@@ -1024,7 +1318,7 @@ def main():
     except Exception:
         pass
 
-    pdx_tools = PDXmaya_ui()
+    pdx_tools = PDXUI()
 
     try:
         pdx_tools.show()
