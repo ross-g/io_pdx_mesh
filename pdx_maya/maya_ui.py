@@ -61,7 +61,7 @@ if sys.version_info >= (3, 0):
 
 
 """ ====================================================================================================================
-    Variables and Helper functions.
+    Helper functions/classes.
 ========================================================================================================================
 """
 
@@ -85,11 +85,18 @@ def set_widget_icon(widget, icon_name):
         IO_PDX_LOG.error(err)
 
 
-class HLine(QtWidgets.QFrame):
-    def __init__(self):
-        super(HLine, self).__init__()
-        self.setFrameShape(QtWidgets.QFrame.HLine)
-        self.setFrameShadow(QtWidgets.QFrame.Sunken)
+def HLine():
+    line = QtWidgets.QFrame()
+    line.setFrameShape(QtWidgets.QFrame.HLine)
+    line.setFrameShadow(QtWidgets.QFrame.Sunken)
+    return line
+
+
+def VLine():
+    line = QtWidgets.QFrame()
+    line.setFrameShape(QtWidgets.QFrame.VLine)
+    line.setFrameShadow(QtWidgets.QFrame.Sunken)
+    return line
 
 
 class CollapsingGroupBox(QtWidgets.QGroupBox):
@@ -98,10 +105,9 @@ class CollapsingGroupBox(QtWidgets.QGroupBox):
         self.parent = parent
         self.line = HLine()
 
-        layout = layout or QtWidgets.QGridLayout
-        self.inner = QtWidgets.QWidget(self.parent)
-        self.inner.setLayout(layout())
-
+        self.setCheckable(True)
+        self.setChecked(True)
+        self.setFlat(True)
         self.setStyleSheet(
             "QGroupBox {"
             "border: 1px solid;"
@@ -115,12 +121,20 @@ class CollapsingGroupBox(QtWidgets.QGroupBox):
             "left: 6px;"
             "top: 4px;"
             "}"
+            "QGroupBox::indicator:checked {"
+            "image: url(:/arrowDown.png);"
+            "}"
+            "QGroupBox::indicator:unchecked {"
+            "image: url(:/arrowRight.png);"
+            "}"
         )
 
-        self.setCheckable(True)
-        self.setChecked(True)
-        self.setFlat(True)
+        # setup inner widget, defaulting to grid layout
+        self.inner = QtWidgets.QWidget(self.parent)
+        layout = layout or QtWidgets.QGridLayout()
+        self.inner.setLayout(layout)
 
+        # setup layout to contain inner widget
         self.setLayout(QtWidgets.QVBoxLayout())
         self.layout().setContentsMargins(4, 18, 4, 4)
         self.layout().setSpacing(0)
@@ -142,10 +156,56 @@ class CollapsingGroupBox(QtWidgets.QGroupBox):
         self.parent.resize(self.parent.layout().sizeHint())
 
     def sizeHint(self):
-        if self.isChecked():
-            return super(CollapsingGroupBox, self).sizeHint()
-        else:
+        if not self.isChecked():
             return QtCore.QSize(self.width(), 22)
+        else:
+            return self.layout().sizeHint()
+
+
+class CustomFileDialog(QtWidgets.QFileDialog):
+    def __init__(self, extra_opts=None, *args, **kwargs):
+        super(CustomFileDialog, self).__init__(*args, **kwargs)
+        self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        self.setViewMode(QtWidgets.QFileDialog.Detail)
+
+        self.optionsWidget = extra_opts or QtWidgets.QWidget(self)
+        self.addCustomOptions()
+
+    def addCustomOptions(self):
+        # adjust QFileDialog layout to append custom options
+        box = QtWidgets.QVBoxLayout()
+        box.addWidget(self.optionsWidget)
+        box.addStretch(1)
+
+        self.layout().addWidget(VLine(), 0, 3, 4, 1)
+        self.layout().addLayout(box, 0, 4, 4, 1)
+
+    def selectedOptions(self):
+        options = {}
+        for widget in self.optionsWidget.children():
+            value = None
+            if isinstance(widget, QtWidgets.QLineEdit):
+                value = widget.text()
+            if isinstance(widget, QtWidgets.QComboBox):
+                value = widget.currentText()
+                value = widget.text()
+            if isinstance(widget, QtWidgets.QCheckBox):
+                value = widget.isChecked()
+            if isinstance(widget, QtWidgets.QSpinBox):
+                value = widget.value()
+
+            if value is not None:
+                options[widget.objectName()] = value
+
+        return options
+
+    @classmethod
+    def runPopup(cls, parent):
+        file_dialog = cls(parent)
+        file_dialog.show()
+        result = file_dialog.exec_()
+
+        return result == QtWidgets.QFileDialog.Accepted, file_dialog.selectedFiles(), file_dialog.selectedOptions()
 
 
 """ ====================================================================================================================
@@ -163,10 +223,10 @@ class PDXUI(QtWidgets.QDialog):
         self.popup = None  # type: QtWidgets.QWidget
         self.settings = None  # type: QtCore.QSettings
         self.create_ui()
-        self.read_ui_settings()
 
     def create_ui(self):
         # window properties
+        self.setObjectName("PDX_Maya_Tools")
         self.setWindowTitle("PDX Maya Tools")
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
 
@@ -180,14 +240,14 @@ class PDXUI(QtWidgets.QDialog):
         grp_File.setObjectName("grpFile")
 
         lbl_Import = QtWidgets.QLabel("Import:", self)
-        self.import_mesh = btn_ImportMesh = QtWidgets.QPushButton("Load mesh ...", self)
+        self.mesh_import = btn_ImportMesh = QtWidgets.QPushButton("Load mesh ...", self)
         set_widget_icon(btn_ImportMesh, "out_polyCube.png")
-        self.import_anim = btn_ImportAnim = QtWidgets.QPushButton("Load anim ...", self)
+        self.anim_import = btn_ImportAnim = QtWidgets.QPushButton("Load anim ...", self)
         set_widget_icon(btn_ImportAnim, "out_renderLayer.png")
         lbl_Export = QtWidgets.QLabel("Export:", self)
-        self.export_mesh = btn_ExportMesh = QtWidgets.QPushButton("Save mesh ...", self)
+        self.mesh_export = btn_ExportMesh = QtWidgets.QPushButton("Save mesh ...", self)
         set_widget_icon(btn_ExportMesh, "out_polyCube.png")
-        self.export_anim = btn_ExportAnim = QtWidgets.QPushButton("Save anim ...", self)
+        self.anim_export = btn_ExportAnim = QtWidgets.QPushButton("Save anim ...", self)
         set_widget_icon(btn_ExportAnim, "out_renderLayer.png")
 
         grp_File.inner.layout().addWidget(lbl_Import, 0, 0, 1, 2)
@@ -314,10 +374,10 @@ class PDXUI(QtWidgets.QDialog):
             btn.setMaximumHeight(22)
 
     def connect_signals(self):
-        self.import_mesh.clicked.connect(partial(print, "import_mesh"))
-        self.import_anim.clicked.connect(partial(print, "import_anim"))
-        self.export_mesh.clicked.connect(partial(print, "export_mesh"))
-        self.export_anim.clicked.connect(partial(print, "export_anim"))
+        self.mesh_import.clicked.connect(self.import_mesh)
+        self.anim_import.clicked.connect(partial(print, "import_anim"))
+        self.mesh_export.clicked.connect(self.export_mesh)
+        self.anim_export.clicked.connect(partial(print, "export_anim"))
 
         self.material_create_popup.clicked.connect(self.create_material)
         self.material_edit_popup.clicked.connect(partial(print, "material_edit_popup"))
@@ -338,6 +398,10 @@ class PDXUI(QtWidgets.QDialog):
         self.help_forum.clicked.connect(partial(webbrowser.open, bl_info["forum_url"]))
         self.help_source.clicked.connect(partial(webbrowser.open, bl_info["project_url"]))
 
+    def showEvent(self, event):
+        self.read_ui_settings()
+        event.accept()
+
     def closeEvent(self, event):
         self.write_ui_settings()
         event.accept()
@@ -346,21 +410,70 @@ class PDXUI(QtWidgets.QDialog):
         self.settings = QtCore.QSettings(
             QtCore.QSettings.NativeFormat, QtCore.QSettings.UserScope, "IO_PDX_MESH", "MAYA"
         )
+
+        # restore dialog size, position
+        geom = self.settings.value("ui/geometry", None)
+        if geom is None:
+            parent_x, parent_y = self.parent().x(), self.parent().y()
+            self.setGeometry(parent_x + 60, parent_y + 220, self.width(), self.height())
+        else:
+            self.restoreGeometry(geom)
+
         # restore groupbox panels expand state
         for grp in self.findChildren(QtWidgets.QGroupBox):
-            state = True
-            if self.settings.contains("ui/isChecked_{0}".format(grp.objectName())):
-                state = self.settings.value("ui/isChecked_{0}".format(grp.objectName())) == "true"
+            state = bool(self.settings.value("ui/isChecked_{0}".format(grp.objectName()), defaultValue=True))
             grp.setChecked(state)
-        # restore dialog size, position
-        self.restoreGeometry(self.settings.value("ui/geometry", ""))
 
     def write_ui_settings(self):
-        # store groupbox panels expand state
-        for grp in self.findChildren(QtWidgets.QGroupBox):
-            self.settings.setValue("ui/isChecked_{0}".format(grp.objectName()), grp.isChecked())
         # store dialog size, position
         self.settings.setValue("ui/geometry", self.saveGeometry())
+
+        # store groupbox panels expand state
+        for grp in self.findChildren(QtWidgets.QGroupBox):
+            self.settings.setValue("ui/isChecked_{0}".format(grp.objectName()), int(grp.isChecked()))
+
+    @QtCore.Slot()
+    def import_mesh(self):
+        result, files, options = MeshImportUI.runPopup(self)
+        if result and files:
+            mesh_filepath = files[0]
+            try:
+                import_meshfile(
+                    mesh_filepath,
+                    progress_fn=MayaProgress,
+                    **options
+                )
+                IO_PDX_SETTINGS.last_import_mesh = mesh_filepath
+            except Exception as err:
+                IO_PDX_LOG.warning("FAILED to import {0}".format(mesh_filepath))
+                IO_PDX_LOG.error(err)
+                QtWidgets.QMessageBox.critical(self, "FAILURE", "Mesh import failed!\n\n{0}".format(err))
+                MayaProgress.finished()
+                raise
+        else:
+            IO_PDX_LOG.info("Nothing to import.")
+
+    @QtCore.Slot()
+    def export_mesh(self):
+        result, files, options = MeshExportUI.runPopup(self)
+        if result and files:
+            mesh_filepath = files[0]
+            try:
+                export_meshfile(
+                    mesh_filepath,
+                    progress_fn=MayaProgress,
+                    **options
+                )
+                QtWidgets.QMessageBox.information(self, "SUCCESS", "Mesh export finished!\n\n{0}".format(mesh_filepath))
+                IO_PDX_SETTINGS.last_export_mesh = mesh_filepath
+            except Exception as err:
+                IO_PDX_LOG.warning("FAILED to export {0}".format(mesh_filepath))
+                IO_PDX_LOG.error(err)
+                QtWidgets.QMessageBox.critical(self, "FAILURE", "Mesh export failed!\n\n{0}".format(err))
+                MayaProgress.finished()
+                raise
+        else:
+            IO_PDX_LOG.info("Nothing to export.")
 
     @QtCore.Slot()
     def create_material(self):
@@ -387,6 +500,71 @@ class PDXUI(QtWidgets.QDialog):
             txt_lines.append("")
 
         QtWidgets.QMessageBox.information(self, bl_info["name"], "\n".join(txt_lines))
+
+
+class MeshImportUI(CustomFileDialog):
+    def __init__(self, parent=None):
+        options_group = QtWidgets.QGroupBox("Import Settings")
+        options_group.setLayout(QtWidgets.QVBoxLayout())
+        options_group.setFixedWidth(150)
+
+        super(MeshImportUI, self).__init__(
+            extra_opts=options_group, parent=parent, caption="Import a mesh file", filter="PDX Mesh files (*.mesh)"
+        )
+        self.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        self.setAcceptMode(QtWidgets.QFileDialog.AcceptOpen)
+        self.setLabelText(QtWidgets.QFileDialog.Accept, "Import")
+        last_directory = os.path.dirname(IO_PDX_SETTINGS.last_import_mesh or "")
+        self.setDirectory(last_directory)
+        self.setSidebarUrls([QtCore.QUrl.fromLocalFile(last_directory)])
+
+        self.chk_mesh = QtWidgets.QCheckBox("Mesh")
+        self.chk_mesh.setObjectName("imp_mesh")
+        self.chk_skel = QtWidgets.QCheckBox("Skeleton")
+        self.chk_skel.setObjectName("imp_skel")
+        self.chk_locs = QtWidgets.QCheckBox("Locators")
+        self.chk_locs.setObjectName("imp_locs")
+
+        for chk in [self.chk_mesh, self.chk_skel, self.chk_locs]:
+            options_group.layout().addWidget(chk)
+            chk.setChecked(True)
+
+
+class MeshExportUI(CustomFileDialog):
+    def __init__(self, parent=None):
+        options_group = QtWidgets.QGroupBox("Export Settings")
+        options_group.setLayout(QtWidgets.QVBoxLayout())
+        options_group.setFixedWidth(150)
+
+        super(MeshExportUI, self).__init__(
+            extra_opts=options_group, parent=parent, caption="Export a mesh file", filter="PDX Mesh files (*.mesh)"
+        )
+        self.setFileMode(QtWidgets.QFileDialog.AnyFile)
+        self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+        self.setLabelText(QtWidgets.QFileDialog.Accept, "Export")
+        last_directory = os.path.dirname(IO_PDX_SETTINGS.last_export_mesh or "")
+        self.setDirectory(last_directory)
+        self.setSidebarUrls([QtCore.QUrl.fromLocalFile(last_directory)])
+        self.setDefaultSuffix(".mesh")
+
+        self.chk_mesh = QtWidgets.QCheckBox("Mesh")
+        self.chk_mesh.setObjectName("exp_mesh")
+        self.chk_skel = QtWidgets.QCheckBox("Skeleton")
+        self.chk_skel.setObjectName("exp_skel")
+        self.chk_locs = QtWidgets.QCheckBox("Locators")
+        self.chk_locs.setObjectName("exp_locs")
+        self.chk_split = QtWidgets.QCheckBox("Split vertices")
+        self.chk_split.setObjectName("split_verts")
+        self.chk_sel_only = QtWidgets.QCheckBox("Selection only")
+        self.chk_sel_only.setObjectName("exp_selected")
+
+        for chk in [self.chk_mesh, self.chk_skel, self.chk_locs]:
+            options_group.layout().addWidget(chk)
+            chk.setChecked(True)
+        options_group.layout().addSpacing(15)
+        for chk in [self.chk_split, self.chk_sel_only]:
+            options_group.layout().addWidget(chk)
+            chk.setChecked(False)
 
 
 class PDXmaya_ui(QtWidgets.QDialog):
@@ -1310,22 +1488,16 @@ class MayaProgress(object):
 
 def main():
     IO_PDX_LOG.info("Launching Maya UI.")
-    global pdx_tools
 
-    try:
+    maya_main_window = get_maya_mainWindow()
+    pdx_tools = maya_main_window.findChild(QtWidgets.QDialog, "PDX_Maya_Tools")
+
+    if pdx_tools is None:
+        pdx_tools = PDXUI(parent=maya_main_window)
+    else:
         pdx_tools.close()
-        pdx_tools.deleteLater()
-    except Exception:
-        pass
 
-    pdx_tools = PDXUI()
-
-    try:
-        pdx_tools.show()
-    except Exception:
-        pdx_tools.deleteLater()
-        pdx_tools = None
-        raise
+    pdx_tools.show()
 
 
 if __name__ == "__main__":

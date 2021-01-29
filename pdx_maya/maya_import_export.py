@@ -301,7 +301,7 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
+def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
     """
         Returns a dictionary of mesh information neccessary to the exporter.
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
@@ -408,7 +408,7 @@ def get_mesh_info(maya_mesh, skip_merge_vertices=False, round_data=False):
 
                 # test if we have already stored this vertex in the unique set
                 i = None
-                if not skip_merge_vertices:
+                if not split_all_vertices:
                     if new_vert in unique_verts:
                         # no new data to be added to the mesh dict, the tri will reference an existing vert
                         i = export_verts.index(new_vert)
@@ -1316,7 +1316,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
 
 def export_meshfile(
-    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, exp_selected=False, progress_fn=None
+    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False, progress_fn=None
 ):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(meshpath))
@@ -1376,7 +1376,7 @@ def export_meshfile(
                 mesh = [m for m in group.members(flatten=True) if m.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(mesh, not merge_verts, False)
+                mesh_info_dict, vert_ids = get_mesh_info(mesh, split_verts, False)
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
