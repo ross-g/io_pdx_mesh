@@ -163,8 +163,9 @@ def set_local_axis_display(state, object_type=None, object_list=None):
             node = pmc.listRelatives(node, parent=True)[0]
         try:
             node.displayLocalAxis.set(state)
-        except Exception:
-            IO_PDX_LOG.info("node '{0}' has no displayLocalAxis property".format(node))
+        except Exception as err:
+            IO_PDX_LOG.warning("could not display local axis for node '{0}'".format(node))
+            IO_PDX_LOG.error(err)
 
 
 def set_ignore_joints(state):
@@ -772,11 +773,10 @@ def create_material(PDX_material, mesh, texture_path):
 
 
 def create_locator(PDX_locator, PDX_bone_dict):
-    """
-        Creates a Maya Locator object.
+    """ Creates a Maya Locator object.
 
-    :param pdx_data.PDXData PDX_locator:
-    :param dict PDX_bone_dict:
+        :param pdx_data.PDXData PDX_locator:
+        :param dict PDX_bone_dict:
     """
     # create locator
     new_loc = pmc.spaceLocator()
@@ -806,7 +806,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
                 # fmt: on
             else:
                 IO_PDX_LOG.warning(
-                    "Warning! unable to create locator '{0}' (missing parent '{1}' in file data)".format(
+                    "unable to create locator '{0}' (missing parent '{1}' in file data)".format(
                         PDX_locator.name, parent[0]
                     )
                 )
@@ -1229,13 +1229,12 @@ def create_anim_keys(joint_name, key_dict, timestart):
 """
 
 
-def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progress_fn=None):
+def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, **kwargs):
     start = time.time()
     IO_PDX_LOG.info("importing {0}".format(meshpath))
 
-    progress = None
-    if progress_fn:
-        progress = progress_fn("Importing", 10)
+    ProgBar = kwargs.get("progress_fn", lambda: None)
+    progress = ProgBar("Importing", 10)
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(meshpath)
@@ -1250,8 +1249,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
     # go through shapes
     for i, node in enumerate(shapes):
         IO_PDX_LOG.info("creating node {0}/{1} - {2}".format(i + 1, len(shapes), node.tag))
-        if progress_fn:
-            progress.update(1, "creating node")
+        progress.update(1, "creating node")
 
         # create the skeleton first, so we can skin the mesh to it
         joints = None
@@ -1265,8 +1263,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
             if imp_skel:
                 IO_PDX_LOG.info("creating skeleton - {0} bones".format(len(pdx_bone_list)))
-                if progress_fn:
-                    progress.update(1, "creating skeleton")
+                progress.update(1, "creating skeleton")
                 joints = create_skeleton(pdx_bone_list)
 
         # then create all the meshes
@@ -1274,8 +1271,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
         if imp_mesh and meshes:
             for m in meshes:
                 IO_PDX_LOG.info("creating mesh -")
-                if progress_fn:
-                    progress.update(1, "creating mesh")
+                progress.update(1, "creating mesh")
                 pdx_mesh = pdx_data.PDXData(m)
                 pdx_material = getattr(pdx_mesh, "material", None)
                 pdx_skin = getattr(pdx_mesh, "skin", None)
@@ -1289,21 +1285,18 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
                 # create the material
                 if pdx_material:
                     IO_PDX_LOG.info("creating material - {0}".format(pdx_material.name))
-                    if progress_fn:
-                        progress.update(1, "creating material")
+                    progress.update(1, "creating material")
                     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
                 # create the skin cluster
                 if joints and pdx_skin:
                     IO_PDX_LOG.info("creating skinning data -")
-                    if progress_fn:
-                        progress.update(1, "creating skinning data")
+                    progress.update(1, "creating skinning data")
                     create_skin(pdx_skin, mesh, joints)
 
     # go through locators
     if imp_locs and locators:
-        if progress_fn:
-            progress.update(1, "creating locators")
+        progress.update(1, "creating locators")
         for i, loc in enumerate(locators):
             IO_PDX_LOG.info("creating locator {0}/{1} - {2}".format(i + 1, len(locators), loc.tag))
             pdx_locator = pdx_data.PDXData(loc)
@@ -1311,19 +1304,17 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, progr
 
     pmc.select(None)
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
-    if progress_fn:
-        progress.finished()
+    progress.finished()
 
 
 def export_meshfile(
-    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False, progress_fn=None
+    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False, **kwargs
 ):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(meshpath))
 
-    progress = None
-    if progress_fn:
-        progress = progress_fn("Exporting", 10)
+    ProgBar = kwargs.get("progress_fn", lambda: None)
+    progress = ProgBar("Exporting", 10)
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element("File")
@@ -1350,8 +1341,7 @@ def export_meshfile(
 
     for shape in maya_meshes:
         IO_PDX_LOG.info("writing node - {0}".format(shape.name()))
-        if progress_fn:
-            progress.update(1, "writing node")
+        progress.update(1, "writing node")
         shapenode_xml = Xml.SubElement(object_xml, shape.name())
 
         # one shape can have multiple materials on a per meshface basis
@@ -1367,8 +1357,7 @@ def export_meshfile(
 
                 # create parent element for this mesh (mesh here being geometry sharing a material, within one shape)
                 IO_PDX_LOG.info("writing mesh -")
-                if progress_fn:
-                    progress.update(1, "writing mesh")
+                progress.update(1, "writing mesh")
                 meshnode_xml = Xml.SubElement(shapenode_xml, "mesh")
 
                 # check which faces are using this shading group
@@ -1376,7 +1365,7 @@ def export_meshfile(
                 mesh = [m for m in group.members(flatten=True) if m.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(mesh, split_verts, False)
+                mesh_info_dict, vert_ids = get_mesh_info(mesh, split_verts)
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
@@ -1391,8 +1380,7 @@ def export_meshfile(
 
                 # create parent element for material data
                 IO_PDX_LOG.info("writing material -")
-                if progress_fn:
-                    progress.update(1, "writing material")
+                progress.update(1, "writing material")
                 materialnode_xml = Xml.SubElement(meshnode_xml, "material")
                 # populate material attributes
                 materialnode_xml.set("shader", [get_material_shader(maya_mat)])
@@ -1404,8 +1392,7 @@ def export_meshfile(
                 skin_info_dict = get_mesh_skin_info(shape, vert_ids)
                 if exp_skel and skin_info_dict:
                     IO_PDX_LOG.info("writing skinning data -")
-                    if progress_fn:
-                        progress.update(1, "writing skinning data")
+                    progress.update(1, "writing skinning data")
                     skinnode_xml = Xml.SubElement(meshnode_xml, "skin")
                     for key in ["bones", "ix", "w"]:
                         if key in skin_info_dict and skin_info_dict[key]:
@@ -1415,8 +1402,7 @@ def export_meshfile(
         bone_info_list = get_mesh_skeleton_info(shape)
         if exp_skel and bone_info_list:
             IO_PDX_LOG.info("writing skeleton -")
-            if progress_fn:
-                progress.update(1, "writing skeleton")
+            progress.update(1, "writing skeleton")
             skeletonnode_xml = Xml.SubElement(shapenode_xml, "skeleton")
 
             # create sub-elements for each bone, populate bone attributes
@@ -1433,8 +1419,7 @@ def export_meshfile(
 
     if exp_locs and loc_info_list:
         IO_PDX_LOG.info("writing locators -")
-        if progress_fn:
-            progress.update(1, "writing locators")
+        progress.update(1, "writing locators")
         for loc_info_dict in loc_info_list:
             # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc_info_dict["name"])
@@ -1447,17 +1432,15 @@ def export_meshfile(
 
     pmc.select(None)
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
-    if progress_fn:
-        progress.finished()
+    progress.finished()
 
 
-def import_animfile(animpath, timestart=1, progress_fn=None):
+def import_animfile(animpath, frame_start=1, **kwargs):
     start = time.time()
     IO_PDX_LOG.info("importing {0}".format(animpath))
 
-    progress = None
-    if progress_fn:
-        progress = progress_fn("Importing", 10)
+    ProgBar = kwargs.get("progress_fn", lambda: None)
+    progress = ProgBar("Importing", 10)
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(animpath)
@@ -1482,23 +1465,20 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
         else:
             raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
 
-    if progress_fn:
-        progress.update(1, "setting playback speed")
+    progress.update(1, "setting playback speed")
     pmc.playbackOptions(edit=True, playbackSpeed=1.0)
     pmc.playbackOptions(edit=True, animationStartTime=0.0)
 
-    IO_PDX_LOG.info("setting playback range - ({0},{1})".format(timestart, (timestart + framecount - 1)))
-    if progress_fn:
-        progress.update(1, "setting playback range")
-    pmc.playbackOptions(edit=True, minTime=timestart)
-    pmc.playbackOptions(edit=True, maxTime=(timestart + framecount - 1))
+    IO_PDX_LOG.info("setting playback range - ({0},{1})".format(frame_start, (frame_start + framecount - 1)))
+    progress.update(1, "setting playback range")
+    pmc.playbackOptions(edit=True, minTime=frame_start)
+    pmc.playbackOptions(edit=True, maxTime=(frame_start + framecount - 1))
 
-    pmc.currentTime(timestart, edit=True)
+    pmc.currentTime(frame_start, edit=True)
 
     # find bones being animated in the scene
     IO_PDX_LOG.info("finding bones -")
-    if progress_fn:
-        progress.update(1, "finding bones")
+    progress.update(1, "finding bones")
     bone_errors = []
     bone_list = []
     for bone in info:
@@ -1510,8 +1490,7 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
         except IndexError:
             bone_errors.append(bone_name)
             IO_PDX_LOG.warning("failed to find bone '{0}'".format(bone_name))
-            if progress_fn:
-                progress.update(1, "failed to find bone!")
+            progress.update(1, "failed to find bone!")
 
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
         if bone_joint:
@@ -1564,35 +1543,32 @@ def import_animfile(animpath, timestart=1, progress_fn=None):
         # check bone has keyframe values
         if bone_keys.values():
             IO_PDX_LOG.info("setting {0} keyframes on bone '{1}'".format(list(bone_keys.keys()), bone_name))
-            if progress_fn:
-                progress.update(1, "setting keyframes on bone")
+            progress.update(1, "setting keyframes on bone")
             bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
-            create_anim_keys(bone_long_name, bone_keys, timestart)
+            create_anim_keys(bone_long_name, bone_keys, frame_start)
 
     animation_name = os.path.split(os.path.splitext(animpath)[0])[1]
-    edit_animation_clip(bone_list, animation_name, timestart, (timestart + framecount - 1))
+    edit_animation_clip(bone_list, animation_name, frame_start, (frame_start + framecount - 1))
 
     pmc.select(None)
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
-    if progress_fn:
-        progress.finished()
+    progress.finished()
 
 
-def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
+def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(animpath))
 
-    progress = None
-    if progress_fn:
-        progress = progress_fn("Exporting", 10)
+    ProgBar = kwargs.get("progress_fn", lambda: None)
+    progress = ProgBar("Exporting", 10)
 
     curr_frame = pmc.currentTime(query=True)
-    if timestart != int(timestart) or timeend != int(timeend):
+    if frame_start != int(frame_start) or frame_end != int(frame_end):
         raise RuntimeError(
-            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(timestart, timeend)
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(frame_start, frame_end)
         )
-    timestart = int(timestart)
-    timeend = int(timeend)
+    frame_start = int(frame_start)
+    frame_end = int(frame_end)
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element("File")
@@ -1606,7 +1582,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     fps = get_animation_fps()  # pmc.mel.currentTimeUnitToFPS()
     info_xml.set("fps", [float(fps)])
 
-    frame_samples = (timeend + 1) - timestart
+    frame_samples = (frame_end + 1) - frame_start
     info_xml.set("sa", [frame_samples])
 
     # find the scene root bone with animation property (assume this is unique)
@@ -1633,13 +1609,12 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     info_xml.set("j", [len(export_bones)])
 
     # parse the scene animation data
-    all_bone_keyframes = get_scene_animdata(export_bones, timestart, timeend)
+    all_bone_keyframes = get_scene_animdata(export_bones, frame_start, frame_end)
 
     # for each bone, write sample types and describe the initial offset from parent
     IO_PDX_LOG.info("writing initial bone transforms -")
-    if progress_fn:
-        progress.update(1, "writing initial bone transforms")
-    pmc.currentTime(timestart, edit=True)
+    progress.update(1, "writing initial bone transforms")
+    pmc.currentTime(frame_start, edit=True)
     for bone in export_bones:
         bone_name = bone.name()
         bone_xml = Xml.SubElement(info_xml, bone_name)
@@ -1663,8 +1638,7 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
     # create root element for animation keyframe data
     samples_xml = Xml.SubElement(root_xml, "samples")
     IO_PDX_LOG.info("writing keyframes -")
-    if progress_fn:
-        progress.update(1, "writing keyframes")
+    progress.update(1, "writing keyframes")
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
         if bone_keys:
@@ -1695,5 +1669,4 @@ def export_animfile(animpath, timestart=1, timeend=10, progress_fn=None):
 
     pmc.select(None)
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
-    if progress_fn:
-        progress.finished()
+    progress.finished()

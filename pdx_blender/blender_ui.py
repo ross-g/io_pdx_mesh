@@ -410,7 +410,7 @@ class IOPDX_OT_import_anim(Operator, ImportHelper):
 
     def execute(self, context):
         try:
-            import_animfile(self.filepath, timestart=self.int_start)
+            import_animfile(self.filepath, frame_start=self.int_start)
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed importing {}".format(self.filepath))
             IO_PDX_SETTINGS.last_import_anim = self.filepath
 
@@ -462,14 +462,14 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         description="Export empties data",
         default=True,
     )
-    chk_merge_vtx: BoolProperty(
-        name="Merge vertices",
-        description="Merge vertices on mesh",
-        default=True,
-    )
     chk_selected: BoolProperty(
         name="Selected Only",
         description="Filter export by selection",
+        default=False,
+    )
+    chk_split_vtx: BoolProperty(
+        name="Split all vertices",
+        description="Splits all vertices during export",
         default=False,
     )
     # fmt:on
@@ -481,8 +481,8 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         box.prop(self, "chk_mesh")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
-        box.prop(self, "chk_merge_vtx")
         box.prop(self, "chk_selected")
+        box.prop(self, "chk_split_vtx")
 
     def execute(self, context):
         try:
@@ -491,7 +491,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_mesh=self.chk_mesh,
                 exp_skel=self.chk_skel,
                 exp_locs=self.chk_locs,
-                merge_verts=self.chk_merge_vtx,
+                split_verts=self.chk_split_vtx,
                 exp_selected=self.chk_selected,
             )
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed exporting {}".format(self.filepath))
@@ -558,9 +558,9 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
 
         try:
             if settings.custom_range:
-                export_animfile(self.filepath, timestart=self.int_start, timeend=self.int_end)
+                export_animfile(self.filepath, frame_start=self.int_start, frame_end=self.int_end)
             else:
-                export_animfile(self.filepath, timestart=context.scene.frame_start, timeend=context.scene.frame_end)
+                export_animfile(self.filepath, frame_start=context.scene.frame_start, frame_end=context.scene.frame_end)
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed exporting {}".format(self.filepath))
             IO_PDX_SETTINGS.last_export_anim = self.filepath
 

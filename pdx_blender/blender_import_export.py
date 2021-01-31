@@ -127,7 +127,7 @@ def set_local_axis_display(state, data_type):
             if node.data:
                 node.data.show_axes = state
         except Exception as err:
-            IO_PDX_LOG.info("node '{0}' could not have it's axis shown.".format(node.name))
+            IO_PDX_LOG.warning("could not display local axis for node '{0}'".format(node.name))
             IO_PDX_LOG.error(err)
 
 
@@ -207,13 +207,13 @@ def get_material_textures(blender_material):
 
             except StopIteration:
                 IO_PDX_LOG.warning(
-                    "No connected {0} Image Texture found for: {1}".format(bsdf_input, blender_material.name)
+                    "no connected '{0}' image texture found for: {1}".format(bsdf_input, blender_material.name)
                 )
 
     return texture_dict
 
 
-def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=True):
+def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=False):
     """
         Returns a dictionary of mesh information neccessary for the exporter.
         By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
@@ -308,7 +308,7 @@ def get_mesh_info(blender_obj, mat_index, skip_merge_vertices=False, round_data=
 
             # test if we have already stored this vertex in the unique set
             i = None
-            if not skip_merge_vertices:
+            if not split_all_vertices:
                 if new_vert in unique_verts:
                     # no new data to be added to the mesh dict, the tri will reference an existing vert
                     i = export_verts.index(new_vert)
@@ -634,7 +634,7 @@ def create_node_texture(node_tree, tex_filepath):
         teximage_node.color = (1, 0, 0)
         teximage_node.use_custom_color = True
 
-        IO_PDX_LOG.warning("unable to find texture filepath. {0}".format(tex_filepath))
+        IO_PDX_LOG.warning("unable to find texture filepath: {0}".format(tex_filepath))
 
     new_image.use_fake_user = True
     new_image.alpha_mode = "CHANNEL_PACKED"
@@ -1227,7 +1227,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge_verts=True, exp_selected=False):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(meshpath))
 
@@ -1267,7 +1267,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
                 meshnode_xml = Xml.SubElement(objnode_xml, "mesh")
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, not merge_verts, False)
+                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, split_verts)
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
@@ -1333,7 +1333,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, merge
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def import_animfile(animpath, timestart=1):
+def import_animfile(animpath, frame_start=1):
     start = time.time()
     IO_PDX_LOG.info("importing {0}".format(animpath))
 
@@ -1355,10 +1355,10 @@ def import_animfile(animpath, timestart=1):
         raise RuntimeError("Unsupported animation speed. {0}".format(fps))
     bpy.context.scene.render.fps_base = 1.0
 
-    IO_PDX_LOG.info("setting playback range - ({0},{1})".format(timestart, (timestart + framecount - 1)))
-    bpy.context.scene.frame_start = timestart
-    bpy.context.scene.frame_end = timestart + framecount - 1
-    bpy.context.scene.frame_set(timestart)
+    IO_PDX_LOG.info("setting playback range - ({0},{1})".format(frame_start, (frame_start + framecount - 1)))
+    bpy.context.scene.frame_start = frame_start
+    bpy.context.scene.frame_end = frame_start + framecount - 1
+    bpy.context.scene.frame_set(frame_start)
 
     # find armature and bones being animated in the scene
     IO_PDX_LOG.info("finding armature and bones -")
@@ -1452,26 +1452,26 @@ def import_animfile(animpath, timestart=1):
         # check bone has keyframe values
         if bone_keys.values():
             IO_PDX_LOG.info("setting {0} keyframes on bone '{1}'".format(list(bone_keys.keys()), bone_name))
-            create_anim_keys(rig, bone_name, bone_keys, timestart, initial_pose)
+            create_anim_keys(rig, bone_name, bone_keys, frame_start, initial_pose)
 
-    bpy.context.scene.frame_set(timestart)
+    bpy.context.scene.frame_set(frame_start)
     bpy.context.view_layer.update()
 
     bpy.ops.object.select_all(action="DESELECT")
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_animfile(animpath, timestart=1, timeend=10):
+def export_animfile(animpath, frame_start=1, frame_end=10):
     start = time.time()
     IO_PDX_LOG.info("exporting {0}".format(animpath))
 
     curr_frame = bpy.context.scene.frame_start
-    if timestart != int(timestart) or timeend != int(timeend):
+    if frame_start != int(frame_start) or frame_end != int(frame_end):
         raise RuntimeError(
-            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(timestart, timeend)
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(frame_start, frame_end)
         )
-    timestart = int(timestart)
-    timeend = int(timeend)
+    frame_start = int(frame_start)
+    frame_end = int(frame_end)
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element("File")
@@ -1485,7 +1485,7 @@ def export_animfile(animpath, timestart=1, timeend=10):
     fps = bpy.context.scene.render.fps
     info_xml.set("fps", [float(fps)])
 
-    frame_samples = (timeend + 1) - timestart
+    frame_samples = (frame_end + 1) - frame_start
     info_xml.set("sa", [frame_samples])
 
     # find the scene armature with animation property (assume this is unique)
@@ -1504,11 +1504,11 @@ def export_animfile(animpath, timestart=1, timeend=10):
     info_xml.set("j", [len(export_bones)])
 
     # parse the scene animation data
-    all_bone_keyframes = get_scene_animdata(rig, export_bones, timestart, timeend)
+    all_bone_keyframes = get_scene_animdata(rig, export_bones, frame_start, frame_end)
 
     # for each bone, write sample types and describe the initial offset from parent
     IO_PDX_LOG.info("writing initial bone transforms -")
-    bpy.context.scene.frame_set(timestart)
+    bpy.context.scene.frame_set(frame_start)
     for bone in export_bones:
         pose_bone = rig.pose.bones[bone.name]
         bone_xml = Xml.SubElement(info_xml, pose_bone.name)
