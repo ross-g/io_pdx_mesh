@@ -43,9 +43,7 @@ class PDXData(object):
         setattr(self, "name", element.tag)
 
         # object depth in hierarchy
-        self.depth = 0
-        if depth is not None:
-            self.depth = depth
+        self.depth = depth or 0
 
         # object attribute collection
         self.attrlist = []
@@ -571,19 +569,25 @@ if __name__ == "__main__":
     """
        When called from the command line we just print the structure and contents of the .mesh or .anim file to stdout
     """
-    if len(sys.argv) > 1:
-        os.system("cls")
-        _file = sys.argv[1]
-        _data = read_meshfile(_file)
+    os.system("cls")
+    import argparse
 
-        pdx_data = PDXData(_data)
+    parser = argparse.ArgumentParser(description="io_pdx_mesh CLI")
+    parser.add_argument("file")
+    parser.add_argument("--out", "-o", default=None)
+    parser.add_argument("--verbose", "-v", action="store_true", default=False)
 
-        if len(sys.argv) > 2:
-            with open(sys.argv[2], "wt") as fp:
-                fp.write(str(pdx_data) + "\n")
-        else:
-            print(pdx_data)
-            print()
+    args = parser.parse_args()
+    _file = args.file
+    _data = read_meshfile(_file)
+    pdx_data = PDXData(_data)
+
+    if args.out:
+        with open(sys.argv[2], "wt") as fp:
+            fp.write(str(pdx_data) + "\n")
+    else:
+        print(pdx_data)
+        print()
 
 
 """
