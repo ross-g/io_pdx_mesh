@@ -181,23 +181,29 @@ class CustomFileDialog(QtWidgets.QFileDialog):
         self.layout().addLayout(box, 0, 4, 4, 1)
 
     def selectedOptions(self):
-        options = {}
-        # FIXME: this needs to run recursively to support nested widgets
-        for widget in self.optionsWidget.children():
-            name = widget.objectName()
-            value = None
-            if isinstance(widget, QtWidgets.QLineEdit):
-                value = widget.text()
-            if isinstance(widget, QtWidgets.QComboBox):
-                value = widget.currentText()
-                value = widget.text()
-            if isinstance(widget, QtWidgets.QCheckBox):
-                value = widget.isChecked()
-            if isinstance(widget, QtWidgets.QSpinBox):
-                value = widget.value()
+        def widget_values(widget):
+            ctrl_values = {}
+            for ctrl in widget.children():
+                name = ctrl.objectName()
+                value = None
+                if isinstance(ctrl, QtWidgets.QLineEdit):
+                    value = ctrl.text()
+                if isinstance(ctrl, QtWidgets.QComboBox):
+                    value = ctrl.currentText()
+                if isinstance(ctrl, QtWidgets.QCheckBox):
+                    value = ctrl.isChecked()
+                if isinstance(ctrl, QtWidgets.QSpinBox):
+                    value = ctrl.value()
 
-            if name is not None and value is not None:
-                options[name] = value
+                # store this controls value against its identifier
+                if name is not None and value is not None:
+                    ctrl_values[name] = value
+                # check all children of this control
+                ctrl_values.update(widget_values(ctrl))
+
+            return ctrl_values
+
+        options = widget_values(self.optionsWidget)
 
         return options
 
