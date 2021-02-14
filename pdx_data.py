@@ -8,11 +8,11 @@
     author : ross-g
 """
 
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 
 import os
 import sys
-import struct
+from struct import pack, unpack_from
 
 try:
     import xml.etree.cElementTree as Xml
@@ -21,8 +21,10 @@ except ImportError:
 
 # Py2, Py3 compatibility
 try:
+    PY3 = False
     basestring
 except NameError:
+    PY3 = True
     basestring = str
 
 
@@ -97,13 +99,11 @@ class PDXData(object):
 
 
 def parseProperty(bdata, pos):
-    unpack = struct.unpack_from
-
     # starting at '!'
     pos += 1
 
     # get length of property name
-    prop_name_length = unpack("b", bdata, offset=pos)[0]
+    prop_name_length = unpack_from("b", bdata, offset=pos)[0]
     pos += 1
 
     # get property name as string
@@ -117,19 +117,17 @@ def parseProperty(bdata, pos):
 
 
 def parseObject(bdata, pos):
-    unpack = struct.unpack_from
-
     # skip and record any repeated '[' characters
     objdepth = 0
-    while unpack("c", bdata, offset=pos)[0].decode() == "[":
+    while unpack_from("c", bdata, offset=pos)[0].decode() == "[":
         objdepth += 1
         pos += 1
 
     # get object name as string
     obj_name = ""
     # we don't know the string length, so look for an ending byte of zero
-    while unpack("b", bdata, offset=pos)[0] != 0:
-        obj_name += unpack("c", bdata, offset=pos)[0].decode()
+    while unpack_from("b", bdata, offset=pos)[0] != 0:
+        obj_name += unpack_from("c", bdata, offset=pos)[0].decode("latin-1")
         pos += 1
 
     # skip the ending zero byte
@@ -139,12 +137,10 @@ def parseObject(bdata, pos):
 
 
 def parseString(bdata, pos, length):
-    unpack = struct.unpack_from
-
-    val_tuple = unpack("c" * length, bdata, offset=pos)
+    val_tuple = unpack_from("c" * length, bdata, offset=pos)  # TODO: should fmt here be "s" * length ?
 
     # turn the resulting tuple into a string of bytes
-    string = b"".join(val_tuple).decode()
+    string = b"".join(val_tuple).decode("latin-1")
 
     # check if the ending byte is zero and remove if so
     if string[-1] == chr(0):
@@ -154,10 +150,8 @@ def parseString(bdata, pos, length):
 
 
 def parseData(bdata, pos):
-    unpack = struct.unpack_from
-
     # determine the  data type
-    datatype = unpack("c", bdata, offset=pos)[0].decode()
+    datatype = unpack_from("c", bdata, offset=pos)[0].decode()
     # TODO: use an array here instead of list for memory efficiency?
     datavalues = []
 
@@ -166,12 +160,12 @@ def parseData(bdata, pos):
         pos += 1
 
         # count
-        size = unpack("i", bdata, offset=pos)[0]
+        size = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
         # values
         for i in range(0, size):
-            val = unpack("i", bdata, offset=pos)[0]
+            val = unpack_from("i", bdata, offset=pos)[0]
             datavalues.append(val)
             pos += 4
 
@@ -180,12 +174,12 @@ def parseData(bdata, pos):
         pos += 1
 
         # count
-        size = unpack("i", bdata, offset=pos)[0]
+        size = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
         # values
         for i in range(0, size):
-            val = unpack("f", bdata, offset=pos)[0]
+            val = unpack_from("f", bdata, offset=pos)[0]
             datavalues.append(val)
             pos += 4
 
@@ -194,12 +188,12 @@ def parseData(bdata, pos):
         pos += 1
 
         # count
-        size = unpack("i", bdata, offset=pos)[0]
+        size = unpack_from("i", bdata, offset=pos)[0]
         # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
         pos += 4
 
         # string length
-        str_data_length = unpack("i", bdata, offset=pos)[0]
+        str_data_length = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
         # value
@@ -220,8 +214,6 @@ def read_meshfile(filepath):
         Reads through a .mesh file and gathers all the data into hierarchical element structure.
         The resulting XML is not natively writable to string as it contains Python data types.
     """
-    unpack = struct.unpack_from
-
     # read the data
     with open(filepath, "rb") as fp:
         fdata = fp.read()
@@ -235,7 +227,7 @@ def read_meshfile(filepath):
     pos = 0
 
     # read the file header '@@b@'
-    header = unpack("c" * 4, fdata, pos)
+    header = unpack_from("c" * 4, fdata, pos)
     if bytes(b"".join(header)) == b"@@b@":
         pos = 4
     else:
@@ -247,7 +239,7 @@ def read_meshfile(filepath):
 
     # parse through until EOF
     while pos < eof:
-        next_char = unpack("c", fdata, offset=pos)[0].decode()
+        next_char = unpack_from("c", fdata, offset=pos)[0].decode()
         # we have a property
         if next_char == "!":
             # check the property type and values
@@ -290,8 +282,6 @@ def read_meshfile(filepath):
 
 
 def writeProperty(prop_name, prop_data):
-    pack = struct.pack
-
     datastring = b""
 
     try:
@@ -307,6 +297,7 @@ def writeProperty(prop_name, prop_data):
 
         # write property data
         datastring += writeData(prop_data)
+
     except NotImplementedError as err:
         print("Failed writing property: {}".format(prop_name))
         raise err
@@ -315,8 +306,6 @@ def writeProperty(prop_name, prop_data):
 
 
 def writeObject(obj_xml, obj_depth):
-    pack = struct.pack
-
     datastring = b""
 
     # write object hierarchy depth
@@ -324,7 +313,7 @@ def writeObject(obj_xml, obj_depth):
         datastring += pack("c", "[".encode())
 
     # write object name as string
-    obj_name = obj_xml.tag
+    obj_name = obj_xml.tag  # TODO: limit of 64 characters should be imposed here
     datastring += writeString(obj_name)
     # write zero-byte ending
     datastring += pack("x")
@@ -333,21 +322,15 @@ def writeObject(obj_xml, obj_depth):
 
 
 def writeString(string):
-    pack = struct.pack
-
     datastring = b""
 
-    string = str(string)  # struct.pack cannot handle unicode strings in Python 2
-
-    for x in string:
-        datastring += pack("c", x.encode())
+    string = string.encode("latin-1")
+    datastring += pack("{0}s".format(len(string)), string)
 
     return datastring
 
 
 def writeData(data_array):
-    pack = struct.pack
-
     datastring = b""
 
     # determine the data type in the array
@@ -409,8 +392,6 @@ def write_meshfile(filepath, root_xml):
     """
         Iterates over an XML element and writes the element structure back into a binary file as mesh data.
     """
-    pack = struct.pack
-
     datastring = b""
 
     # write the file header '@@b@'
@@ -507,8 +488,6 @@ def write_animfile(filepath, root_xml):
     """
         Iterates over an XML element and writes the element structure back into a binary file as animation data.
     """
-    pack = struct.pack
-
     datastring = b""
 
     # write the file header '@@b@'
@@ -619,7 +598,7 @@ General binary format is:
                     ta    (float)  tangents
                     u0    (float)  UVs
                     tri    (int)  triangles
-                    boundingsphere    (float)  centre and radius of mesh spherical bounds  [IMPERATOR]
+                    boundingsphere    (float)  centre and radius of mesh spherical bounds  [IMPERATOR/CK3]
                     aabb    (object)
                         min    (float)  min bounding box
                         max    (float)  max bounding box
