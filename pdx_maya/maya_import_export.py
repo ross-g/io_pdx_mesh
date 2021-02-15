@@ -47,6 +47,7 @@ PDX_ANIMATION = "animation"
 PDX_IGNOREJOINT = "pdxIgnoreJoint"
 PDX_MESHINDEX = "meshindex"
 PDX_MAXSKININFS = 4
+PDX_MAXUVSETS = 4
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4
@@ -330,7 +331,7 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
     vertices = mesh.getPoints(space="world")  # list of vertices positions
     normals = mesh.getNormals(space="world")  # list of vectors for each vertex per face
     triangles = mesh.getTriangles()
-    uv_setnames = [uv_set for uv_set in mesh.getUVSetNames() if mFn_Mesh.numUVs(uv_set) > 0]
+    uv_setnames = [uv_set for uv_set in mesh.getUVSetNames() if mFn_Mesh.numUVs(uv_set) > 0][:PDX_MAXUVSETS]
     uv_coords = {}
     tangents = None
     for i, uv_set in enumerate(uv_setnames):

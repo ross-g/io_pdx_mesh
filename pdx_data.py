@@ -425,7 +425,7 @@ def write_meshfile(filepath, root_xml):
                 if child_xml.tag == "mesh":
                     mesh_xml = child_xml
                     # write mesh properties
-                    for prop in ["p", "n", "ta", "u0", "u1", "tri"]:
+                    for prop in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
                         if mesh_xml.get(prop) is not None:
                             datastring += writeProperty(prop, mesh_xml.get(prop))
 

@@ -37,6 +37,7 @@ PDX_ANIMATION = "animation"
 PDX_IGNOREJOINT = "pdxIgnoreJoint"
 PDX_MESHINDEX = "meshindex"
 PDX_MAXSKININFS = 4
+PDX_MAXUVSETS = 4
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4
@@ -232,7 +233,7 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
     UniqueVertex = namedtuple("UniqueVertex", ["id", "p", "n", "uv"])
 
     # cache some mesh data
-    uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)]
+    uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)][:PDX_MAXUVSETS]
     if uv_setnames:
         mesh.calc_tangents(uvmap=uv_setnames[0])
 
