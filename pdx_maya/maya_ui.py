@@ -4,7 +4,7 @@
     author : ross-g
 """
 
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 
 import os
 import sys
@@ -30,8 +30,8 @@ from ..updater import github
 
 try:
     from . import maya_import_export
-
     reload(maya_import_export)
+
     from .maya_import_export import (
         create_shader,
         export_animfile,

@@ -5,6 +5,8 @@
     author : ross-g
 """
 
+from __future__ import unicode_literals
+
 import sys
 import site
 import json
@@ -118,7 +120,6 @@ elif "maya" in environment:
     try:
         # launch the Maya UI
         from .pdx_maya import maya_ui
-
         reload(maya_ui)
         maya_ui.main()
     except Exception as e:

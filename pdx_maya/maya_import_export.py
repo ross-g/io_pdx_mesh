@@ -7,6 +7,8 @@
     author : ross-g
 """
 
+from __future__ import print_function, unicode_literals
+
 import os
 import sys
 import time
@@ -30,6 +32,7 @@ import maya.api.OpenMaya as OpenMayaAPI
 from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion
 
 from .. import pdx_data
+reload(pdx_data)
 from .. import IO_PDX_LOG
 
 # Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
@@ -728,6 +731,9 @@ def create_filetexture(tex_filepath):
     pmc.connectAttr(new2dTex.outUvFilterSize, newFile.uvFilterSize)
     newFile.fileTextureName.set(tex_filepath)
 
+    if not os.path.isfile(tex_filepath):
+        IO_PDX_LOG.warning("unable to find texture filepath: {0}".format(tex_filepath))
+
     return newFile, new2dTex
 
 
@@ -764,9 +770,9 @@ def create_shader(PDX_material, shader_name, texture_dir):
     return new_shader, new_shadinggroup
 
 
-def create_material(PDX_material, mesh, texture_path):
+def create_material(PDX_material, mesh, texture_folder):
     shader_name = "PDXmat_" + mesh.name()
-    shader, s_group = create_shader(PDX_material, shader_name, texture_path)
+    shader, s_group = create_shader(PDX_material, shader_name, texture_folder)
 
     pmc.select(mesh)
     mesh.backfaceCulling.set(1)
