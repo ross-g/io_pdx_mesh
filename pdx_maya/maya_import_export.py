@@ -84,6 +84,29 @@ AnimClip = namedtuple("AnimClip", ["name", "start", "end"])
 """
 
 
+def get_mobject(name):
+    sel_list = OpenMayaAPI.MSelectionList()
+    sel_list.add(name)
+    m_obj = sel_list.getDependNode(0)
+
+    return m_obj
+
+
+def get_dagpath(name):
+    sel_list = OpenMayaAPI.MSelectionList()
+    sel_list.add(name)
+    m_dagpath = sel_list.getDagPath(0)
+
+    return m_dagpath
+
+
+def get_dagnode(name):
+    m_obj = get_mobject(name)
+    fn_dag = OpenMayaAPI.MFnDagNode(m_obj)
+
+    return fn_dag
+
+
 def get_MObject(object_name):
     m_Obj = OpenMaya.MObject()
 
@@ -327,8 +350,8 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
     UniqueVertex = namedtuple("UniqueVertex", ["id", "p", "n", "uv"])
 
     # API mesh function set
-    mesh_obj = get_MObject(mesh.name())
-    mFn_Mesh = OpenMaya.MFnMesh(mesh_obj)
+    mesh_obj = get_mobject(mesh.name())
+    mFn_Mesh = OpenMayaAPI.MFnMesh(mesh_obj)
 
     # cache some mesh data
     vertices = mesh.getPoints(space="world")  # list of vertices positions
@@ -586,8 +609,15 @@ def get_locators_info(maya_locators):
 def get_skeleton_hierarchy(bone_list):
     root_bone = set()
 
+    def get_root(name):
+        dag = get_dagnode(name)
+        while dag.parentCount() != 0 and dag.parent(0).apiType() != OpenMayaAPI.MFn.kWorld:
+            dag = OpenMayaAPI.MFnDagNode(dag.parent(0))
+
+        return pmc.PyNode(dag.name())
+
     for bone in bone_list:
-        root_bone.add(bone.root())
+        root_bone.add(get_root(bone.name()))
 
     if len(root_bone) != 1:
         raise RuntimeError("Unable to resolve a single root bone for the skeleton. {0}".format(list(root_bone)))
@@ -821,10 +851,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
                 return
 
     # get transform function set
-    m_SelList = OpenMayaAPI.MSelectionList()  # TODO: replace with get_MObject for API2
-    m_SelList.add(new_loc.name())
-    loc_MObj = m_SelList.getDependNode(0)
-
+    loc_MObj = get_mobject(new_loc.name())
     mFn_Xform = OpenMayaAPI.MFnTransform(loc_MObj)
 
     # if full transformation is available, set transformation directly
