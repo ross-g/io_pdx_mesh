@@ -562,7 +562,7 @@ if __name__ == "__main__":
     pdx_data = PDXData(_data)
 
     if args.out:
-        with open(sys.argv[2], "wt") as fp:
+        with open(args.out, "wt") as fp:
             fp.write(str(pdx_data) + "\n")
     else:
         print(pdx_data)
