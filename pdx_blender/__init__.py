@@ -11,7 +11,7 @@ import bpy
 from bpy.types import PropertyGroup
 from bpy.props import PointerProperty, CollectionProperty, StringProperty, BoolProperty, EnumProperty, IntProperty
 
-from .. import IO_PDX_LOG
+from .. import IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
 
 from . import blender_import_export, blender_ui
 
@@ -30,14 +30,9 @@ class PDXBlender_settings(PropertyGroup):
     setup_engine: EnumProperty(
         name="Engine",
         description="Engine",
-        items=blender_ui.get_engine_list,
-    )
-    setup_fps: IntProperty(
-        name="Animation fps",
-        description="Animation fps",
-        min=1,
-        default=15,
-        update=blender_ui.set_animation_fps,
+        items=((engine, engine, engine) for engine in ENGINE_SETTINGS.keys()),
+        default=IO_PDX_SETTINGS.last_set_engine or ENGINE_SETTINGS.keys()[0],
+        update=blender_ui.set_engine,
     )
 
 
@@ -48,8 +43,8 @@ class PDXMaterial_settings(PropertyGroup):
         default="",
     )
     mat_type: StringProperty(
-        name="Shader type",
-        description="Shader type",
+        name="Material type",
+        description="Material type",
         default="",
     )
 

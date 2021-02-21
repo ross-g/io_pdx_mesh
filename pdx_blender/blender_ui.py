@@ -43,12 +43,6 @@ except Exception as err:
 """
 
 
-def get_engine_list(self, context):
-    engine_list = ((engine, engine, engine) for engine in ENGINE_SETTINGS.keys())
-
-    return engine_list
-
-
 def get_material_list(self, context):
     sel_engine = context.scene.io_pdx_settings.setup_engine
 
@@ -64,8 +58,10 @@ def get_scene_material_list(self, context):
     return material_list
 
 
-def set_animation_fps(self, context):
-    context.scene.render.fps = context.scene.io_pdx_settings.setup_fps
+def set_engine(self, context):
+    sel_engine = context.scene.io_pdx_settings.setup_engine
+    IO_PDX_SETTINGS.last_set_engine = sel_engine
+    IO_PDX_LOG.info("Set game engine to: '{}'".format(sel_engine))
 
 
 """ ====================================================================================================================
@@ -121,15 +117,15 @@ class material_popup(object):
     bl_options = {"REGISTER"}
     # fmt:off
     mat_name: StringProperty(
-        name="Name",
+        name="Material name",
         default="",
     )
     mat_type: EnumProperty(
-        name="Shader preset",
+        name="Material type",
         items=get_material_list,
     )
     use_custom: BoolProperty(
-        name="custom Shader:",
+        name="Custom type:",
         default=False,
     )
     custom_type: StringProperty(
@@ -167,11 +163,13 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
     def draw(self, context):
         box = self.layout.box()
         box.prop(self, "mat_name")
-        box.prop(self, "mat_type")
-        row = box.split(factor=0.33)
-        row.prop(self, "use_custom")
+        mat_type = box.row()
+        mat_type.prop(self, "mat_type")
+        custom_type = box.split(factor=0.3)
+        custom_type.prop(self, "use_custom")
         if self.use_custom:
-            row.prop(self, "custom_type", text="")
+            mat_type.enabled = False
+            custom_type.prop(self, "custom_type", text="")
         self.layout.separator()
 
 
@@ -719,7 +717,7 @@ class IOPDX_PT_PDXblender_setup(PDXUI, Panel):
         self.layout.prop(settings, "setup_engine")
         row = self.layout.row(align=True)
         row.label(text="Animation:")
-        row.prop(settings, "setup_fps", text="FPS")
+        row.prop(context.scene.render, "fps", text="FPS")
 
 
 class IOPDX_PT_PDXblender_info(PDXUI, Panel):
