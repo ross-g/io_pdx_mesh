@@ -313,7 +313,9 @@ def writeObject(obj_xml, obj_depth):
         datastring += pack("c", "[".encode())
 
     # write object name as string
-    obj_name = obj_xml.tag  # TODO: limit of 64 characters should be imposed here
+    obj_name = obj_xml.tag
+    if not len(obj_name) < 64:
+        raise NotImplementedError("Object name is longer than 64 characters: {}".format(obj_name))
     datastring += writeString(obj_name)
     # write zero-byte ending
     datastring += pack("x")
