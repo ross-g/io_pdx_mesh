@@ -31,7 +31,7 @@ class PDXBlender_settings(PropertyGroup):
         name="Engine",
         description="Engine",
         items=((engine, engine, engine) for engine in ENGINE_SETTINGS.keys()),
-        default=IO_PDX_SETTINGS.last_set_engine or ENGINE_SETTINGS.keys()[0],
+        default=IO_PDX_SETTINGS.last_set_engine or list(ENGINE_SETTINGS.keys())[0],
         update=blender_ui.set_engine,
     )
 
