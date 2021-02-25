@@ -1358,45 +1358,49 @@ def export_meshfile(
     object_xml = Xml.SubElement(root_xml, "object")
 
     # populate object data
-    maya_meshes = list_scene_pdx_meshes()
-    if exp_selected:
-        current_selection = pmc.selected()
-        maya_meshes = [
-            shape
-            for shape in maya_meshes
-            if pmc.listRelatives(shape, parent=True, type="transform")[0] in current_selection
-        ]
+    if exp_mesh:
+        # get all meshes using at least one PDX material in the scene
+        maya_meshes = list_scene_pdx_meshes()
+        # optionally intersect with selection
+        if exp_selected:
+            current_selection = pmc.selected()
+            maya_meshes = [
+                shape
+                for shape in maya_meshes
+                if pmc.listRelatives(shape, parent=True, type="transform")[0] in current_selection
+            ]
 
-    # sort meshes for export by index
-    maya_meshes.sort(key=lambda mesh: get_mesh_index(mesh))
+        if len(maya_meshes) == 0:
+            raise RuntimeError("Mesh export is selected, but found no meshes with PDX materials applied.")
 
-    if len(maya_meshes) == 0:
-        raise RuntimeError("Nothing to export, found no meshes with PDX materials applied.")
+        # sort meshes for export by index
+        maya_meshes.sort(key=lambda mesh: get_mesh_index(mesh))
 
-    for shape in maya_meshes:
-        IO_PDX_LOG.info("writing node - {0}".format(shape.name()))
-        progress.update(1, "writing node")
-        shapenode_xml = Xml.SubElement(object_xml, shape.name())
+        for shape in maya_meshes:
+            # create parent element for node data, if exporting meshes
+            IO_PDX_LOG.info("writing node - {0}".format(shape.name()))
+            progress.update(1, "writing node")
+            shapenode_xml = Xml.SubElement(object_xml, shape.name())
 
-        # one shape can have multiple materials on a per meshface basis
-        shading_groups = list(set(shape.connections(type="shadingEngine")))
+            # one shape can have multiple materials on a per meshface basis
+            shading_groups = list(set(shape.connections(type="shadingEngine")))
 
-        if exp_mesh and shading_groups:
-            # this type of ObjectSet associates shaders with geometry
-            for group in shading_groups:
-                # validate that this shading group corresponds to a PDX material, skip otherwise
-                maya_mat = group.surfaceShader.connections()[0]
-                if not hasattr(maya_mat, PDX_SHADER):
+            for mat_idx, group in enumerate(shading_groups):
+                # this type of ObjectSet associates shaders with geometry
+                shaders = group.surfaceShader.connections()
+                # skip shading groups that are unconnected or not PDX materials
+                if len(shaders) != 1 or not hasattr(shaders[0], PDX_SHADER):
                     continue
+                maya_mat = shaders[0]
 
                 # create parent element for this mesh (mesh here being geometry sharing a material, within one shape)
-                IO_PDX_LOG.info("writing mesh -")
+                IO_PDX_LOG.info("writing mesh - {0}".format(mat_idx))
                 progress.update(1, "writing mesh")
                 meshnode_xml = Xml.SubElement(shapenode_xml, "mesh")
 
                 # check which faces are using this shading group
                 # (groups are shared across shapes, so only select group members that are components of this shape)
-                mesh = [m for m in group.members(flatten=True) if m.node() == shape][0]
+                mesh = [meshface for meshface in group.members(flatten=True) if meshface.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
                 mesh_info_dict, vert_ids = get_mesh_info(mesh, split_verts)
@@ -1432,19 +1436,21 @@ def export_meshfile(
                         if key in skin_info_dict and skin_info_dict[key]:
                             skinnode_xml.set(key, skin_info_dict[key])
 
-        # create parent element for skeleton data, if the mesh is skinned
-        bone_info_list = get_mesh_skeleton_info(shape)
-        if exp_skel and bone_info_list:
-            IO_PDX_LOG.info("writing skeleton -")
-            progress.update(1, "writing skeleton")
-            skeletonnode_xml = Xml.SubElement(shapenode_xml, "skeleton")
+            # create parent element for skeleton data, if the mesh is skinned
+            bone_info_list = get_mesh_skeleton_info(shape)
+            if exp_skel and bone_info_list:
+                IO_PDX_LOG.info("writing skeleton -")
+                progress.update(1, "writing skeleton")
+                skeletonnode_xml = Xml.SubElement(shapenode_xml, "skeleton")
 
-            # create sub-elements for each bone, populate bone attributes
-            for bone_info_dict in bone_info_list:
-                bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict["name"])
-                for key in ["ix", "pa", "tx"]:
-                    if key in bone_info_dict and bone_info_dict[key]:
-                        bonenode_xml.set(key, bone_info_dict[key])
+                # create sub-elements for each bone, populate bone attributes
+                for bone_info_dict in bone_info_list:
+                    bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict["name"])
+                    for key in ["ix", "pa", "tx"]:
+                        if key in bone_info_dict and bone_info_dict[key]:
+                            bonenode_xml.set(key, bone_info_dict[key])
+
+    # TODO: add support for skeleton only export here, needs a dummy node to hold the skeleton
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, "locator")

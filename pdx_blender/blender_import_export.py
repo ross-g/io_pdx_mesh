@@ -1240,31 +1240,34 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
     object_xml = Xml.SubElement(root_xml, "object")
 
     # populate object data
-    blender_meshes = list_scene_pdx_meshes()
-    if exp_selected:
-        blender_meshes = [obj for obj in blender_meshes if obj.select_get()]
+    if exp_mesh:
+        # get all meshes using at least one PDX material in the scene
+        blender_meshes = list_scene_pdx_meshes()
+        # optionally intersect with selection
+        if exp_selected:
+            blender_meshes = [obj for obj in blender_meshes if obj.select_get()]
 
-    # sort meshes for export by index
-    blender_meshes.sort(key=lambda obj: get_mesh_index(obj.data))
+        if len(blender_meshes) == 0:
+            raise RuntimeError("Mesh export is selected, but found no meshes with PDX materials applied.")
 
-    if len(blender_meshes) == 0:
-        raise RuntimeError("Nothing to export, found no meshes with PDX materials applied.")
+        # sort meshes for export by index
+        blender_meshes.sort(key=lambda obj: get_mesh_index(obj.data))
 
-    for obj in blender_meshes:
-        IO_PDX_LOG.info("writing node - {0}".format(obj.data.name))
-        objnode_xml = Xml.SubElement(object_xml, obj.data.name)
+        for obj in blender_meshes:
+            # create parent element for node data, if exporting meshes
+            IO_PDX_LOG.info("writing node - {0}".format(obj.data.name))
+            objnode_xml = Xml.SubElement(object_xml, obj.data.name)
 
-        # one object can have multiple materials on a per face basis
-        materials = list(obj.data.materials)
+            # one object can have multiple materials on a per face basis
+            materials = list(obj.data.materials)
 
-        if exp_mesh and materials:
             for mat_idx, blender_mat in enumerate(materials):
-                # validate that this material slot is not empty and corresponds to a PDX material, skip otherwise
+                # skip material slots that are empty or not PDX materials
                 if blender_mat is None or PDX_SHADER not in blender_mat.keys():
                     continue
 
                 # create parent element for this mesh (mesh here being faces sharing a material, within one object)
-                IO_PDX_LOG.info("writing mesh -")
+                IO_PDX_LOG.info("writing mesh - {0}".format(mat_idx))
                 meshnode_xml = Xml.SubElement(objnode_xml, "mesh")
 
                 # get all necessary info about this set of faces and determine which unique verts they include
@@ -1299,21 +1302,25 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
                         if key in skin_info_dict and skin_info_dict[key]:
                             skinnode_xml.set(key, skin_info_dict[key])
 
-        # create parent element for skeleton data, if the mesh is skinned
-        bone_info_list = get_mesh_skeleton_info(obj)
-        if exp_skel and bone_info_list:
-            IO_PDX_LOG.info("writing skeleton -")
-            skeletonnode_xml = Xml.SubElement(objnode_xml, "skeleton")
+            # create parent element for skeleton data, if the mesh is skinned
+            bone_info_list = get_mesh_skeleton_info(obj)
+            if exp_skel and bone_info_list:
+                IO_PDX_LOG.info("writing skeleton -")
+                skeletonnode_xml = Xml.SubElement(objnode_xml, "skeleton")
 
-            # create sub-elements for each bone, populate bone attributes
-            for bone_info_dict in bone_info_list:
-                bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict["name"])
-                for key in ["ix", "pa", "tx"]:
-                    if key in bone_info_dict and bone_info_dict[key]:
-                        bonenode_xml.set(key, bone_info_dict[key])
+                # create sub-elements for each bone, populate bone attributes
+                for bone_info_dict in bone_info_list:
+                    bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict["name"])
+                    for key in ["ix", "pa", "tx"]:
+                        if key in bone_info_dict and bone_info_dict[key]:
+                            bonenode_xml.set(key, bone_info_dict[key])
+
+    # TODO: add support for skeleton only export here, needs a dummy node to hold the skeleton
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, "locator")
+
+    # populae locator data
     blender_empties = [obj for obj in bpy.context.scene.objects if obj.data is None]
     loc_info_list = get_locators_info(blender_empties)
 
