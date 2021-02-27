@@ -40,7 +40,7 @@ try:
         get_mesh_index,
         import_animfile,
         import_meshfile,
-        list_scene_materials,
+        list_scene_pdx_materials,
         list_scene_pdx_meshes,
         list_scene_rootbones,
         PDX_ANIMATION,
@@ -413,11 +413,11 @@ class PDX_UI(QtWidgets.QDialog):
         self.mesh_export.clicked.connect(self.export_mesh)
         self.anim_export.clicked.connect(self.export_anim)
 
-        self.material_create_popup.clicked.connect(self.create_material)
-        self.material_edit_popup.clicked.connect(partial(print, "material_edit_popup"))
+        self.material_create_popup.clicked.connect(partial(self.show_popup, MaterialCreatePopup_UI))
+        self.material_edit_popup.clicked.connect(partial(self.show_popup, MaterialEditPopup_UI))
         self.ignore_bone.clicked.connect(partial(set_ignore_joints, True))
         self.unignore_bone.clicked.connect(partial(set_ignore_joints, False))
-        self.mesh_index_popup.clicked.connect(self.edit_mesh_order)
+        self.mesh_index_popup.clicked.connect(partial(self.show_popup, MeshIndexPopup_UI))
 
         self.show_axis_bones.clicked.connect(partial(set_local_axis_display, True, object_type="joint"))
         self.hide_axis_bones.clicked.connect(partial(set_local_axis_display, False, object_type="joint"))
@@ -555,17 +555,10 @@ class PDX_UI(QtWidgets.QDialog):
             IO_PDX_LOG.info("Nothing to export.")
 
     @QtCore.Slot()
-    def create_material(self):
+    def show_popup(self, popup_widget):
         if self.popup:
             self.popup.close()
-        self.popup = MaterialCreatePopup_UI(parent=self)
-        self.popup.show()
-
-    @QtCore.Slot()
-    def edit_mesh_order(self):
-        if self.popup:
-            self.popup.close()
-        self.popup = MeshIndexPopup_UI(parent=self)
+        self.popup = popup_widget(parent=self)
         self.popup.show()
 
     @QtCore.Slot()
@@ -591,7 +584,6 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(MaterialCreatePopup_UI, self).__init__(parent)
         self.parent = parent
-
         self.setWindowTitle("Create a PDX material")
         self.setWindowFlags(QtCore.Qt.Popup)
         self.setFixedWidth(350)
@@ -626,7 +618,8 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
         form_layout = grp_create.layout()
         form_layout.setContentsMargins(4, 4, 4, 4)
         form_layout.setSpacing(4)
-        form_layout.setLabelAlignment(QtCore.Qt.AlignLeft)
+        form_layout.setLabelAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+        form_layout.setFormAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
         form_layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
         form_layout.addRow("Material name:", self.mat_name)
         form_layout.addRow("Material type:", self.mat_type)
@@ -658,8 +651,8 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
             mat_type = self.custom_type.text()
         # create a mock PDXData object for convenience here to pass to the create_shader function
         mat_pdx = type(str("Material"), (PDXData, object), {"shader": [mat_type]})
-
         create_shader(mat_pdx, mat_name, None)
+        IO_PDX_LOG.info("Created material: {0} ({1})".format(mat_name, mat_type))
         self.close()
 
     def showEvent(self, event):
@@ -667,7 +660,91 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
         event.accept()
 
 
-# TODO MaterialEditPopup_UI
+class MaterialEditPopup_UI(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(MaterialEditPopup_UI, self).__init__(parent)
+        self.parent = parent
+        self.setWindowTitle("Edit a PDX material")
+        self.setWindowFlags(QtCore.Qt.Popup)
+        self.setFixedWidth(350)
+        if self.parent:
+            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
+            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
+            self.setGeometry(center_x, center_y, self.width(), self.height())
+
+        move_dialog_onscreen(self)
+
+        self.create_controls()
+        self.connect_signals()
+
+    def create_controls(self):
+        # create controls
+        lbl_help = QtWidgets.QLabel("Edit a PDX material")
+        lbl_selected = QtWidgets.QLabel("Selected material:")
+        self.scene_mats = QtWidgets.QComboBox(self)
+        self.scene_mats.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        grp_create = QtWidgets.QGroupBox(self)
+        grp_create.setLayout(QtWidgets.QFormLayout())
+        self.mat_name = QtWidgets.QLineEdit(self)
+        self.mat_type = QtWidgets.QLineEdit(self)
+        self.btn_okay = QtWidgets.QPushButton("Save", self)
+        self.btn_cancel = QtWidgets.QPushButton("Cancel", self)
+
+        # create layouts & add controls
+        main_layout = QtWidgets.QVBoxLayout()
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(4)
+        main_layout.addWidget(lbl_help)
+        selection_layout = QtWidgets.QHBoxLayout()
+        selection_layout.addWidget(lbl_selected)
+        selection_layout.addWidget(self.scene_mats)
+        main_layout.addLayout(selection_layout)
+        form_layout = grp_create.layout()
+        form_layout.setContentsMargins(4, 4, 4, 4)
+        form_layout.setSpacing(4)
+        form_layout.setLabelAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+        form_layout.setFormAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom)
+        form_layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
+        form_layout.addRow("Material name:", self.mat_name)
+        form_layout.addRow("Material type:", self.mat_type)
+        main_layout.addWidget(grp_create)
+        main_layout.addSpacing(1)
+        btn_layout = QtWidgets.QHBoxLayout()
+        btn_layout.addWidget(self.btn_okay)
+        btn_layout.addWidget(self.btn_cancel)
+        main_layout.addLayout(btn_layout)
+        self.setLayout(main_layout)
+
+        # populate data
+        self.scene_mats.addItems([mat.name() for mat in list_scene_pdx_materials()])
+        self.scene_mats.setCurrentIndex(-1)
+
+    def connect_signals(self):
+        self.scene_mats.currentTextChanged.connect(self.mat_select)
+        self.btn_okay.clicked.connect(self.execute)
+        self.btn_cancel.clicked.connect(self.close)
+
+    @QtCore.Slot(str)
+    def mat_select(self, mat_name):
+        curr_mat = pmc.PyNode(mat_name)
+        mat_shader = getattr(curr_mat, PDX_SHADER).get()
+        self.mat_name.setText(mat_name)
+        self.mat_type.setText(mat_shader)
+
+    @QtCore.Slot()
+    def execute(self):
+        mat = pmc.PyNode(self.scene_mats.currentText())
+        mat_name = self.mat_name.text()
+        mat_type = self.mat_type.text()
+
+        pmc.rename(mat, mat_name)
+        getattr(mat, PDX_SHADER).set(mat_type)
+        IO_PDX_LOG.info("Edited material: {0} ({1})".format(mat_name, mat_type))
+        self.close()
+
+    def showEvent(self, event):
+        self.activateWindow()
+        event.accept()
 
 
 class MeshIndexPopup_UI(QtWidgets.QWidget):
@@ -906,99 +983,6 @@ class MayaProgress(object):
     @staticmethod
     def finished():
         pmc.progressWindow(endProgress=True)
-
-
-"""
-class material_popup(QtWidgets.QWidget):
-    def __init__(self, material=None, parent=None):
-        super(material_popup, self).__init__(parent)
-
-        self.parent = parent
-        self.material = material
-
-        self.setWindowTitle("PDX material")
-        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.MSWindowsFixedSizeDialogHint)
-        self.setFixedSize(300, 100)
-        if self.parent:
-            center_x = self.parent.frameGeometry().center().x() - (self.width() / 2)
-            center_y = self.parent.frameGeometry().center().y() - (self.height() / 2)
-            self.setGeometry(center_x, center_y, self.width(), self.height())
-
-        self.create_controls()
-        self.connect_signals()
-
-    def create_controls(self):
-        # create controls
-        self.mat_name = QtWidgets.QLineEdit()
-        self.mat_name.setObjectName("Name")
-        self.mat_type = QtWidgets.QComboBox()
-        self.mat_type.setObjectName("Shader")
-        self.mat_type.setEditable(True)
-        self.mat_type.addItems(self.get_shader_presets())
-        self.mat_type.setCurrentIndex(-1)
-        self.btn_okay = QtWidgets.QPushButton("Okay", self)
-        self.btn_cancel = QtWidgets.QPushButton("Cancel", self)
-
-        # create layouts
-        main_layout = QtWidgets.QVBoxLayout()
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        form_layout = QtWidgets.QFormLayout()
-        btn_layout = QtWidgets.QHBoxLayout()
-
-        # add controls
-        self.setLayout(main_layout)
-        main_layout.addLayout(form_layout)
-        for ctrl in [self.mat_name, self.mat_type]:
-            form_layout.addRow(ctrl.objectName(), ctrl)
-        main_layout.addLayout(btn_layout)
-        btn_layout.addWidget(self.btn_okay)
-        btn_layout.addWidget(self.btn_cancel)
-
-        # editing a selected material
-        if self.material:
-            mat_name = self.material.text()
-            mat_node = pmc.PyNode(mat_name)
-            mat_shader = getattr(mat_node, PDX_SHADER).get()
-
-            self.mat_name.setText(mat_name)
-            if self.mat_type.findText(mat_shader) != -1:
-                self.mat_type.setCurrentIndex(self.mat_type.findText(mat_shader))
-            else:
-                self.mat_type.setEditText(mat_shader)
-
-            self.btn_okay.setText("Okay")
-        # creating a new material
-        else:
-            self.btn_okay.setText("Save")
-
-    def connect_signals(self):
-        self.btn_okay.clicked.connect(self.save_mat)
-        self.btn_cancel.clicked.connect(self.close)
-
-    def get_shader_presets(self):
-        sel_engine = "crusader_kings_3"  # self.parent.ddl_EngineSelect.currentText()
-        return ENGINE_SETTINGS[sel_engine]["material"]
-
-    def save_mat(self):
-        # editing a selected material
-        if self.material:
-            mat_name = self.material.text()
-            mat_node = pmc.PyNode(mat_name)
-
-            pmc.rename(mat_node, self.mat_name.text())
-            getattr(mat_node, PDX_SHADER).set(self.mat_type.currentText())
-        # creating a new material
-        else:
-            mat_name = self.mat_name.text()
-            mat_type = self.mat_type.currentText()
-            # create a mock PDXData object for convenience here to pass to the create_shader function
-            mat_pdx = type("Material", (PDXData, object), {"shader": [mat_type]})
-
-            create_shader(mat_pdx, mat_name, None)
-
-        self.parent.export_ctrls.refresh_mat_list()
-        self.close()
-"""
 
 
 """ ====================================================================================================================

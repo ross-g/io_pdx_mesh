@@ -166,8 +166,8 @@ def clean_imported_name(name):
     return clean_name
 
 
-def list_scene_materials():
-    return [mat for mat in pmc.ls(materials=True)]
+def list_scene_pdx_materials():
+    return [mat for mat in pmc.ls(materials=True) if hasattr(mat, PDX_SHADER)]
 
 
 def list_scene_rootbones():

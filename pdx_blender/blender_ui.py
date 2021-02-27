@@ -149,8 +149,8 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
             mat_type = self.custom_type
         # create a mock PDXData object for convenience here to pass to the create_material function
         mat_pdx = type("Material", (PDXData, object), {"shader": [mat_type]})
-
         create_shader(mat_pdx, mat_name, None, placeholder=True)
+        IO_PDX_LOG.info("Created material: {0} ({1})".format(mat_name, mat_type))
         return {"FINISHED"}
 
     def invoke(self, context, event):
@@ -199,6 +199,7 @@ class IOPDX_OT_material_edit_popup(material_popup, Operator):
         curr_mat = context.scene.io_pdx_material
         mat.name = curr_mat.mat_name
         mat[PDX_SHADER] = curr_mat.mat_type
+        IO_PDX_LOG.info("Edited material: {0} ({1})".format(curr_mat.mat_name, curr_mat.mat_type))
         return {"FINISHED"}
 
     def invoke(self, context, event):
