@@ -80,7 +80,7 @@ def set_widget_icon(widget, icon_name):
             cmds.resourceManager()
     """
     try:
-        widget.setIcon(QtGui.QIcon(":/{}".format(icon_name)))
+        widget.setIcon(QtGui.QIcon(":/{0}".format(icon_name)))
     except Exception as err:
         IO_PDX_LOG.error(err)
 
@@ -357,11 +357,11 @@ class PDX_UI(QtWidgets.QDialog):
         grp_Info = CollapsingGroupBox("Info", self)
         grp_Info.setObjectName("grpInfo")
 
-        lbl_Current = QtWidgets.QLabel("current version: {}".format(github.CURRENT_VERSION), self)
+        lbl_Current = QtWidgets.QLabel("current version: {0}".format(github.CURRENT_VERSION), self)
         self.update_version, self.about_popup = None, None
         if github.AT_LATEST is False:  # update info appears if we aren't at the latest tag version
             self.update_version = btn_UpdateVersion = QtWidgets.QPushButton(
-                "NEW UPDATE {}".format(github.LATEST_VERSION), self
+                "NEW UPDATE {0}".format(github.LATEST_VERSION), self
             )
             set_widget_icon(btn_UpdateVersion, "SE_FavoriteStar.png")
             self.about_popup = btn_AboutVersion = QtWidgets.QPushButton("About", self)
@@ -565,7 +565,7 @@ class PDX_UI(QtWidgets.QDialog):
     def set_engine(self):
         sel_engine = self.ddl_EngineSelect.currentText()
         IO_PDX_SETTINGS.last_set_engine = sel_engine
-        IO_PDX_LOG.info("Set game engine to: '{}'".format(sel_engine))
+        IO_PDX_LOG.info("Set game engine to: '{0}'".format(sel_engine))
 
     @QtCore.Slot()
     def show_update_notes(self):
@@ -811,7 +811,7 @@ class MeshIndexPopup_UI(QtWidgets.QWidget):
             item = self.list_meshes.item(i)
             maya_mesh = pmc.PyNode(item.data(QtCore.Qt.UserRole))  # type: pmc.nt.Mesh
             set_mesh_index(maya_mesh, i)
-            IO_PDX_LOG.info("\t{} - {}".format(maya_mesh.name(), i))
+            IO_PDX_LOG.info("\t{0} - {0}".format(maya_mesh.name(), i))
 
         self.close()
 
