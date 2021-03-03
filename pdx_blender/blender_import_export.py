@@ -81,9 +81,7 @@ def clean_imported_name(name):
 
 
 def get_bmesh(mesh_data):
-    """
-        Returns a BMesh from existing mesh data
-    """
+    """ Returns a BMesh from existing mesh data. """
     bm = bmesh.new()
     bm.from_mesh(mesh_data)
 
@@ -155,9 +153,7 @@ def get_mesh_index(blender_mesh):
 
 
 def check_mesh_material(blender_obj):
-    """
-        Object needs at least one of it's materials to be a PDX material if we're going to export it
-    """
+    """ Object needs at least one of it's materials to be a PDX material if we're going to export it. """
     result = False
 
     materials = [slot.material for slot in blender_obj.material_slots]
@@ -215,13 +211,11 @@ def get_material_textures(blender_material):
 
 
 def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=False):
-    """
-        Returns a dictionary of mesh information neccessary for the exporter.
-        By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
-        exported separately!
+    """ Returns a dictionary of mesh information neccessary for the exporter.
+    By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
+    exported separately!
 
-        Note: using both mesh and bmesh data below, these must be in the same space or normals & tangents will be wrong
-    """
+    Note: using both mesh and bmesh data below, these must be in the same space or normals & tangents will be wrong. """
     # get mesh and Bmesh data structures for this object
     mesh = blender_obj.data.copy()  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.name = blender_obj.data.name + "_export"
@@ -436,19 +430,26 @@ def get_mesh_skeleton_info(blender_obj):
         return []
 
     # find all bones in hierarchy to be exported
-    all_bones = get_skeleton_hierarchy(rig)
+    rig_bones = get_skeleton_hierarchy(rig)
 
+    return get_bones_info(rig_bones)
+
+
+def get_bones_info(blender_bones):
     # build a list of bone information dictionaries for the exporter
-    bone_list = [{"name": x.name} for x in all_bones]
-    for i, bone in enumerate(all_bones):
+    bone_list = [{"name": x.name} for x in blender_bones]
+
+    for i, bone in enumerate(blender_bones):
         # bone index
         bone_list[i]["ix"] = [i]
 
         # bone parent index
         if bone.parent:
-            bone_list[i]["pa"] = [all_bones.index(bone.parent)]
+            bone_list[i]["pa"] = [blender_bones.index(bone.parent)]
 
         # bone inverse world-space transform
+        armature = bone.id_data
+        rig = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature and obj.data == armature][0]
         mat = swap_coord_space(rig.matrix_world @ bone.matrix_local).inverted_safe()
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
@@ -584,9 +585,7 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
 
 
 def swap_coord_space(data):
-    """
-        Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up)
-    """
+    """ Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up). """
     global SPACE_MATRIX
 
     # matrix
@@ -1255,8 +1254,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
 
         for obj in blender_meshes:
             # create parent element for node data, if exporting meshes
-            IO_PDX_LOG.info("writing node - {0}".format(obj.data.name))
-            objnode_xml = Xml.SubElement(object_xml, obj.data.name)
+            obj_name = obj.data.name
+            IO_PDX_LOG.info("writing node - {0}".format(obj_name))
+            objnode_xml = Xml.SubElement(object_xml, obj_name)
 
             # one object can have multiple materials on a per face basis
             materials = list(obj.data.materials)
@@ -1302,8 +1302,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
                         if key in skin_info_dict and skin_info_dict[key]:
                             skinnode_xml.set(key, skin_info_dict[key])
 
-            # create parent element for skeleton data, if the mesh is skinned
             bone_info_list = get_mesh_skeleton_info(obj)
+            # create parent element for skeleton data, if the mesh is skinned
             if exp_skel and bone_info_list:
                 IO_PDX_LOG.info("writing skeleton -")
                 skeletonnode_xml = Xml.SubElement(objnode_xml, "skeleton")
@@ -1315,7 +1315,37 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
                         if key in bone_info_dict and bone_info_dict[key]:
                             bonenode_xml.set(key, bone_info_dict[key])
 
-    # TODO: add support for skeleton only export here, needs a dummy node to hold the skeleton
+    if exp_skel and not exp_mesh:
+        # create dummy element for node data, if exporting bones but not exporting meshes
+        obj_name = "skel_frame"
+        IO_PDX_LOG.info("writing node - {0}".format(obj_name))
+        objnode_xml = Xml.SubElement(object_xml, obj_name)
+
+        blender_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature]
+        # optionally intersect with selection
+        if exp_selected:
+            blender_rigs = [obj for obj in blender_rigs if obj.select_get()]
+
+        if len(blender_rigs) > 1:
+            raise RuntimeError("Unable to resolve a single armature for export. {0}".format(blender_rigs))
+
+        rig_bones = get_skeleton_hierarchy(blender_rigs[0])
+
+        if len(rig_bones) == 0:
+            raise RuntimeError("Skeleton only export is selected, but found no bones.")
+
+        bone_info_list = get_bones_info(rig_bones)
+        # create parent element for skeleton data
+        if exp_skel and bone_info_list:
+            IO_PDX_LOG.info("writing skeleton -")
+            skeletonnode_xml = Xml.SubElement(objnode_xml, "skeleton")
+
+            # create sub-elements for each bone, populate bone attributes
+            for bone_info_dict in bone_info_list:
+                bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict["name"])
+                for key in ["ix", "pa", "tx"]:
+                    if key in bone_info_dict and bone_info_dict[key]:
+                        bonenode_xml.set(key, bone_info_dict[key])
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, "locator")
@@ -1476,7 +1506,9 @@ def export_animfile(animpath, frame_start=1, frame_end=10):
     curr_frame = bpy.context.scene.frame_start
     if frame_start != int(frame_start) or frame_end != int(frame_end):
         raise RuntimeError(
-            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(frame_start, frame_end)
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(
+                frame_start, frame_end
+            )
         )
     frame_start = int(frame_start)
     frame_end = int(frame_end)

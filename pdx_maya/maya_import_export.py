@@ -32,7 +32,6 @@ import maya.api.OpenMaya as OpenMayaAPI
 from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion
 
 from .. import pdx_data
-reload(pdx_data)
 from .. import IO_PDX_LOG
 
 # Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
@@ -150,9 +149,7 @@ def connect_nodeplugs(source_mobject, source_mplug, dest_mobject, dest_mplug):
 
 
 def util_round(data, ndigits=0):
-    """
-        Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed)
-    """
+    """ Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed). """
     return tuple(round(x, ndigits) for x in data)
 
 
@@ -175,7 +172,7 @@ def list_scene_rootbones():
 
 
 def list_scene_pdx_meshes():
-    return [mesh for mesh in pmc.ls(shapes=True) if type(mesh) == pmc.nt.Mesh and check_mesh_material(mesh)]
+    return [mesh for mesh in pmc.ls(type="mesh", noIntermediate=True) if check_mesh_material(mesh)]
 
 
 def set_local_axis_display(state, object_type=None, object_list=None):
@@ -330,11 +327,9 @@ def get_material_textures(maya_material):
 
 
 def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
-    """
-        Returns a dictionary of mesh information neccessary to the exporter.
-        By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
-        exported separately!
-    """
+    """ Returns a dictionary of mesh information neccessary to the exporter.
+    By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
+    exported separately! """
     # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
         meshfaces = maya_mesh
@@ -554,17 +549,22 @@ def get_mesh_skeleton_info(maya_mesh):
     skin = skinclusters[0]
 
     # find all bones in hierarchy to be exported
-    all_bones = get_skeleton_hierarchy(skin.influenceObjects())
+    rig_bones = get_skeleton_hierarchy(skin.influenceObjects())
 
+    return get_bones_info(rig_bones)
+
+
+def get_bones_info(maya_bones):
     # build a list of bone information dictionaries for the exporter
-    bone_list = [{"name": x.name()} for x in all_bones]
-    for i, bone in enumerate(all_bones):
+    bone_list = [{"name": x.name()} for x in maya_bones]
+
+    for i, bone in enumerate(maya_bones):
         # bone index
         bone_list[i]["ix"] = [i]
 
         # bone parent index
         if bone.getParent():
-            bone_list[i]["pa"] = [all_bones.index(bone.getParent())]
+            bone_list[i]["pa"] = [maya_bones.index(bone.getParent())]
 
         # bone inverse world-space transform
         mat = list(swap_coord_space(bone.getMatrix(worldSpace=True)).inverse())
@@ -703,9 +703,7 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
 
 
 def swap_coord_space(data):
-    """
-        Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up)
-    """
+    """ Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up). """
     global SPACE_MATRIX
 
     # matrix
@@ -735,9 +733,7 @@ def swap_coord_space(data):
 
 
 def create_filetexture(tex_filepath):
-    """
-        Creates & connects up a new file node and place2dTexture node, uses the supplied filepath.
-    """
+    """ Creates & connects up a new file node and place2dTexture node, uses the supplied filepath. """
     newFile = pmc.shadingNode("file", asTexture=True)
     new2dTex = pmc.shadingNode("place2dTexture", asUtility=True)
 
@@ -810,11 +806,7 @@ def create_material(PDX_material, mesh, texture_folder):
 
 
 def create_locator(PDX_locator, PDX_bone_dict):
-    """ Creates a Maya Locator object.
-
-        :param pdx_data.PDXData PDX_locator:
-        :param dict PDX_bone_dict:
-    """
+    """ Creates a Maya Locator object. """
     # create locator
     new_loc = pmc.spaceLocator()
     pmc.select(new_loc)
@@ -996,10 +988,7 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
 
 
 def create_mesh(PDX_mesh, name=None):
-    """
-        Creates a Maya mesh objet
-    :rtype: pmc.nt.Mesh
-    """
+    """ Creates a Maya mesh object. """
     # temporary name used during creation
     tmp_mesh_name = "io_pdx_mesh"
 
@@ -1354,10 +1343,9 @@ def export_meshfile(
     root_xml = Xml.Element("File")
     root_xml.set("pdxasset", [1, 0])
 
-    # create root element for objects
+    # create root element for objects and populate object data
     object_xml = Xml.SubElement(root_xml, "object")
 
-    # populate object data
     if exp_mesh:
         # get all meshes using at least one PDX material in the scene
         maya_meshes = list_scene_pdx_meshes()
@@ -1378,9 +1366,10 @@ def export_meshfile(
 
         for shape in maya_meshes:
             # create parent element for node data, if exporting meshes
-            IO_PDX_LOG.info("writing node - {0}".format(shape.name()))
+            obj_name = shape.name()
+            IO_PDX_LOG.info("writing node - {0}".format(obj_name))
             progress.update(1, "writing node")
-            shapenode_xml = Xml.SubElement(object_xml, shape.name())
+            shapenode_xml = Xml.SubElement(object_xml, obj_name)
 
             # one shape can have multiple materials on a per meshface basis
             shading_groups = list(set(shape.connections(type="shadingEngine")))
@@ -1436,8 +1425,8 @@ def export_meshfile(
                         if key in skin_info_dict and skin_info_dict[key]:
                             skinnode_xml.set(key, skin_info_dict[key])
 
-            # create parent element for skeleton data, if the mesh is skinned
             bone_info_list = get_mesh_skeleton_info(shape)
+            # create parent element for skeleton data, if the mesh is skinned
             if exp_skel and bone_info_list:
                 IO_PDX_LOG.info("writing skeleton -")
                 progress.update(1, "writing skeleton")
@@ -1450,7 +1439,37 @@ def export_meshfile(
                         if key in bone_info_dict and bone_info_dict[key]:
                             bonenode_xml.set(key, bone_info_dict[key])
 
-    # TODO: add support for skeleton only export here, needs a dummy node to hold the skeleton
+    if exp_skel and not exp_mesh:
+        # create dummy element for node data, if exporting bones but not exporting meshes
+        obj_name = "skel_frame"
+        IO_PDX_LOG.info("writing node - {0}".format(obj_name))
+        progress.update(1, "writing node")
+        shapenode_xml = Xml.SubElement(object_xml, obj_name)
+
+        maya_bones = [bone for bone in pmc.ls(type="joint")]
+        # optionally intersect with selection
+        if exp_selected:
+            current_selection = pmc.selected()
+            rig_bones = [bone for bone in maya_bones if bone in current_selection]
+
+        rig_bones = get_skeleton_hierarchy(maya_bones)
+
+        if len(rig_bones) == 0:
+            raise RuntimeError("Skeleton only export is selected, but found no bones.")
+
+        bone_info_list = get_bones_info(rig_bones)
+        # create parent element for skeleton data
+        if exp_skel and bone_info_list:
+            IO_PDX_LOG.info("writing skeleton -")
+            progress.update(1, "writing skeleton")
+            skeletonnode_xml = Xml.SubElement(shapenode_xml, "skeleton")
+
+            # create sub-elements for each bone, populate bone attributes
+            for bone_info_dict in bone_info_list:
+                bonenode_xml = Xml.SubElement(skeletonnode_xml, bone_info_dict["name"])
+                for key in ["ix", "pa", "tx"]:
+                    if key in bone_info_dict and bone_info_dict[key]:
+                        bonenode_xml.set(key, bone_info_dict[key])
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, "locator")
@@ -1605,7 +1624,9 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     curr_frame = pmc.currentTime(query=True)
     if frame_start != int(frame_start) or frame_end != int(frame_end):
         raise RuntimeError(
-            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(frame_start, frame_end)
+            "Invalid animation range selected ({0},{1}). Only whole frames are supported.".format(
+                frame_start, frame_end
+            )
         )
     frame_start = int(frame_start)
     frame_end = int(frame_end)
