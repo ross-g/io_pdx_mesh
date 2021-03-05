@@ -165,11 +165,15 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
         box.prop(self, "mat_name")
         mat_type = box.row()
         mat_type.prop(self, "mat_type")
-        custom_type = box.split(factor=0.3)
-        custom_type.prop(self, "use_custom")
+        split = box.split(factor=0.3)
+        col1 = split.column()
+        col1.prop(self, "use_custom")
+        col2 = split.column()
+        col2.prop(self, "custom_type", text="")
+        col2.enabled = False
         if self.use_custom:
             mat_type.enabled = False
-            custom_type.prop(self, "custom_type", text="")
+            col2.enabled = True
         self.layout.separator()
 
 
@@ -334,6 +338,11 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
         description="Import locators",
         default=True,
     )
+    chk_joinmats: BoolProperty(
+        name="Join materials",
+        description="Join materials",
+        default=True,
+    )
     chk_bonespace: BoolProperty(
         name="Convert bone orientation - WARNING",
         description="Convert bone orientation - WARNING: this re-orients bones authored at source and will BREAK ALL "
@@ -346,6 +355,10 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
         box = self.layout.box()
         box.label(text="Settings:", icon="IMPORT")
         box.prop(self, "chk_mesh")
+        if self.chk_mesh:
+            mesh_settings = box.box()
+            mesh_settings.use_property_split = True
+            mesh_settings.prop(self, "chk_joinmats")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
         # box.prop(self, 'chk_bonespace')  # TODO: works but overcomplicates things, disabled for now
@@ -357,6 +370,7 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
                 imp_mesh=self.chk_mesh,
                 imp_skel=self.chk_skel,
                 imp_locs=self.chk_locs,
+                join_materials=self.chk_joinmats,
                 bonespace=self.chk_bonespace,
             )
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed importing {}".format(self.filepath))
@@ -474,14 +488,16 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
     # fmt:on
 
     def draw(self, context):
-        self.layout.use_property_split = True
         box = self.layout.box()
         box.label(text="Settings:", icon="EXPORT")
         box.prop(self, "chk_mesh")
+        if self.chk_mesh:
+            mesh_settings = box.box()
+            mesh_settings.use_property_split = True
+            mesh_settings.prop(self, "chk_split_vtx")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
         box.prop(self, "chk_selected")
-        box.prop(self, "chk_split_vtx")
 
     def execute(self, context):
         try:
@@ -547,10 +563,13 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
         box = self.layout.box()
         box.label(text="Settings:", icon="EXPORT")
         box.prop(settings, "custom_range")
-        col = box.column()
-        col.enabled = settings.custom_range
-        col.prop(self, "int_start")
-        col.prop(self, "int_end")
+
+        if settings.custom_range:
+            range_settings = box.box()
+            range_settings.use_property_split = True
+            col = range_settings.column()
+            col.prop(self, "int_start")
+            col.prop(self, "int_end")
 
     def execute(self, context):
         settings = context.scene.io_pdx_export

@@ -1159,7 +1159,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
 """
 
 
-def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bonespace=False):
+def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_materials=True, bonespace=False):
     start = time.time()
     IO_PDX_LOG.info("importing {0}".format(meshpath))
 
@@ -1194,27 +1194,40 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, bones
         # then create all the meshes
         meshes = node.findall("mesh")
         if imp_mesh and meshes:
-            for m in meshes:
+            created = []
+            for mat_idx, m in enumerate(meshes):
                 IO_PDX_LOG.info("creating mesh -")
                 pdx_mesh = pdx_data.PDXData(m)
                 pdx_material = getattr(pdx_mesh, "material", None)
                 pdx_skin = getattr(pdx_mesh, "skin", None)
 
                 # create the geometry
-                mesh, obj = create_mesh(pdx_mesh, name=node.tag)
+                if join_materials:
+                    meshmaterial_name = node.tag if mat_idx == 0 else "{0}-{1:0>3}".format(node.tag, mat_idx)
+                else:
+                    meshmaterial_name = "{0}-{1:0>3}".format(node.tag, mat_idx)
+                mesh, obj = create_mesh(pdx_mesh, name=meshmaterial_name)
+                created.append(obj)
 
                 # set mesh index from source file
                 set_mesh_index(mesh, i)
 
                 # create the material
                 if pdx_material:
-                    IO_PDX_LOG.info("creating material -")
+                    IO_PDX_LOG.info("creating material - {0}".format(pdx_material.name))
                     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
                 # create the vertex group skin
                 if rig and pdx_skin:
                     IO_PDX_LOG.info("creating skinning data -")
                     create_skin(pdx_skin, pdx_bone_list, obj, rig)
+
+            if join_materials and len(created) > 1:
+                ctx = bpy.context.copy()
+                ctx["active_object"] = created[0]
+                ctx["selected_editable_objects"] = created
+                bpy.ops.object.join(ctx)
+                ctx.clear()
 
     # go through locators
     if imp_locs and locators:
@@ -1366,7 +1379,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
     # write the binary file from our XML structure
     pdx_data.write_meshfile(meshpath, root_xml)
 
-    bpy.ops.object.mode_set(mode="OBJECT")
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode="OBJECT")
     bpy.ops.object.select_all(action="DESELECT")
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))
 

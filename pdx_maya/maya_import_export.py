@@ -1120,8 +1120,9 @@ def create_mesh(PDX_mesh, name=None):
     pmc.select(new_mesh)
     shd_group = pmc.PyNode("initialShadingGroup")
     pmc.hyperShade(assign=shd_group)
+    new_obj = pmc.PyNode(new_transform)
 
-    return new_mesh
+    return new_mesh, new_obj
 
 
 def create_animcurve(joint, attr):
@@ -1252,7 +1253,7 @@ def create_anim_keys(joint_name, key_dict, timestart):
 """
 
 
-def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, **kwargs):
+def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_materials=True, **kwargs):
     start = time.time()
     IO_PDX_LOG.info("importing {0}".format(meshpath))
 
@@ -1292,15 +1293,21 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, **kwa
         # then create all the meshes
         meshes = node.findall("mesh")
         if imp_mesh and meshes:
-            for m in meshes:
-                IO_PDX_LOG.info("creating mesh -")
+            created = []
+            for mat_idx, m in enumerate(meshes):
+                IO_PDX_LOG.info("creating mesh - {0}".format(mat_idx))
                 progress.update(1, "creating mesh")
                 pdx_mesh = pdx_data.PDXData(m)
                 pdx_material = getattr(pdx_mesh, "material", None)
                 pdx_skin = getattr(pdx_mesh, "skin", None)
 
                 # create the geometry
-                mesh = create_mesh(pdx_mesh, name=node.tag)
+                if join_materials:
+                    meshmaterial_name = node.tag if mat_idx == 0 else "{0}-{1:0>3}".format(node.tag, mat_idx)
+                else:
+                    meshmaterial_name = "{0}-{1:0>3}".format(node.tag, mat_idx)
+                mesh, obj = create_mesh(pdx_mesh, name=meshmaterial_name)
+                created.append(obj)
 
                 # set mesh index from source file
                 set_mesh_index(mesh, i)
@@ -1316,6 +1323,15 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, **kwa
                     IO_PDX_LOG.info("creating skinning data -")
                     progress.update(1, "creating skinning data")
                     create_skin(pdx_skin, mesh, joints)
+
+            if join_materials and len(created) > 1:
+                name = created[0].name()
+                print(name)
+                try:
+                    joined_mesh = pmc.polyUniteSkinned(*created, constructionHistory=False, mergeUVSets=1)[0]
+                except RuntimeError:  # Maya raises this when using polyUniteSkinned on a group of unskinned meshes
+                    joined_mesh = pmc.polyUnite(*created, constructionHistory=False, mergeUVSets=1)[0]
+                pmc.rename(joined_mesh, name)
 
     # go through locators
     if imp_locs and locators:

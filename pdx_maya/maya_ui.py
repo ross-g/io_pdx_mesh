@@ -187,15 +187,13 @@ class CollapsingGroupBox(QtWidgets.QGroupBox):
 
 
 class CustomFileDialog(QtWidgets.QFileDialog):
-    def __init__(self, extra_opts=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(CustomFileDialog, self).__init__(*args, **kwargs)
         self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
         self.setViewMode(QtWidgets.QFileDialog.Detail)
 
-        self.optionsWidget = extra_opts or QtWidgets.QWidget(self)
-        self.addCustomOptions()
-
-    def addCustomOptions(self):
+    def addCustomOptions(self, widget):
+        self.optionsWidget = widget
         # adjust QFileDialog layout to append custom options
         box = QtWidgets.QVBoxLayout()
         box.addWidget(self.optionsWidget)
@@ -212,11 +210,11 @@ class CustomFileDialog(QtWidgets.QFileDialog):
                 value = None
                 if isinstance(ctrl, QtWidgets.QLineEdit):
                     value = ctrl.text()
-                if isinstance(ctrl, QtWidgets.QComboBox):
+                elif isinstance(ctrl, QtWidgets.QComboBox):
                     value = ctrl.currentText()
-                if isinstance(ctrl, QtWidgets.QCheckBox):
+                elif isinstance(ctrl, QtWidgets.QCheckBox):
                     value = ctrl.isChecked()
-                if isinstance(ctrl, QtWidgets.QSpinBox):
+                elif isinstance(ctrl, QtWidgets.QSpinBox):
                     value = ctrl.value()
 
                 # store this controls value against its identifier
@@ -238,6 +236,28 @@ class CustomFileDialog(QtWidgets.QFileDialog):
         result = file_dialog.exec_()
 
         return result == QtWidgets.QFileDialog.Accepted, file_dialog.selectedFiles(), file_dialog.selectedOptions()
+
+
+class CustomFileOptions(QtWidgets.QGroupBox):
+    def __init__(self, title, parent=None, **kwargs):
+        super(CustomFileOptions, self).__init__(title, parent, **kwargs)
+        self.setFixedWidth(175)
+        self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().setContentsMargins(8, 22, 8, 8)
+        self.layout().setSpacing(8)
+        self.setStyleSheet(
+            "QGroupBox {"
+            "border: 1px solid;"
+            "border-color: rgba(0, 0, 0, 64);"
+            "border-radius: 6px;"
+            "background-color: rgb(78, 80, 82);"
+            "}"
+            "QGroupBox::title {"
+            "subcontrol-origin: margin;"
+            "left: 6px;"
+            "top: 4px;"
+            "}"
+        )
 
 
 """ ====================================================================================================================
@@ -440,6 +460,8 @@ class PDX_UI(QtWidgets.QDialog):
 
     def closeEvent(self, event):
         self.write_ui_settings()
+        if self.popup:
+            self.popup.close()
         event.accept()
 
     def read_ui_settings(self):
@@ -532,7 +554,6 @@ class PDX_UI(QtWidgets.QDialog):
     @QtCore.Slot()
     def export_anim(self):
         result, files, options = AnimExport_UI.runPopup(self)
-        print("export_anim", options)
         if result and files:
             anim_filepath = files[0]
             try:
@@ -822,12 +843,11 @@ class MeshIndexPopup_UI(QtWidgets.QWidget):
 
 class MeshImport_UI(CustomFileDialog):
     def __init__(self, parent=None):
-        options_group = QtWidgets.QGroupBox("Import Settings")
-        options_group.setLayout(QtWidgets.QVBoxLayout())
-        options_group.setFixedWidth(175)
         super(MeshImport_UI, self).__init__(
-            extra_opts=options_group, parent=parent, caption="Import a mesh file", filter="PDX Mesh files (*.mesh)"
+            parent=parent, caption="Import a mesh file", filter="PDX Mesh files (*.mesh)"
         )
+        options_group = CustomFileOptions("Import Settings", self)
+        self.addCustomOptions(options_group)
 
         self.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.setAcceptMode(QtWidgets.QFileDialog.AcceptOpen)
@@ -838,24 +858,40 @@ class MeshImport_UI(CustomFileDialog):
 
         self.chk_mesh = QtWidgets.QCheckBox("Mesh")
         self.chk_mesh.setObjectName("imp_mesh")
+
+        self.mesh_settings = QtWidgets.QGroupBox()
+        self.mesh_settings.setLayout(QtWidgets.QVBoxLayout())
+
+        self.chk_joinmats = QtWidgets.QCheckBox("Join materials")
+        self.chk_joinmats.setObjectName("join_materials")
+
         self.chk_skel = QtWidgets.QCheckBox("Skeleton")
         self.chk_skel.setObjectName("imp_skel")
+
         self.chk_locs = QtWidgets.QCheckBox("Locators")
         self.chk_locs.setObjectName("imp_locs")
 
-        for chk in [self.chk_mesh, self.chk_skel, self.chk_locs]:
-            options_group.layout().addWidget(chk)
+        self.mesh_settings.layout().addWidget(self.chk_joinmats)
+        self.mesh_settings.layout().setContentsMargins(16, 4, 4, 4)
+        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+
+        for ctrl in [self.chk_mesh, self.mesh_settings, self.chk_skel, self.chk_locs]:
+            options_group.layout().addWidget(ctrl)
+
+        for chk in [self.chk_mesh, self.chk_joinmats, self.chk_skel, self.chk_locs]:
             chk.setChecked(True)
+
+        self.chk_mesh.toggled.connect(self.mesh_settings.setVisible)
 
 
 class AnimImport_UI(CustomFileDialog):
     def __init__(self, parent=None):
-        options_group = QtWidgets.QGroupBox("Import Settings")
-        options_group.setLayout(QtWidgets.QVBoxLayout())
-        options_group.setFixedWidth(175)
         super(AnimImport_UI, self).__init__(
-            extra_opts=options_group, parent=parent, caption="Import a anim file", filter="PDX Animation files (*.anim)"
+            parent=parent, caption="Import a anim file", filter="PDX Animation files (*.anim)"
         )
+        options_group = CustomFileOptions("Import Settings", self)
+        self.addCustomOptions(options_group)
 
         self.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.setAcceptMode(QtWidgets.QFileDialog.AcceptOpen)
@@ -878,12 +914,11 @@ class AnimImport_UI(CustomFileDialog):
 
 class MeshExport_UI(CustomFileDialog):
     def __init__(self, parent=None):
-        options_group = QtWidgets.QGroupBox("Export Settings")
-        options_group.setLayout(QtWidgets.QVBoxLayout())
-        options_group.setFixedWidth(175)
         super(MeshExport_UI, self).__init__(
-            extra_opts=options_group, parent=parent, caption="Export a mesh file", filter="PDX Mesh files (*.mesh)"
+            parent=parent, caption="Export a mesh file", filter="PDX Mesh files (*.mesh)"
         )
+        options_group = CustomFileOptions("Export Settings")
+        self.addCustomOptions(options_group)
 
         self.setFileMode(QtWidgets.QFileDialog.AnyFile)
         self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
@@ -895,32 +930,43 @@ class MeshExport_UI(CustomFileDialog):
 
         self.chk_mesh = QtWidgets.QCheckBox("Mesh")
         self.chk_mesh.setObjectName("exp_mesh")
+
+        self.mesh_settings = QtWidgets.QGroupBox()
+        self.mesh_settings.setLayout(QtWidgets.QVBoxLayout())
+
         self.chk_skel = QtWidgets.QCheckBox("Skeleton")
         self.chk_skel.setObjectName("exp_skel")
+
         self.chk_locs = QtWidgets.QCheckBox("Locators")
         self.chk_locs.setObjectName("exp_locs")
+
         self.chk_sel_only = QtWidgets.QCheckBox("Selection only")
         self.chk_sel_only.setObjectName("exp_selected")
+
         self.chk_split_vtx = QtWidgets.QCheckBox("Split all vertices")
         self.chk_split_vtx.setObjectName("split_verts")
 
+        self.mesh_settings.layout().addWidget(self.chk_split_vtx)
+        self.mesh_settings.layout().setContentsMargins(16, 4, 4, 4)
+        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+
+        for ctrl in [self.chk_mesh, self.mesh_settings, self.chk_skel, self.chk_locs, self.chk_sel_only]:
+            options_group.layout().addWidget(ctrl)
+
         for ctrl in [self.chk_mesh, self.chk_skel, self.chk_locs]:
-            options_group.layout().addWidget(ctrl)
             ctrl.setChecked(True)
-        options_group.layout().addSpacing(15)
-        for ctrl in [self.chk_sel_only, self.chk_split_vtx]:
-            options_group.layout().addWidget(ctrl)
-            ctrl.setChecked(False)
+
+        self.chk_mesh.toggled.connect(self.mesh_settings.setVisible)
 
 
 class AnimExport_UI(CustomFileDialog):
     def __init__(self, parent=None):
-        options_group = QtWidgets.QGroupBox("Export Settings")
-        options_group.setLayout(QtWidgets.QVBoxLayout())
-        options_group.setFixedWidth(175)
         super(AnimExport_UI, self).__init__(
-            extra_opts=options_group, parent=parent, caption="Export a anim file", filter="PDX Animation files (*.anim)"
+            parent=parent, caption="Export a anim file", filter="PDX Animation files (*.anim)"
         )
+        options_group = CustomFileOptions("Export Settings")
+        self.addCustomOptions(options_group)
 
         self.setFileMode(QtWidgets.QFileDialog.AnyFile)
         self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
@@ -932,34 +978,41 @@ class AnimExport_UI(CustomFileDialog):
 
         self.chk_custom = QtWidgets.QCheckBox("Custom range")
         self.chk_custom.setObjectName("custom_range")
+
+        self.range_settings = QtWidgets.QGroupBox()
+        self.range_settings.setLayout(QtWidgets.QVBoxLayout())
+
         self.lbl_start = QtWidgets.QLabel("Start frame:")
         self.spn_start = QtWidgets.QSpinBox()
-        self.spn_start.setMaximumWidth(100)
+        self.spn_start.setFixedWidth(65)
         self.spn_start.setObjectName("frame_start")
+
         self.lbl_end = QtWidgets.QLabel("End frame:")
         self.spn_end = QtWidgets.QSpinBox()
-        self.spn_end.setMaximumWidth(100)
+        self.spn_end.setFixedWidth(65)
         self.spn_end.setObjectName("frame_end")
 
-        self.start_group = QtWidgets.QWidget()
-        self.start_group.setLayout(QtWidgets.QHBoxLayout())
-        self.start_group.layout().setContentsMargins(0, 0, 0, 0)
+        self.start_group = QtWidgets.QHBoxLayout()
+        self.start_group.setContentsMargins(0, 0, 0, 0)
         for ctrl in [self.lbl_start, self.spn_start]:
-            self.start_group.layout().addWidget(ctrl)
-        self.end_group = QtWidgets.QWidget()
-        self.end_group.setLayout(QtWidgets.QHBoxLayout())
-        self.end_group.layout().setContentsMargins(0, 0, 0, 0)
+            self.start_group.addWidget(ctrl)
+        self.end_group = QtWidgets.QHBoxLayout()
+        self.end_group.setContentsMargins(0, 0, 0, 0)
         for ctrl in [self.lbl_end, self.spn_end]:
-            self.end_group.layout().addWidget(ctrl)
+            self.end_group.addWidget(ctrl)
+
+        self.range_settings.layout().addLayout(self.start_group)
+        self.range_settings.layout().addLayout(self.end_group)
+        self.range_settings.layout().setContentsMargins(16, 4, 4, 4)
+        self.range_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.range_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+
         options_group.layout().addWidget(self.chk_custom)
-        options_group.layout().addWidget(self.start_group)
-        options_group.layout().addWidget(self.end_group)
+        options_group.layout().addWidget(self.range_settings)
 
         self.chk_custom.setChecked(False)
-        self.start_group.setEnabled(False)
-        self.end_group.setEnabled(False)
-        self.chk_custom.toggled.connect(self.start_group.setEnabled)
-        self.chk_custom.toggled.connect(self.end_group.setEnabled)
+        self.range_settings.setVisible(False)
+        self.chk_custom.toggled.connect(self.range_settings.setVisible)
 
 
 class MayaProgress(object):
