@@ -8,11 +8,11 @@
     author : ross-g
 """
 
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 
 import os
 import sys
-import struct
+from struct import pack, unpack_from
 
 try:
     import xml.etree.cElementTree as Xml
@@ -21,8 +21,10 @@ except ImportError:
 
 # Py2, Py3 compatibility
 try:
+    PY3 = False
     basestring
 except NameError:
+    PY3 = True
     basestring = str
 
 
@@ -40,12 +42,10 @@ class PDXData(object):
 
     def __init__(self, element, depth=None):
         # use element tag as object name
-        setattr(self, 'name', element.tag)
+        setattr(self, "name", element.tag)
 
         # object depth in hierarchy
-        self.depth = 0
-        if depth is not None:
-            self.depth = depth
+        self.depth = depth or 0
 
         # object attribute collection
         self.attrlist = []
@@ -99,13 +99,11 @@ class PDXData(object):
 
 
 def parseProperty(bdata, pos):
-    unpack = struct.unpack_from
-
     # starting at '!'
     pos += 1
 
     # get length of property name
-    prop_name_length = unpack('b', bdata, offset=pos)[0]
+    prop_name_length = unpack_from("b", bdata, offset=pos)[0]
     pos += 1
 
     # get property name as string
@@ -119,19 +117,17 @@ def parseProperty(bdata, pos):
 
 
 def parseObject(bdata, pos):
-    unpack = struct.unpack_from
-
     # skip and record any repeated '[' characters
     objdepth = 0
-    while unpack('c', bdata, offset=pos)[0].decode() == '[':
+    while unpack_from("c", bdata, offset=pos)[0].decode() == "[":
         objdepth += 1
         pos += 1
 
     # get object name as string
-    obj_name = ''
+    obj_name = ""
     # we don't know the string length, so look for an ending byte of zero
-    while unpack('b', bdata, offset=pos)[0] != 0:
-        obj_name += unpack('c', bdata, offset=pos)[0].decode()
+    while unpack_from("b", bdata, offset=pos)[0] != 0:
+        obj_name += unpack_from("c", bdata, offset=pos)[0].decode("latin-1")
         pos += 1
 
     # skip the ending zero byte
@@ -141,12 +137,10 @@ def parseObject(bdata, pos):
 
 
 def parseString(bdata, pos, length):
-    unpack = struct.unpack_from
-
-    val_tuple = unpack('c' * length, bdata, offset=pos)
+    val_tuple = unpack_from("c" * length, bdata, offset=pos)  # TODO: should fmt here be "s" * length ?
 
     # turn the resulting tuple into a string of bytes
-    string = b''.join(val_tuple).decode()
+    string = b"".join(val_tuple).decode("latin-1")
 
     # check if the ending byte is zero and remove if so
     if string[-1] == chr(0):
@@ -156,52 +150,50 @@ def parseString(bdata, pos, length):
 
 
 def parseData(bdata, pos):
-    unpack = struct.unpack_from
-
     # determine the  data type
-    datatype = unpack('c', bdata, offset=pos)[0].decode()
+    datatype = unpack_from("c", bdata, offset=pos)[0].decode()
     # TODO: use an array here instead of list for memory efficiency?
     datavalues = []
 
-    if datatype == 'i':
+    if datatype == "i":
         # handle integer data
         pos += 1
 
         # count
-        size = unpack('i', bdata, offset=pos)[0]
+        size = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
         # values
         for i in range(0, size):
-            val = unpack('i', bdata, offset=pos)[0]
+            val = unpack_from("i", bdata, offset=pos)[0]
             datavalues.append(val)
             pos += 4
 
-    elif datatype == 'f':
+    elif datatype == "f":
         # handle float data
         pos += 1
 
         # count
-        size = unpack('i', bdata, offset=pos)[0]
+        size = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
         # values
         for i in range(0, size):
-            val = unpack('f', bdata, offset=pos)[0]
+            val = unpack_from("f", bdata, offset=pos)[0]
             datavalues.append(val)
             pos += 4
 
-    elif datatype == 's':
+    elif datatype == "s":
         # handle string data
         pos += 1
 
         # count
-        size = unpack('i', bdata, offset=pos)[0]
+        size = unpack_from("i", bdata, offset=pos)[0]
         # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
         pos += 4
 
         # string length
-        str_data_length = unpack('i', bdata, offset=pos)[0]
+        str_data_length = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
         # value
@@ -222,14 +214,12 @@ def read_meshfile(filepath):
         Reads through a .mesh file and gathers all the data into hierarchical element structure.
         The resulting XML is not natively writable to string as it contains Python data types.
     """
-    unpack = struct.unpack_from
-
     # read the data
-    with open(filepath, 'rb') as fp:
+    with open(filepath, "rb") as fp:
         fdata = fp.read()
 
     # create an XML structure to store the object hierarchy
-    file_element = Xml.Element('File')
+    file_element = Xml.Element("File")
     file_element.attrib = dict(name=os.path.split(filepath)[1], path=os.path.split(filepath)[0])
 
     # determine the file length and set initial file read position
@@ -237,8 +227,8 @@ def read_meshfile(filepath):
     pos = 0
 
     # read the file header '@@b@'
-    header = unpack('c' * 4, fdata, pos)
-    if bytes(b''.join(header)) == b'@@b@':
+    header = unpack_from("c" * 4, fdata, pos)
+    if bytes(b"".join(header)) == b"@@b@":
         pos = 4
     else:
         raise NotImplementedError("Unknown file header. {}".format(header))
@@ -249,9 +239,9 @@ def read_meshfile(filepath):
 
     # parse through until EOF
     while pos < eof:
-        next_char = unpack('c', fdata, offset=pos)[0].decode()
+        next_char = unpack_from("c", fdata, offset=pos)[0].decode()
         # we have a property
-        if next_char == '!':
+        if next_char == "!":
             # check the property type and values
             prop_name, prop_values, pos = parseProperty(fdata, pos)
 
@@ -259,7 +249,7 @@ def read_meshfile(filepath):
             parent_element.set(prop_name, prop_values)
 
         # we have an object
-        elif next_char == '[':
+        elif next_char == "[":
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
 
@@ -292,23 +282,22 @@ def read_meshfile(filepath):
 
 
 def writeProperty(prop_name, prop_data):
-    pack = struct.pack
-
-    datastring = b''
+    datastring = b""
 
     try:
         # write starting '!'
-        datastring += pack('c', '!'.encode())
+        datastring += pack("c", "!".encode())
 
         # write length of property name
         prop_name_length = len(prop_name)
-        datastring += pack('b', prop_name_length)
+        datastring += pack("b", prop_name_length)
 
         # write property name as string
         datastring += writeString(prop_name)
 
         # write property data
         datastring += writeData(prop_data)
+
     except NotImplementedError as err:
         print("Failed writing property: {}".format(prop_name))
         raise err
@@ -317,40 +306,34 @@ def writeProperty(prop_name, prop_data):
 
 
 def writeObject(obj_xml, obj_depth):
-    pack = struct.pack
-
-    datastring = b''
+    datastring = b""
 
     # write object hierarchy depth
     for x in range(obj_depth):
-        datastring += pack('c', '['.encode())
+        datastring += pack("c", "[".encode())
 
     # write object name as string
     obj_name = obj_xml.tag
+    if not len(obj_name) < 64:
+        raise NotImplementedError("Object name is longer than 64 characters: {}".format(obj_name))
     datastring += writeString(obj_name)
     # write zero-byte ending
-    datastring += pack('x')
+    datastring += pack("x")
 
     return datastring
 
 
 def writeString(string):
-    pack = struct.pack
+    datastring = b""
 
-    datastring = b''
-
-    string = str(string)  # struct.pack cannot handle unicode strings in Python 2
-
-    for x in string:
-        datastring += pack('c', x.encode())
+    string = string.encode("latin-1")
+    datastring += pack("{0}s".format(len(string)), string)
 
     return datastring
 
 
 def writeData(data_array):
-    pack = struct.pack
-
-    datastring = b''
+    datastring = b""
 
     # determine the data type in the array
     types = set([type(d) for d in data_array])
@@ -363,43 +346,43 @@ def writeData(data_array):
 
     if all(isinstance(d, int) for d in data_array):
         # write integer data
-        datastring += pack('c', 'i'.encode())
+        datastring += pack("c", "i".encode())
 
         # write the data count
         size = len(data_array)
-        datastring += pack('i', size)
+        datastring += pack("i", size)
 
         # write the data values
-        datastring += pack('i' * size, *data_array)
+        datastring += pack("i" * size, *data_array)
 
     elif all(isinstance(d, float) for d in data_array):
         # write float data
-        datastring += pack('c', 'f'.encode())
+        datastring += pack("c", "f".encode())
 
         # count
         size = len(data_array)
-        datastring += pack('i', size)
+        datastring += pack("i", size)
 
         # values
-        datastring += pack('f' * size, *data_array)
+        datastring += pack("f" * size, *data_array)
 
     elif all(isinstance(d, basestring) for d in data_array):
         # write string data
-        datastring += pack('c', 's'.encode())
+        datastring += pack("c", "s".encode())
 
         # count
         size = 1
         # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
-        datastring += pack('i', size)
+        datastring += pack("i", size)
 
         # string length
         str_data_length = len(data_array[0])
-        datastring += pack('i', (str_data_length + 1))  # string length + 1 to account for zero-byte ending
+        datastring += pack("i", (str_data_length + 1))  # string length + 1 to account for zero-byte ending
 
         # values
         datastring += writeString(data_array[0])  # Py2 struct.pack cannot handle unicode strings
         # write zero-byte ending
-        datastring += pack('x')
+        datastring += pack("x")
 
     else:
         raise NotImplementedError("Unknown data type encountered. {}\n{}".format(datatype, data_array))
@@ -411,24 +394,22 @@ def write_meshfile(filepath, root_xml):
     """
         Iterates over an XML element and writes the element structure back into a binary file as mesh data.
     """
-    pack = struct.pack
-
-    datastring = b''
+    datastring = b""
 
     # write the file header '@@b@'
-    header = '@@b@'
+    header = "@@b@"
     for x in header:
-        datastring += pack('c', x.encode())
+        datastring += pack("c", x.encode())
 
     # write the file properties
-    if root_xml.tag == 'File':
-        datastring += writeProperty('pdxasset', root_xml.get('pdxasset'))
+    if root_xml.tag == "File":
+        datastring += writeProperty("pdxasset", root_xml.get("pdxasset"))
     else:
         raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
 
     # TODO: writing properties would be easier if order was irrelevant, you should test this
     # write objects root
-    object_xml = root_xml.find('object')
+    object_xml = root_xml.find("object")
     if object_xml is not None:
         current_depth = 1
         datastring += writeObject(object_xml, current_depth)
@@ -443,49 +424,49 @@ def write_meshfile(filepath, root_xml):
                 current_depth = 3
                 datastring += writeObject(child_xml, current_depth)
 
-                if child_xml.tag == 'mesh':
+                if child_xml.tag == "mesh":
                     mesh_xml = child_xml
                     # write mesh properties
-                    for prop in ['p', 'n', 'ta', 'u0', 'u1', 'tri']:
+                    for prop in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
                         if mesh_xml.get(prop) is not None:
                             datastring += writeProperty(prop, mesh_xml.get(prop))
 
                     # write mesh sub-objects
-                    aabb_xml = mesh_xml.find('aabb')
+                    aabb_xml = mesh_xml.find("aabb")
                     if aabb_xml is not None:
                         current_depth = 4
                         datastring += writeObject(aabb_xml, current_depth)
-                        for prop in ['min', 'max']:
+                        for prop in ["min", "max"]:
                             if aabb_xml.get(prop) is not None:
                                 datastring += writeProperty(prop, aabb_xml.get(prop))
 
-                    material_xml = mesh_xml.find('material')
+                    material_xml = mesh_xml.find("material")
                     if material_xml is not None:
                         current_depth = 4
                         datastring += writeObject(material_xml, current_depth)
-                        for prop in ['shader', 'diff', 'n', 'spec']:
+                        for prop in ["shader", "diff", "n", "spec"]:
                             if material_xml.get(prop) is not None:
                                 datastring += writeProperty(prop, material_xml.get(prop))
 
-                    skin_xml = mesh_xml.find('skin')
+                    skin_xml = mesh_xml.find("skin")
                     if skin_xml is not None:
                         current_depth = 4
                         datastring += writeObject(skin_xml, current_depth)
-                        for prop in ['bones', 'ix', 'w']:
+                        for prop in ["bones", "ix", "w"]:
                             if skin_xml.get(prop) is not None:
                                 datastring += writeProperty(prop, skin_xml.get(prop))
 
-                elif child_xml.tag == 'skeleton':
+                elif child_xml.tag == "skeleton":
                     # write bone sub objects and properties
                     for bone_xml in child_xml:
                         current_depth = 4
                         datastring += writeObject(bone_xml, current_depth)
-                        for prop in ['ix', 'pa', 'tx']:
+                        for prop in ["ix", "pa", "tx"]:
                             if bone_xml.get(prop) is not None:
                                 datastring += writeProperty(prop, bone_xml.get(prop))
 
     # write locators root
-    locator_xml = root_xml.find('locator')
+    locator_xml = root_xml.find("locator")
     if locator_xml is not None:
         current_depth = 1
         datastring += writeObject(locator_xml, current_depth)
@@ -496,12 +477,12 @@ def write_meshfile(filepath, root_xml):
             datastring += writeObject(locnode_xml, current_depth)
 
             # write locator properties
-            for prop in ['p', 'q', 'pa', 'tx']:
+            for prop in ["p", "q", "pa", "tx"]:
                 if locnode_xml.get(prop) is not None:
                     datastring += writeProperty(prop, locnode_xml.get(prop))
 
     # write the data
-    with open(filepath, 'wb') as fp:
+    with open(filepath, "wb") as fp:
         fp.write(datastring)
 
 
@@ -509,29 +490,27 @@ def write_animfile(filepath, root_xml):
     """
         Iterates over an XML element and writes the element structure back into a binary file as animation data.
     """
-    pack = struct.pack
-
-    datastring = b''
+    datastring = b""
 
     # write the file header '@@b@'
-    header = '@@b@'
+    header = "@@b@"
     for x in header:
-        datastring += pack('c', x.encode())
+        datastring += pack("c", x.encode())
 
     # write the file properties
-    if root_xml.tag == 'File':
-        datastring += writeProperty('pdxasset', root_xml.get('pdxasset'))
+    if root_xml.tag == "File":
+        datastring += writeProperty("pdxasset", root_xml.get("pdxasset"))
     else:
         raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
 
     # write info root
-    info_xml = root_xml.find('info')
+    info_xml = root_xml.find("info")
     if info_xml is not None:
         current_depth = 1
         datastring += writeObject(info_xml, current_depth)
 
         # write info properties
-        for prop in ['fps', 'sa', 'j']:
+        for prop in ["fps", "sa", "j"]:
             if info_xml.get(prop) is not None:
                 datastring += writeProperty(prop, info_xml.get(prop))
 
@@ -541,23 +520,23 @@ def write_animfile(filepath, root_xml):
             datastring += writeObject(bone_xml, current_depth)
 
             # write bone properties
-            for prop in ['sa', 't', 'q', 's']:
+            for prop in ["sa", "t", "q", "s"]:
                 if bone_xml.get(prop) is not None:
                     datastring += writeProperty(prop, bone_xml.get(prop))
 
     # write samples root
-    samples_xml = root_xml.find('samples')
+    samples_xml = root_xml.find("samples")
     if samples_xml is not None:
         current_depth = 1
         datastring += writeObject(samples_xml, current_depth)
 
         # write sample properties
-        for prop in ['t', 'q', 's']:
+        for prop in ["t", "q", "s"]:
             if samples_xml.get(prop) is not None:
                 datastring += writeProperty(prop, samples_xml.get(prop))
 
     # write the data
-    with open(filepath, 'wb') as fp:
+    with open(filepath, "wb") as fp:
         fp.write(datastring)
 
 
@@ -567,23 +546,29 @@ def write_animfile(filepath, root_xml):
 """
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     """
        When called from the command line we just print the structure and contents of the .mesh or .anim file to stdout
     """
-    if len(sys.argv) > 1:
-        os.system('cls')
-        _file = sys.argv[1]
-        _data = read_meshfile(_file)
+    os.system("cls")
+    import argparse
 
-        pdx_data = PDXData(_data)
+    parser = argparse.ArgumentParser(description="io_pdx_mesh CLI")
+    parser.add_argument("file")
+    parser.add_argument("--out", "-o", default=None)
+    parser.add_argument("--verbose", "-v", action="store_true", default=False)
 
-        if len(sys.argv) > 2:
-            with open(sys.argv[2], 'wt') as fp:
-                fp.write(str(pdx_data) + '\n')
-        else:
-            print(pdx_data)
-            print()
+    args = parser.parse_args()
+    _file = args.file
+    _data = read_meshfile(_file)
+    pdx_data = PDXData(_data)
+
+    if args.out:
+        with open(args.out, "wt") as fp:
+            fp.write(str(pdx_data) + "\n")
+    else:
+        print(pdx_data)
+        print()
 
 
 """
@@ -615,7 +600,7 @@ General binary format is:
                     ta    (float)  tangents
                     u0    (float)  UVs
                     tri    (int)  triangles
-                    boundingsphere    (float)  centre and radius of mesh spherical bounds  [IMPERATOR]
+                    boundingsphere    (float)  centre and radius of mesh spherical bounds  [IMPERATOR/CK3]
                     aabb    (object)
                         min    (float)  min bounding box
                         max    (float)  max bounding box

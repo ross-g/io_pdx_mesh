@@ -18,7 +18,6 @@ import os.path as path
 
 
 class PDXsettings(object):
-
     def __init__(self, filepath):
         if path.exists(filepath):
             # read settings file
@@ -27,7 +26,7 @@ class PDXsettings(object):
             # new settings file
             try:
                 os.makedirs(path.dirname(filepath))
-                with open(filepath, 'w') as _:
+                with open(filepath, "w") as _:
                     pass
             except OSError as err:
                 print(err)
@@ -67,7 +66,7 @@ class PDXsettings(object):
 
     def save_settings_file(self):
         try:
-            with open(self.config_path, 'w') as f:
+            with open(self.config_path, "w") as f:
                 json.dump(self.__dict__, f, sort_keys=True, indent=4)
         except Exception as err:
             print(err)
