@@ -11,6 +11,7 @@
 
 import os
 import time
+from operator import itemgetter
 from collections import OrderedDict, namedtuple, defaultdict
 
 try:
@@ -353,8 +354,9 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
 
 
 def get_mesh_skin_info(blender_obj, vertex_ids=None):
-    # bpy.ops.object.vertex_group_limit_total(group_select_mode='', limit=4)
-
+    """
+    bpy.ops.object.vertex_group_limit_total(group_select_mode='', limit=4)
+    """
     skin_mod = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
     if not skin_mod:
         return None
@@ -406,20 +408,28 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
 
     # collect data from the weights dict into the skin dict
     for vtx in vertex_ids:
+        # if we have excess influences, prune them and renormalise weights
+        if len(vert_weights[vtx]) > PDX_MAXSKININFS:
+            IO_PDX_LOG.warning(
+                "Mesh '{0}' has vertices skinned to more than {1} vertex groups.".format(mesh.name, PDX_MAXSKININFS)
+            )
+            # sort by influence and remove the smallest
+            inf_weights = sorted(vert_weights[vtx].items(), key=itemgetter(1), reverse=True)
+            inf_weights = dict(inf_weights[:PDX_MAXSKININFS])
+            total = sum(inf_weights.values())
+
+            vert_weights[vtx] = {inf: weight / total for inf, weight in inf_weights.items()}
+
+        # store influence and weight data
         for influence, weight in vert_weights[vtx].items():
             skin_dict["ix"].append(influence)
             skin_dict["w"].append(weight)
+
         if len(vert_weights[vtx]) <= PDX_MAXSKININFS:
             # pad out with null data to fill the maximum influence count
             padding = PDX_MAXSKININFS - len(vert_weights[vtx])
             skin_dict["ix"].extend([-1] * padding)
             skin_dict["w"].extend([0.0] * padding)
-        else:
-            # warn if vertex influence count exceeds the max
-            raise RuntimeError(
-                "Mesh {0} has vertices skinned to more than {1} vertex groups! This is not supported. "
-                "Use 'Weight Tools > Limit Total' to reduce influence count.".format(mesh.name, PDX_MAXSKININFS)
-            )
 
     return skin_dict
 
