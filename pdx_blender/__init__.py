@@ -27,11 +27,14 @@ importlib.reload(blender_ui)
 
 # fmt:off
 class PDXBlender_settings(PropertyGroup):
+    engine_items = [(engine, ) * 3 for engine in ENGINE_SETTINGS]
+    engine_default = IO_PDX_SETTINGS.last_set_engine or list(ENGINE_SETTINGS)[0]
+
     setup_engine: EnumProperty(
         name="Engine",
         description="Engine",
-        items=((engine, engine, engine) for engine in ENGINE_SETTINGS.keys()),
-        default=IO_PDX_SETTINGS.last_set_engine or list(ENGINE_SETTINGS.keys())[0],
+        items=engine_items,
+        default=engine_default,
         update=blender_ui.set_engine,
     )
 
