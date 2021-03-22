@@ -13,8 +13,10 @@ from imp import reload
 from textwrap import wrap
 from functools import partial
 
+import maya.cmds as cmds
 import pymel.core as pmc
 import maya.OpenMayaUI as OpenMayaUI
+import maya.api.OpenMaya as OpenMayaAPI
 
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -33,19 +35,21 @@ try:
     reload(maya_import_export)
 
     from .maya_import_export import (
+        PDX_ANIMATION,
+        PDX_SHADER,
         create_shader,
         export_animfile,
         export_meshfile,
         get_animation_clips,
+        get_animation_fps,
         get_mesh_index,
         import_animfile,
         import_meshfile,
         list_scene_pdx_materials,
         list_scene_pdx_meshes,
         list_scene_rootbones,
-        PDX_ANIMATION,
-        PDX_SHADER,
         remove_animation_clip,
+        set_animation_fps,
         set_ignore_joints,
         set_local_axis_display,
         set_mesh_index,
@@ -365,7 +369,9 @@ class PDX_UI(QtWidgets.QDialog):
         self.ddl_EngineSelect = QtWidgets.QComboBox(self)
         self.ddl_EngineSelect.addItems(ENGINE_SETTINGS.keys())
         lbl_SetupAnimation = QtWidgets.QLabel("Animation:", self)
-        self.spn_AnimationFps = QtWidgets.QDoubleSpinBox(self)
+        self.spn_AnimationFps = QtWidgets.QSpinBox(self)
+        self.spn_AnimationFps.setPrefix("FPS ")
+        self.spn_AnimationFps.setKeyboardTracking(False)
 
         grp_Setup.inner.layout().addWidget(lbl_SetupEngine, 0, 0)
         grp_Setup.inner.layout().addWidget(self.ddl_EngineSelect, 0, 1)
@@ -445,6 +451,7 @@ class PDX_UI(QtWidgets.QDialog):
         self.hide_axis_locators.clicked.connect(partial(set_local_axis_display, False, object_type="locator"))
 
         self.ddl_EngineSelect.currentIndexChanged.connect(self.set_engine)
+        self.spn_AnimationFps.valueChanged.connect(self.set_fps)
 
         if self.update_version:
             self.update_version.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
@@ -456,10 +463,12 @@ class PDX_UI(QtWidgets.QDialog):
 
     def showEvent(self, event):
         self.read_ui_settings()
+        self.id = OpenMayaAPI.MEventMessage.addEventCallback("timeUnitChanged", partial(self.on_timeUnitChanged, self))
         event.accept()
 
     def closeEvent(self, event):
         self.write_ui_settings()
+        OpenMayaAPI.MEventMessage.removeCallback(self.id)
         if self.popup:
             self.popup.close()
         event.accept()
@@ -484,6 +493,8 @@ class PDX_UI(QtWidgets.QDialog):
 
         # restore engine selection
         self.ddl_EngineSelect.setCurrentText(IO_PDX_SETTINGS.last_set_engine or ENGINE_SETTINGS.keys()[0])
+        # restore scene animation fps
+        self.spn_AnimationFps.setValue(int(get_animation_fps()))
 
         # ensure dialog was not restored offscreen after groupbox state is restored
         move_dialog_onscreen(self)
@@ -587,6 +598,20 @@ class PDX_UI(QtWidgets.QDialog):
         sel_engine = self.ddl_EngineSelect.currentText()
         IO_PDX_SETTINGS.last_set_engine = sel_engine
         IO_PDX_LOG.info("Set game engine to: '{0}'".format(sel_engine))
+
+    @QtCore.Slot()
+    def set_fps(self, fps):
+        prev_fps = int(get_animation_fps())
+        try:
+            set_animation_fps(fps)
+        except RuntimeError:
+            QtWidgets.QMessageBox.warning(self, "ERROR", "Unsupported animation speed. ({0} fps)".format(fps))
+            self.spn_AnimationFps.setValue(int(prev_fps))
+
+    @QtCore.Slot()
+    def on_timeUnitChanged(self, *args):
+        curr_fps = int(get_animation_fps())
+        self.spn_AnimationFps.setValue(curr_fps)
 
     @QtCore.Slot()
     def show_update_notes(self):
@@ -1045,7 +1070,7 @@ class MayaProgress(object):
 
 
 def main():
-    IO_PDX_LOG.info("Launching Maya UI.")
+    IO_PDX_LOG.info("Loading Maya UI.")
 
     maya_main_window = get_maya_mainWindow()
     pdx_tools = maya_main_window.findChild(QtWidgets.QDialog, "PDX_Maya_Tools")

@@ -20,6 +20,7 @@ try:
 except ImportError:
     import xml.etree.ElementTree as Xml
 
+import maya.cmds as mel
 import maya.cmds as cmds
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
@@ -270,6 +271,25 @@ def remove_animation_clip(bone_list, anim_name):
     anim_clips.pop(i)
 
     set_animation_clips(bone_list, anim_clips)
+
+
+def get_animation_fps():
+    # mel.eval("float $fps = `currentTimeUnitToFPS`")
+    return pmc.mel.currentTimeUnitToFPS()
+
+
+def set_animation_fps(fps):
+    try:
+        cmds.currentUnit(time=("{0}fps".format(fps)))
+    except RuntimeError:
+        if fps == 15:
+            cmds.currentUnit(time="game")
+        elif fps == 30:
+            cmds.currentUnit(time="ntsc")
+        elif fps == 60:
+            cmds.currentUnit(time="ntscf")
+        else:
+            raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
 
 
 def set_mesh_index(maya_mesh, i):
@@ -660,17 +680,6 @@ def get_skeleton_hierarchy(bone_list):
     get_recursive_children(root_bone, valid_bones)
 
     return valid_bones
-
-
-def get_animation_fps():
-    time_unit = pmc.currentUnit(query=True, time=True)
-
-    if time_unit == "game":
-        return 15
-    elif time_unit == "ntsc":
-        return 30
-    else:
-        raise RuntimeError("Unsupported animation speed. {0}".format(time_unit))
 
 
 def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
@@ -1547,17 +1556,7 @@ def import_animfile(animpath, frame_start=1, **kwargs):
     # set scene animation and playback settings
     fps = int(info.attrib["fps"][0])
     IO_PDX_LOG.info("setting playback speed - {0}".format(fps))
-    try:
-        pmc.currentUnit(time=("{0}fps".format(fps)))
-    except RuntimeError:
-        if fps == 15:
-            pmc.currentUnit(time="game")
-        elif fps == 30:
-            pmc.currentUnit(time="ntsc")
-        elif fps == 60:
-            pmc.currentUnit(time="ntscf")
-        else:
-            raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
+    set_animation_fps(fps)
 
     progress.update(1, "setting playback speed")
     pmc.playbackOptions(edit=True, playbackSpeed=1.0)
