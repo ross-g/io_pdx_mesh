@@ -45,7 +45,6 @@ bl_info = {
 ========================================================================================================================
 """
 
-environment = sys.executable.lower()
 root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 
 # setup module logging
@@ -85,15 +84,22 @@ except Exception as err:
 ========================================================================================================================
 """
 
-# check if running from Blender
-if "blender" in environment:
-    import bpy  # noqa
+running_from, version = None, None
+environment = sys.executable.lower()
 
+# check if running from Blender
+try:
+    import bpy  # noqa
+    running_from, version = bpy.app.binary_path.lower(), bpy.app.version
+except ImportError:
+    pass
+else:
     logging.basicConfig(level=logging.DEBUG, format=log_format)
     IO_PDX_LOG = logging.getLogger(log_name)
 
-    IO_PDX_LOG.info("Running from {0}".format(bpy.app.binary_path.lower()))
-    IO_PDX_LOG.info(root_path)
+    if version < bl_info["blender"]:
+        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Blender {0}".format(bl_info["blender"]))
+        bl_info["unsupported_version"] = True
 
     try:
         # register the Blender addon
@@ -103,9 +109,12 @@ if "blender" in environment:
         raise e
 
 # or running from Maya
-elif "maya" in environment:
+try:
     import maya.cmds  # noqa
-
+    running_from, version = sys.executable.lower(), int(maya.cmds.about(version=True))
+except ImportError:
+    pass
+else:
     IO_PDX_LOG = logging.getLogger(log_name)
     IO_PDX_LOG.setLevel(logging.DEBUG)
     IO_PDX_LOG.propagate = False
@@ -114,8 +123,9 @@ elif "maya" in environment:
     console.setFormatter(logging.Formatter(log_format))
     IO_PDX_LOG.addHandler(console)
 
-    IO_PDX_LOG.info("Running from {0}".format(environment))
-    IO_PDX_LOG.info(root_path)
+    if version < bl_info["maya"]:
+        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Maya {0}".format(bl_info["maya"]))
+        bl_info["unsupported_version"] = True
 
     try:
         # launch the Maya UI
@@ -127,5 +137,8 @@ elif "maya" in environment:
         raise e
 
 # otherwise, we don't support running elsewhere
+if running_from is None:
+    raise NotImplementedError('Running from unknown environment "{0}"'.format(sys.executable))
 else:
-    raise NotImplementedError('Running from unknown environment "{0}"'.format(environment))
+    IO_PDX_LOG.info("Running from {0} ({1})".format(running_from, version))
+    IO_PDX_LOG.info(root_path)
