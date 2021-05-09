@@ -1043,24 +1043,33 @@ class AnimExport_UI(CustomFileDialog):
 class MayaProgress(object):
     """ Wrapping the Maya progress window for convenience. """
 
-    def __init__(self, title, max_value):
-        super(MayaProgress, self).__init__()
-        pmc.progressWindow(title=title, progress=0, min=0, max=max_value, status="", isInterruptable=False)
-
     def __del__(self):
         self.finished()
 
+    def __call__(self, *args):
+        args = list(args)
+        name = args.pop(0)
+        try:
+            fn = getattr(self, name)
+            fn(*args)
+        except AttributeError:
+            IO_PDX_LOG.warning("Maya progress window called with unknown method '{0}'".format(name))
+
+    @staticmethod
+    def show(max_value, title):
+        cmds.progressWindow(title=title, progress=0, min=0, max=max_value, status="", isInterruptable=False)
+
     @staticmethod
     def update(step, status):
-        progress = pmc.progressWindow(query=True, progress=True)
-        max_value = pmc.progressWindow(query=True, max=True)
+        progress = cmds.progressWindow(query=True, progress=True)
+        max_value = cmds.progressWindow(query=True, max=True)
         if progress >= max_value:
-            pmc.progressWindow(edit=True, progress=0)
-        pmc.progressWindow(edit=True, step=step, status=status)
+            cmds.progressWindow(edit=True, progress=0)
+        cmds.progressWindow(edit=True, step=step, status=status)
 
     @staticmethod
     def finished():
-        pmc.progressWindow(endProgress=True)
+        cmds.progressWindow(endProgress=True)
 
 
 """ ====================================================================================================================
