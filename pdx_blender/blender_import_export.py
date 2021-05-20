@@ -127,7 +127,7 @@ def set_local_axis_display(state, data_type):
             if node.data:
                 node.data.show_axes = state
         except Exception as err:
-            IO_PDX_LOG.warning("could not display local axis for node '{0}'".format(node.name))
+            IO_PDX_LOG.warning("could not display local axis for node - {0}".format(node.name))
             IO_PDX_LOG.error(err)
 
 
@@ -205,7 +205,7 @@ def get_material_textures(blender_material):
 
             except StopIteration:
                 IO_PDX_LOG.warning(
-                    "no connected '{0}' image texture found for: {1}".format(bsdf_input, blender_material.name)
+                    "no connected '{0}' image texture found for - {1}".format(bsdf_input, blender_material.name)
                 )
 
     return texture_dict
@@ -644,7 +644,7 @@ def create_node_texture(node_tree, tex_filepath):
         teximage_node.color = (1, 0, 0)
         teximage_node.use_custom_color = True
 
-        IO_PDX_LOG.warning("unable to find texture filepath: {0}".format(tex_filepath))
+        IO_PDX_LOG.warning("unable to find texture filepath - {0}".format(tex_filepath))
 
     new_image.use_fake_user = True
     new_image.alpha_mode = "CHANNEL_PACKED"
@@ -825,13 +825,14 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
 
 def create_skeleton(PDX_bone_list, convert_bonespace=False):
-    # keep track of bones as we create them
+    # keep track of bones as we create them (may not be created in indexed order)
     bone_list = [None for _ in range(0, len(PDX_bone_list))]
 
     # check this skeleton is not already built in the scene
     matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.name)) for bone in PDX_bone_list]
     matching_rigs = list(set(rig for rig in matching_rigs if rig))
     if len(matching_rigs) == 1:
+        IO_PDX_LOG.debug("matching armature already found in scene")
         return matching_rigs[0]
 
     # temporary name used during creation
@@ -915,6 +916,8 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         new_bone.matrix = swap_coord_space(safemat.inverted_safe())
         if convert_bonespace:
             new_bone.matrix = swap_coord_space(safemat.inverted_safe()) @ BONESPACE_MATRIX
+
+        IO_PDX_LOG.debug("new bone created - {}".format(new_bone.name))
 
     # set or correct some bone settings based on hierarchy
     for bone in bone_list:
@@ -1171,7 +1174,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
 
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_materials=True, bonespace=False):
     start = time.time()
-    IO_PDX_LOG.info("importing {0}".format(meshpath))
+    IO_PDX_LOG.info("importing - {0}".format(meshpath))
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(meshpath)
@@ -1252,7 +1255,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
 
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False):
     start = time.time()
-    IO_PDX_LOG.info("exporting {0}".format(meshpath))
+    IO_PDX_LOG.info("exporting - {0}".format(meshpath))
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element("File")
@@ -1397,7 +1400,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
 
 def import_animfile(animpath, frame_start=1):
     start = time.time()
-    IO_PDX_LOG.info("importing {0}".format(animpath))
+    IO_PDX_LOG.info("importing - {0}".format(animpath))
 
     # read the file into an XML structure
     asset_elem = pdx_data.read_meshfile(animpath)
@@ -1448,7 +1451,7 @@ def import_animfile(animpath, frame_start=1):
             edit_bone = pose_bone.bone  # rig.data.bones[bone_name]
         except KeyError:
             bone_errors.append(bone_name)
-            IO_PDX_LOG.warning("failed to find bone '{0}'".format(bone_name))
+            IO_PDX_LOG.warning("failed to find bone - {0}".format(bone_name))
 
         # and set initial transform
         if pose_bone and edit_bone:
@@ -1513,7 +1516,7 @@ def import_animfile(animpath, frame_start=1):
         bone_keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if bone_keys.values():
-            IO_PDX_LOG.info("setting {0} keyframes on bone '{1}'".format(list(bone_keys.keys()), bone_name))
+            IO_PDX_LOG.info("setting {0} keyframes on bone - {1}".format(list(bone_keys.keys()), bone_name))
             create_anim_keys(rig, bone_name, bone_keys, frame_start, initial_pose)
 
     bpy.context.scene.frame_set(frame_start)
@@ -1525,7 +1528,7 @@ def import_animfile(animpath, frame_start=1):
 
 def export_animfile(animpath, frame_start=1, frame_end=10):
     start = time.time()
-    IO_PDX_LOG.info("exporting {0}".format(animpath))
+    IO_PDX_LOG.info("exporting - {0}".format(animpath))
 
     curr_frame = bpy.context.scene.frame_start
     if frame_start != int(frame_start) or frame_end != int(frame_end):
@@ -1609,7 +1612,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10):
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
         if bone_keys:
-            IO_PDX_LOG.info("writing {0} keyframes for bone '{1}'".format(list(bone_keys.keys()), bone_name))
+            IO_PDX_LOG.info("writing {0} keyframes for bone - {1}".format(list(bone_keys.keys()), bone_name))
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
