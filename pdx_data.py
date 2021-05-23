@@ -11,7 +11,7 @@
 from __future__ import print_function, unicode_literals
 
 import os
-import sys
+import json
 from struct import pack, unpack_from
 
 try:
@@ -90,6 +90,21 @@ class PDXData(object):
                     string.append("{}{} ({}, {}):  {}".format(self.depth * indent, _key, data_type, data_len, _val))
 
         return "\n".join(string)
+
+
+class PDXDataJSON(json.JSONEncoder):
+
+    def default(self, obj):
+        if isinstance(obj, PDXData):
+            d = {}
+            for attr in obj.attrlist:
+                val = getattr(obj, attr)
+                if isinstance(val, list):
+                    d[attr] = [v for v in val]
+                else:
+                    d[attr] = val
+            return d
+        return super(PDXDataJSON, self).default(self, obj)
 
 
 """ ====================================================================================================================
@@ -220,7 +235,6 @@ def read_meshfile(filepath):
 
     # create an XML structure to store the object hierarchy
     file_element = Xml.Element("File")
-    file_element.attrib = dict(name=os.path.split(filepath)[1], path=os.path.split(filepath)[0])
 
     # determine the file length and set initial file read position
     eof = len(fdata)
@@ -407,7 +421,8 @@ def write_meshfile(filepath, root_xml):
     else:
         raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
 
-    # TODO: writing properties would be easier if order was irrelevant, you should test this
+    # TODO: writing properties would be easier if order was irrelevant, only under Py3 do Xml attributes maintain order
+    # TODO: test in game files to determine if order of attributes or objects is important
     # write objects root
     object_xml = root_xml.find("object")
     if object_xml is not None:
@@ -547,28 +562,61 @@ def write_animfile(filepath, root_xml):
 
 
 if __name__ == "__main__":
-    """
-       When called from the command line we just print the structure and contents of the .mesh or .anim file to stdout
-    """
-    os.system("cls")
+    """When called from the command line we can just print the structure and contents of the .mesh or .anim file to
+    stdout or write directly to a text file. """
     import argparse
+    from pathlib import Path
 
     parser = argparse.ArgumentParser(description="io_pdx_mesh CLI")
     parser.add_argument("file")
-    parser.add_argument("--out", "-o", default=None)
-    parser.add_argument("--verbose", "-v", action="store_true", default=False)
-
+    parser.add_argument("--outdir", "-dir", required=False, default=None)
+    parser.add_argument("--totext", "-txt", action="store_true", default=False)
+    parser.add_argument("--tojson", "-json", action="store_true", default=False)
     args = parser.parse_args()
-    _file = args.file
-    _data = read_meshfile(_file)
-    pdx_data = PDXData(_data)
 
-    if args.out:
-        with open(args.out, "wt") as fp:
-            fp.write(str(pdx_data) + "\n")
-    else:
-        print(pdx_data)
-        print()
+    file_list = []
+    path = Path(args.file)
+    suffix = ".json" if args.tojson else (".txt" if args.totext else None)
+
+    # run on this single file
+    if path.is_file():
+        try:
+            args.outdir = Path(args.outdir)
+        except TypeError:
+            args.outdir = path.parent
+
+        file_list.append([path, (args.outdir / path.name).with_suffix(suffix)])
+
+    # run on this whole folder structure, recursively
+    elif path.is_dir():
+        try:
+            args.outdir = Path(args.outdir)
+        except TypeError:
+            args.outdir = path
+
+        all_files = []
+        for ext in ["*.mesh", "*.anim"]:
+            all_files.extend(path.rglob(ext))
+        for fullpath in all_files:
+            file_list.append([fullpath, (args.outdir / fullpath.relative_to(path)).with_suffix(suffix)])
+
+    n = len(file_list)
+    for i, (filepath, outpath) in enumerate(file_list):
+        print(f"{i}/{n} : {filepath.relative_to(path)} --> {outpath.relative_to(args.outdir)}")
+        pdx_data = PDXData(read_meshfile(str(filepath)))
+
+        if suffix is not None:
+            outpath.parent.mkdir(parents=True, exist_ok=True)
+            with open(str(outpath), "wt") as fp:
+                if args.totext:
+                    fp.write(str(pdx_data) + "\n")
+                elif args.tojson:
+                    json.dump(pdx_data, fp, indent=2, cls=PDXDataJSON)
+        else:
+            print("-" * 120)
+            print(str(filepath))
+            print()
+            print(pdx_data)
 
 
 """
