@@ -190,7 +190,7 @@ def set_local_axis_display(state, object_type=None, object_list=None):
         try:
             node.displayLocalAxis.set(state)
         except Exception as err:
-            IO_PDX_LOG.warning("could not display local axis for node '{0}'".format(node))
+            IO_PDX_LOG.warning("could not display local axis for node - {0}".format(node))
             IO_PDX_LOG.error(err)
 
 
@@ -554,7 +554,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
         # if we have excess influences, prune them and renormalise weights
         if len(vert_weights[vtx]) > PDX_MAXSKININFS:
             IO_PDX_LOG.warning(
-                "Mesh '{0}' has vertices skinned to more than {1} joints.".format(
+                "mesh '{0}' has vertices skinned to more than {1} joints.".format(
                     maya_mesh.getTransform().name(), PDX_MAXSKININFS
                 )
             )
@@ -786,7 +786,7 @@ def create_filetexture(tex_filepath):
     newFile.fileTextureName.set(tex_filepath)
 
     if not os.path.isfile(tex_filepath):
-        IO_PDX_LOG.warning("unable to find texture filepath: {0}".format(tex_filepath))
+        IO_PDX_LOG.warning("unable to find texture filepath - {0}".format(tex_filepath))
 
     return newFile, new2dTex
 
@@ -948,6 +948,8 @@ def create_skeleton(PDX_bone_list):
         if parent is not None:
             parent_bone = bone_list[parent[0]]
             pmc.connectJoint(new_bone, parent_bone, parentMode=True)
+
+        IO_PDX_LOG.debug("new joint created - {0}".format(new_bone.name()))
 
     for joint in bone_list:
         joint.radius.set(0.3)
@@ -1283,7 +1285,7 @@ def create_anim_keys(joint_name, key_dict, timestart):
 
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_materials=True, **kwargs):
     start = time.time()
-    IO_PDX_LOG.info("importing {0}".format(meshpath))
+    IO_PDX_LOG.info("importing - {0}".format(meshpath))
 
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Importing")
@@ -1378,7 +1380,7 @@ def export_meshfile(
     meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False, **kwargs
 ):
     start = time.time()
-    IO_PDX_LOG.info("exporting {0}".format(meshpath))
+    IO_PDX_LOG.info("exporting - {0}".format(meshpath))
 
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Exporting")
@@ -1540,7 +1542,7 @@ def export_meshfile(
 
 def import_animfile(animpath, frame_start=1, **kwargs):
     start = time.time()
-    IO_PDX_LOG.info("importing {0}".format(animpath))
+    IO_PDX_LOG.info("importing - {0}".format(animpath))
 
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Importing")
@@ -1582,7 +1584,7 @@ def import_animfile(animpath, frame_start=1, **kwargs):
             bone_joint = matching_bones[0]
         except IndexError:
             bone_errors.append(bone_name)
-            IO_PDX_LOG.warning("failed to find bone '{0}'".format(bone_name))
+            IO_PDX_LOG.warning("failed to find bone - {0}".format(bone_name))
             progress("update", 1, "failed to find bone!")
 
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
@@ -1635,7 +1637,7 @@ def import_animfile(animpath, frame_start=1, **kwargs):
         bone_keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if bone_keys.values():
-            IO_PDX_LOG.info("setting {0} keyframes on bone '{1}'".format(list(bone_keys.keys()), bone_name))
+            IO_PDX_LOG.info("setting {0} keyframes on bone - {1}".format(list(bone_keys.keys()), bone_name))
             progress("update", 1, "setting keyframes on bone")
             bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
             create_anim_keys(bone_long_name, bone_keys, frame_start)
@@ -1650,7 +1652,7 @@ def import_animfile(animpath, frame_start=1, **kwargs):
 
 def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     start = time.time()
-    IO_PDX_LOG.info("exporting {0}".format(animpath))
+    IO_PDX_LOG.info("exporting - {0}".format(animpath))
 
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Exporting")
@@ -1737,7 +1739,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
         if bone_keys:
-            IO_PDX_LOG.info("writing {0} keyframes for bone '{1}'".format(list(bone_keys.keys()), bone_name))
+            IO_PDX_LOG.info("writing {0} keyframes for bone - {1}".format(list(bone_keys.keys()), bone_name))
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
