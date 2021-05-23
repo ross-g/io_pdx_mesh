@@ -512,7 +512,7 @@ class PDX_UI(QtWidgets.QDialog):
         result, files, options = MeshImport_UI.runPopup(self)
         if result and files:
             mesh_filepath = files[0]
-            options["progress_fn"] = MayaProgress
+            options["progress_fn"] = MayaProgress()
             try:
                 import_meshfile(mesh_filepath, **options)
                 IO_PDX_SETTINGS.last_import_mesh = mesh_filepath
@@ -530,7 +530,7 @@ class PDX_UI(QtWidgets.QDialog):
         result, files, options = MeshExport_UI.runPopup(self)
         if result and files:
             mesh_filepath = files[0]
-            options["progress_fn"] = MayaProgress
+            options["progress_fn"] = MayaProgress()
             try:
                 export_meshfile(mesh_filepath, **options)
                 QtWidgets.QMessageBox.information(self, "SUCCESS", "Mesh export finished!\n\n{0}".format(mesh_filepath))
@@ -549,7 +549,7 @@ class PDX_UI(QtWidgets.QDialog):
         result, files, options = AnimImport_UI.runPopup(self)
         if result and files:
             anim_filepath = files[0]
-            options["progress_fn"] = MayaProgress
+            options["progress_fn"] = MayaProgress()
             try:
                 import_animfile(anim_filepath, **options)
                 IO_PDX_SETTINGS.last_import_anim = anim_filepath
@@ -568,7 +568,7 @@ class PDX_UI(QtWidgets.QDialog):
         if result and files:
             anim_filepath = files[0]
             try:
-                options["progress_fn"] = MayaProgress
+                options["progress_fn"] = MayaProgress()
                 if options["custom_range"]:
                     export_animfile(anim_filepath, **options)
                 else:
