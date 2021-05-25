@@ -108,6 +108,14 @@ def get_dagnode(name):
     return fn_dag
 
 
+def get_dagroot(name):
+    dag = get_dagnode(name)
+    while dag.parentCount() != 0 and dag.parent(0).apiType() != OpenMayaAPI.MFn.kWorld:
+        dag = OpenMayaAPI.MFnDagNode(dag.parent(0))
+
+    return pmc.PyNode(dag.name())
+
+
 def get_MObject(object_name):
     m_Obj = OpenMaya.MObject()
 
@@ -170,7 +178,7 @@ def list_scene_pdx_materials():
 
 
 def list_scene_rootbones():
-    return list(set([bone.root() for bone in pmc.ls(type="joint")]))
+    return list(set([get_dagroot(bone.name()) for bone in pmc.ls(type="joint")]))
 
 
 def list_scene_pdx_meshes():
@@ -647,16 +655,8 @@ def get_locators_info(maya_locators):
 
 def get_skeleton_hierarchy(bone_list):
     root_bone = set()
-
-    def get_root(name):
-        dag = get_dagnode(name)
-        while dag.parentCount() != 0 and dag.parent(0).apiType() != OpenMayaAPI.MFn.kWorld:
-            dag = OpenMayaAPI.MFnDagNode(dag.parent(0))
-
-        return pmc.PyNode(dag.name())
-
     for bone in bone_list:
-        root_bone.add(get_root(bone.name()))
+        root_bone.add(get_dagroot(bone.name()))
 
     if len(root_bone) != 1:
         raise RuntimeError("Unable to resolve a single root bone for the skeleton. {0}".format(list(root_bone)))
@@ -1685,24 +1685,14 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     # find the scene root bone with animation property (assume this is unique)
     root_bone = None
 
-    pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
-    if len(pdx_scene_rootbones) == 1:
-        root_bone = pdx_scene_rootbones[0]
-    else:
-        # try to use selection root bone
-        selected_bones = pmc.selected(type="joint")
-        if selected_bones:
-            root_bone = selected_bones[0].root()
-
-    if root_bone is None:
-        raise RuntimeError(
-            "Found {0} root bones with PDX animation. Please select a specific root bone before exporting.".format(
-                len(pdx_scene_rootbones)
-            )
-        )
+    # pdx_scene_rootbones = [bone for bone in list_scene_rootbones() if hasattr(bone, PDX_ANIMATION)]
+    # TODO : finsh this, just use selected bone for now
+    root_bone = pmc.selected(type="joint")
+    if not root_bone:
+        raise RuntimeError("Please select a specific root bone before exporting.")
 
     # populate bone data, assume that the skeleton to be exported starts at the scene root bone
-    export_bones = get_skeleton_hierarchy([root_bone])
+    export_bones = get_skeleton_hierarchy(root_bone)
     info_xml.set("j", [len(export_bones)])
 
     # parse the scene animation data
