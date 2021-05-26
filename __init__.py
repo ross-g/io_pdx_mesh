@@ -84,7 +84,7 @@ except Exception as err:
 ========================================================================================================================
 """
 
-running_from, version = None, None
+IO_PDX_LOG, running_from, version = None, None, None
 environment = sys.executable.lower()
 
 # check if running from Blender
@@ -136,9 +136,11 @@ else:
         traceback.print_exc()
         raise e
 
-# otherwise, we don't support running elsewhere
-if running_from is None:
-    raise NotImplementedError('Running from unknown environment "{0}"'.format(sys.executable))
-else:
+if running_from is not None:
     IO_PDX_LOG.info("Running from {0} ({1})".format(running_from, version))
     IO_PDX_LOG.info(root_path)
+# otherwise, we don't support running with UI setup
+else:
+    logging.basicConfig(level=logging.DEBUG, format=log_format)
+    IO_PDX_LOG = logging.getLogger(log_name)
+    IO_PDX_LOG.warning('Running without UI from environment "{0}"'.format(sys.executable))

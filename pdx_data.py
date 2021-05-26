@@ -10,8 +10,9 @@
 
 from __future__ import print_function, unicode_literals
 
-import os
+import sys
 import json
+import warnings
 from struct import pack, unpack_from
 
 try:
@@ -20,11 +21,10 @@ except ImportError:
     import xml.etree.ElementTree as Xml
 
 # Py2, Py3 compatibility
+PY2 = sys.version_info[0] < 3
 try:
-    PY3 = False
     basestring
 except NameError:
-    PY3 = True
     basestring = str
 
 
@@ -93,7 +93,6 @@ class PDXData(object):
 
 
 class PDXDataJSON(json.JSONEncoder):
-
     def default(self, obj):
         if isinstance(obj, PDXData):
             d = {}
@@ -564,59 +563,69 @@ def write_animfile(filepath, root_xml):
 if __name__ == "__main__":
     """When called from the command line we can just print the structure and contents of the .mesh or .anim file to
     stdout or write directly to a text file. """
+    if PY2:
+        warnings.warn(
+            "Commandline mode is only supported under Python 3 (running from {0})".format(
+                ".".join(str(c) for c in sys.version_info)
+            )
+        )
+
     import argparse
     from pathlib import Path
 
     parser = argparse.ArgumentParser(description="io_pdx_mesh CLI")
     parser.add_argument("file")
-    parser.add_argument("--outdir", "-dir", required=False, default=None)
-    parser.add_argument("--totext", "-txt", action="store_true", default=False)
-    parser.add_argument("--tojson", "-json", action="store_true", default=False)
+    parser.add_argument("--outdir", "-out", required=False, default=None)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--totext", "-txt", action="store_true", default=True)
+    group.add_argument("--tojson", "-json", action="store_true", default=False)
     args = parser.parse_args()
 
     file_list = []
     path = Path(args.file)
-    suffix = ".json" if args.tojson else (".txt" if args.totext else None)
+    suffix = ".json" if args.tojson else ".txt"
+    print_only = args.outdir is None
 
     # run on this single file
     if path.is_file():
         try:
-            args.outdir = Path(args.outdir)
+            out_filepath = Path(args.outdir)
         except TypeError:
-            args.outdir = path.parent
+            out_filepath = path.parent / path.name
+        outdir = out_filepath.parent
 
-        file_list.append([path, (args.outdir / path.name).with_suffix(suffix)])
+        file_list.append([path, (out_filepath).with_suffix(suffix)])
 
     # run on this whole folder structure, recursively
     elif path.is_dir():
         try:
-            args.outdir = Path(args.outdir)
+            outdir = Path(args.outdir)
         except TypeError:
-            args.outdir = path
+            outdir = path
 
         all_files = []
         for ext in ["*.mesh", "*.anim"]:
             all_files.extend(path.rglob(ext))
         for fullpath in all_files:
-            file_list.append([fullpath, (args.outdir / fullpath.relative_to(path)).with_suffix(suffix)])
+            file_list.append([fullpath, (outdir / fullpath.relative_to(path)).with_suffix(suffix)])
 
     n = len(file_list)
     for i, (filepath, outpath) in enumerate(file_list):
-        print(f"{i}/{n} : {filepath.relative_to(path)} --> {outpath.relative_to(args.outdir)}")
+        print("{0}/{1} : {2} --> {3}".format(i + 1, n, filepath.relative_to(path), outpath.relative_to(outdir)))
         pdx_data = PDXData(read_meshfile(str(filepath)))
 
-        if suffix is not None:
+        if print_only:
+            print("-" * 120)
+            print(str(filepath))
+            print()
+            print(str(pdx_data))
+        else:
             outpath.parent.mkdir(parents=True, exist_ok=True)
             with open(str(outpath), "wt") as fp:
                 if args.totext:
                     fp.write(str(pdx_data) + "\n")
                 elif args.tojson:
                     json.dump(pdx_data, fp, indent=2, cls=PDXDataJSON)
-        else:
-            print("-" * 120)
-            print(str(filepath))
-            print()
-            print(pdx_data)
 
 
 """
