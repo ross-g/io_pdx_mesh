@@ -1376,14 +1376,18 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, "locator")
 
-    # populae locator data
-    blender_empties = [obj for obj in bpy.context.scene.objects if obj.data is None]
-    loc_info_list = get_locators_info(blender_empties)
+    # populate locator data
+    if exp_locs:
+        blender_empties = [obj for obj in bpy.context.scene.objects if obj.data is None]
+        # optionally intersect with selection
+        if exp_selected:
+            blender_empties = [obj for obj in blender_empties if obj.select_get()]
 
-    if exp_locs and loc_info_list:
+        loc_info_list = get_locators_info(blender_empties)
         IO_PDX_LOG.info("writing locators -")
+
+        # create sub-elements for each locator, populate locator attributes
         for loc_info_dict in loc_info_list:
-            # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc_info_dict["name"])
             for key in ["p", "q", "pa", "tx"]:
                 if key in loc_info_dict and loc_info_dict[key]:

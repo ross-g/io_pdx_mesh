@@ -1385,6 +1385,8 @@ def export_meshfile(
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Exporting")
 
+    current_selection = pmc.selected()
+
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element("File")
     root_xml.set("pdxasset", [1, 0])
@@ -1397,7 +1399,6 @@ def export_meshfile(
         maya_meshes = list_scene_pdx_meshes()
         # optionally intersect with selection
         if exp_selected:
-            current_selection = pmc.selected()
             maya_meshes = [
                 shape
                 for shape in maya_meshes
@@ -1495,7 +1496,6 @@ def export_meshfile(
         maya_bones = [bone for bone in pmc.ls(type="joint")]
         # optionally intersect with selection
         if exp_selected:
-            current_selection = pmc.selected()
             rig_bones = [bone for bone in maya_bones if bone in current_selection]
 
         rig_bones = get_skeleton_hierarchy(maya_bones)
@@ -1519,14 +1519,20 @@ def export_meshfile(
 
     # create root element for locators
     locator_xml = Xml.SubElement(root_xml, "locator")
-    maya_locators = [pmc.listRelatives(loc, parent=True, type="transform")[0] for loc in pmc.ls(type=pmc.nt.Locator)]
-    loc_info_list = get_locators_info(maya_locators)
 
-    if exp_locs and loc_info_list:
+    # populate locator data
+    if exp_locs:
+        maya_locators = [t for t in pmc.ls(type="transform") if pmc.listRelatives(t, shapes=True, type="locator")]
+        # optionally intersect with selection
+        if exp_selected:
+            maya_locators = [obj for obj in maya_locators if obj in current_selection]
+
+        loc_info_list = get_locators_info(maya_locators)
         IO_PDX_LOG.info("writing locators -")
         progress("update", 1, "writing locators")
+
+        # create sub-elements for each locator, populate locator attributes
         for loc_info_dict in loc_info_list:
-            # create sub-elements for each locator, populate locator attributes
             locnode_xml = Xml.SubElement(locator_xml, loc_info_dict["name"])
             for key in ["p", "q", "pa", "tx"]:
                 if key in loc_info_dict and loc_info_dict[key]:
