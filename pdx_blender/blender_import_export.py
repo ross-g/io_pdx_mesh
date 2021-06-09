@@ -81,10 +81,11 @@ def clean_imported_name(name):
     return clean_name
 
 
-def get_bmesh(mesh_data):
-    """ Returns a BMesh from existing mesh data. """
+def get_bmesh(mesh_data, *args):
+    """Returns a BMesh from existing mesh data.
+    face_normals=True, use_shape_key=False, shape_key_index=0"""
     bm = bmesh.new()
-    bm.from_mesh(mesh_data)
+    bm.from_mesh(mesh_data, *args)
 
     return bm
 

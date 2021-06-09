@@ -356,9 +356,9 @@ def get_material_textures(maya_material):
 
 
 def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
-    """ Returns a dictionary of mesh information neccessary to the exporter.
+    """Returns a dictionary of mesh information neccessary to the exporter.
     By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
-    exported separately! """
+    exported separately!"""
     # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
         meshfaces = maya_mesh
@@ -966,7 +966,7 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
     skin_dict = dict()
 
     num_infs = PDX_skin.bones[0]
-    for vtx in xrange(0, len(PDX_skin.ix) / max_infs):
+    for vtx in xrange(0, int(len(PDX_skin.ix) / max_infs)):
         skin_dict[vtx] = dict(joints=[], weights=[])
 
     # gather joint index and weighting that each vertex is skinned to
@@ -1052,7 +1052,7 @@ def create_mesh(PDX_mesh, name=None):
         numVertices += 1
 
     # faces
-    numPolygons = len(tris) / 3
+    numPolygons = int(len(tris) / 3)
     polygonCounts = OpenMaya.MIntArray()  # count of vertices per poly
     for i in xrange(0, numPolygons):
         polygonCounts.append(3)
