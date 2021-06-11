@@ -149,7 +149,7 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
             mat_type = self.custom_type
         # create a mock PDXData object for convenience here to pass to the create_shader function
         mat_pdx = type("Material", (PDXData, object), {"shader": [mat_type]})
-        create_shader(mat_pdx, mat_name, None, placeholder=True)
+        create_shader(mat_pdx, mat_name, None, template_only=True)
         IO_PDX_LOG.info("Created material: {0} ({1})".format(mat_name, mat_type))
         return {"FINISHED"}
 

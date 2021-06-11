@@ -608,38 +608,41 @@ def swap_coord_space(data):
 """
 
 
-def create_node_texture(node_tree, tex_filepath):
-    texture_name = os.path.basename(tex_filepath)
-
+def create_node_texture(node_tree, tex_filepath, as_data=False):
     teximage_node = node_tree.nodes.new("ShaderNodeTexImage")
-    teximage_node.name = texture_name
 
-    if os.path.isfile(tex_filepath):
-        new_image = bpy.data.images.load(tex_filepath, check_existing=True)
+    if tex_filepath is not None:
+        texture_name = os.path.basename(tex_filepath)
 
-    else:
-        # check for existing placeholder
-        if texture_name in bpy.data.images:
-            new_image = bpy.data.images[texture_name]
-        else:
-            # create a new placeholder for missing texture file
-            new_image = bpy.data.images.new(texture_name, 32, 32)
-            new_image.source = "FILE"
-        # highlight node to show error
-        teximage_node.color = (1, 0, 0)
-        teximage_node.use_custom_color = True
+        try:
+            # path exists on disc, just load the image if we haven't already done so
+            new_image = bpy.data.images.load(tex_filepath, check_existing=True)
+        except RuntimeError:
+            # check for existing named placeholder image
+            if texture_name in bpy.data.images:
+                new_image = bpy.data.images[texture_name]
+            else:
+                # create a named placeholder image for a missing texture file
+                new_image = bpy.data.images.new(texture_name, 32, 32)
+                new_image.source = "FILE"
+            # highlight node to show error
+            teximage_node.color = (1, 0, 0)
+            teximage_node.use_custom_color = True
 
-        IO_PDX_LOG.warning("unable to find texture filepath - {0}".format(tex_filepath))
+        if not os.path.isfile(tex_filepath):
+            IO_PDX_LOG.warning("unable to find texture filepath - {0}".format(tex_filepath))
 
-    new_image.use_fake_user = True
-    new_image.alpha_mode = "CHANNEL_PACKED"
+        new_image.use_fake_user = True
+        new_image.alpha_mode = "CHANNEL_PACKED"
+        new_image.colorspace_settings.is_data = as_data
 
-    teximage_node.image = new_image
+        teximage_node.name = texture_name
+        teximage_node.image = new_image
 
     return teximage_node
 
 
-def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
+def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
     new_shader = bpy.data.materials.new(shader_name)
     new_shader[PDX_SHADER] = PDX_material.shader[0]
     new_shader.use_fake_user = True
@@ -667,8 +670,8 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
         set_node_pos(output, 1, 0)
 
     # link up diffuse texture to base-color slot
-    if getattr(PDX_material, "diff", None) or placeholder:
-        texture_path = "" if placeholder else os.path.join(texture_dir, PDX_material.diff[0])
+    if getattr(PDX_material, "diff", None) or template_only:
+        texture_path = None if template_only else os.path.join(texture_dir, PDX_material.diff[0])
 
         albedo_texture = create_node_texture(node_tree, texture_path)
         set_node_pos(albedo_texture, -5, 0)
@@ -677,11 +680,10 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
         # links.new(albedo_texture.outputs['Alpha'], shader_root.inputs['Alpha'])  # diffuse.A sometimes used for alpha
 
     # link up specular texture to roughness, metallic and specular slots
-    if getattr(PDX_material, "spec", None) or placeholder:
-        texture_path = "" if placeholder else os.path.join(texture_dir, PDX_material.spec[0])
+    if getattr(PDX_material, "spec", None) or template_only:
+        texture_path = None if template_only else os.path.join(texture_dir, PDX_material.spec[0])
 
-        material_texture = create_node_texture(node_tree, texture_path)
-        material_texture.image.colorspace_settings.is_data = True
+        material_texture = create_node_texture(node_tree, texture_path, as_data=True)
         set_node_pos(material_texture, -5, 1)
 
         separate_rgb = node_tree.nodes.new(type="ShaderNodeSeparateRGB")
@@ -694,11 +696,10 @@ def create_shader(PDX_material, shader_name, texture_dir, placeholder=False):
         links.new(material_texture.outputs["Alpha"], shader_root.inputs["Roughness"])
 
     # link up normal texture to normal slot
-    if getattr(PDX_material, "n", None) or placeholder:
-        texture_path = "" if placeholder else os.path.join(texture_dir, PDX_material.n[0])
+    if getattr(PDX_material, "n", None) or template_only:
+        texture_path = None if template_only else os.path.join(texture_dir, PDX_material.n[0])
 
-        normal_texture = create_node_texture(node_tree, texture_path)
-        normal_texture.image.colorspace_settings.is_data = True
+        normal_texture = create_node_texture(node_tree, texture_path, as_data=True)
         set_node_pos(normal_texture, -5, 2)
 
         separate_rgb = node_tree.nodes.new(type="ShaderNodeSeparateRGB")
