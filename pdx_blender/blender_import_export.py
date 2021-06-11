@@ -213,15 +213,14 @@ def get_material_textures(blender_material):
 
 
 def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=False):
-    """ Returns a dictionary of mesh information neccessary for the exporter.
+    """Returns a dictionary of mesh information neccessary for the exporter.
     By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
-    exported separately!
-
-    Note: using both mesh and bmesh data below, these must be in the same space or normals & tangents will be wrong. """
+    exported separately!"""
     # get mesh and Bmesh data structures for this object
     mesh = blender_obj.data.copy()  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.name = blender_obj.data.name + "_export"
     mesh.transform(blender_obj.matrix_world)
+    mesh.calc_loop_triangles()
     mesh.calc_normals_split()
 
     # we will need to test vertices for equality based on their attributes
@@ -233,16 +232,6 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
     if uv_setnames:
         mesh.calc_tangents(uvmap=uv_setnames[0])
 
-    bm = get_bmesh(mesh)
-    bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
-
-    # ensure Bmesh data needed for int subscription is initialized
-    bm.faces.ensure_lookup_table()
-    bm.verts.ensure_lookup_table()
-    # initialize the index values of each sequence
-    bm.faces.index_update()
-    bm.verts.index_update()
-
     # build a blank dictionary of mesh information for the exporter
     mesh_dict = {x: [] for x in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "min", "max"]}
 
@@ -250,33 +239,32 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
     export_verts = []
     unique_verts = set()
 
-    for tri in bm.faces:  # all Bmesh faces were triangulated previously
+    # for tri in bm.faces:  # all Bmesh faces were triangulated previously
+    # store data for each loop triangle
+    for tri in mesh.loop_triangles:
         if tri.material_index != mat_index:
             continue  # skip this triangle if it has the wrong material index
 
         # implementation note: the official PDX exporter seems to process verts, in vertex order, for each triangle
         # we must sort the list of loops in vert order, as by default Blender can return a different order
         # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
-        _sorted = sorted(enumerate(tri.loops), key=lambda x: x[1].vert.index)
+        _sorted = sorted(enumerate([mesh.loops[i] for i in tri.loops]), key=lambda x: x[1].vertex_index)
         sorted_indices = [i[0] for i in _sorted]  # track sorting change
         sorted_loops = [i[1] for i in _sorted]
 
         dict_vert_idx = []
 
         for loop in sorted_loops:
-            vert = loop.vert
-            vert_id = vert.index
+            vert_id = loop.vertex_index
 
             # position
-            _position = vert.co
+            _position = mesh.vertices[vert_id].co
             _position = tuple(swap_coord_space(_position))
             if round_data:
                 _position = util_round(_position, PDX_DECIMALPTS)
 
             # normal
-            # FIXME : seems like custom normal per face-vertex is not available through bmesh?
-            # _normal = loop.calc_normal()
-            _normal = mesh.loops[loop.index].normal  # assumes mesh-loop and bmesh-loop share indices!
+            _normal = loop.normal
             _normal = tuple(swap_coord_space(_normal))
             if round_data:
                 _normal = util_round(_normal, PDX_DECIMALPTS)
@@ -284,8 +272,8 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
             # uv
             _uv_coords = ()
             for i, uv_set in enumerate(uv_setnames):
-                uv_layer = bm.loops.layers.uv[uv_set]
-                uv = loop[uv_layer].uv
+                uv_layer = mesh.uv_layers[uv_set]
+                uv = uv_layer.data[loop.index].uv
                 uv = tuple(swap_coord_space(tuple(uv)))
                 if round_data:
                     uv = util_round(uv, PDX_DECIMALPTS)
@@ -293,9 +281,8 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
 
             # tangent (omitted if there were no UVs)
             if uv_setnames:
-                # _tangent = loop.calc_tangent()
-                _bitangent_sign = mesh.loops[loop.index].bitangent_sign
-                _tangent = mesh.loops[loop.index].tangent  # assumes mesh-loop and bmesh-loop share indices!
+                _bitangent_sign = loop.bitangent_sign
+                _tangent = loop.tangent
                 _tangent = tuple(swap_coord_space(_tangent))
                 if round_data:
                     _tangent = util_round(_tangent, PDX_DECIMALPTS)
@@ -346,9 +333,6 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
     vert_id_list = [vert.id for vert in export_verts]
 
     # cleanup
-    bm.free()
-    mesh.free_tangents()
-    mesh.free_normals_split()
     bpy.data.meshes.remove(mesh)  # delete duplicate mesh datablock
 
     return mesh_dict, vert_id_list
