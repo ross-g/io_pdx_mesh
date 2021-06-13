@@ -32,6 +32,7 @@ from ..updater import github
 
 try:
     from . import maya_import_export
+
     reload(maya_import_export)
 
     from .maya_import_export import (
@@ -102,13 +103,13 @@ def move_dialog_onscreen(dialog):
         else:
             # partially offscreen, move
             if frame.left() < screen.left():
-                x_pos += (screen.left() - frame.left())
+                x_pos += screen.left() - frame.left()
             if frame.right() > screen.right():
-                x_pos += (screen.right() - frame.right())
+                x_pos += screen.right() - frame.right()
             if frame.top() < screen.top():
-                y_pos += (screen.top() - frame.top())
+                y_pos += screen.top() - frame.top()
             if frame.bottom() > screen.bottom():
-                y_pos += (screen.bottom() - frame.bottom())
+                y_pos += screen.bottom() - frame.bottom()
 
             dialog.move(x_pos, y_pos)
 
@@ -222,7 +223,7 @@ class CustomFileDialog(QtWidgets.QFileDialog):
                     value = ctrl.value()
 
                 # store this controls value against its identifier
-                if name is not None and value is not None:
+                if name not in [None, ""] and value is not None:
                     ctrl_values[name] = value
                 # check all children of this control
                 ctrl_values.update(widget_values(ctrl))
@@ -575,7 +576,9 @@ class PDX_UI(QtWidgets.QDialog):
                     options["frame_start"] = pmc.playbackOptions(query=True, minTime=True)
                     options["frame_end"] = pmc.playbackOptions(query=True, maxTime=True)
                     export_animfile(anim_filepath, **options)
-                QtWidgets.QMessageBox.information(self, "SUCCESS", "Animation export finished!\n\n{0}".format(anim_filepath))
+                QtWidgets.QMessageBox.information(
+                    self, "SUCCESS", "Animation export finished!\n\n{0}".format(anim_filepath)
+                )
                 IO_PDX_SETTINGS.last_export_anim = anim_filepath
             except Exception as err:
                 IO_PDX_LOG.warning("FAILED to export {0}".format(anim_filepath))
@@ -897,7 +900,7 @@ class MeshImport_UI(CustomFileDialog):
         self.chk_locs.setObjectName("imp_locs")
 
         self.mesh_settings.layout().addWidget(self.chk_joinmats)
-        self.mesh_settings.layout().setContentsMargins(16, 4, 4, 4)
+        self.mesh_settings.layout().setContentsMargins(4, 4, 4, 4)
         self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
         self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
 
@@ -927,8 +930,8 @@ class AnimImport_UI(CustomFileDialog):
 
         self.lbl_start = QtWidgets.QLabel("Start frame:")
         self.spn_frame = QtWidgets.QSpinBox()
-        self.spn_frame.setMaximumWidth(100)
         self.spn_frame.setObjectName("frame_start")
+        self.spn_frame.setMaximumWidth(100)
         self.spn_frame.setValue(1)
 
         frame_group = QtWidgets.QHBoxLayout()
@@ -956,9 +959,6 @@ class MeshExport_UI(CustomFileDialog):
         self.chk_mesh = QtWidgets.QCheckBox("Mesh")
         self.chk_mesh.setObjectName("exp_mesh")
 
-        self.mesh_settings = QtWidgets.QGroupBox()
-        self.mesh_settings.setLayout(QtWidgets.QVBoxLayout())
-
         self.chk_skel = QtWidgets.QCheckBox("Skeleton")
         self.chk_skel.setObjectName("exp_skel")
 
@@ -967,22 +967,50 @@ class MeshExport_UI(CustomFileDialog):
 
         self.chk_sel_only = QtWidgets.QCheckBox("Selection only")
         self.chk_sel_only.setObjectName("exp_selected")
+        self.chk_sel_only.setToolTip("Filter export by selection")
+
+        self.chk_debug = QtWidgets.QCheckBox("Debug options")
+        self.chk_debug.setObjectName("exp_debug")
+
+        self.debug_settings = QtWidgets.QGroupBox()
+        self.debug_settings.setLayout(QtWidgets.QVBoxLayout())
 
         self.chk_split_vtx = QtWidgets.QCheckBox("Split all vertices")
         self.chk_split_vtx.setObjectName("split_verts")
 
-        self.mesh_settings.layout().addWidget(self.chk_split_vtx)
-        self.mesh_settings.layout().setContentsMargins(16, 4, 4, 4)
-        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
-        self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        sort_vtx_option = QtWidgets.QWidget(self)
+        sort_vtx_option.setLayout(QtWidgets.QHBoxLayout())
+        lbl_sort_vtx = QtWidgets.QLabel("Sort vertices")
+        self.ddl_sort_vtx = QtWidgets.QComboBox(self)
+        self.ddl_sort_vtx.setObjectName("sort_verts")
+        self.ddl_sort_vtx.addItems(["+", "~", "-"])
+        self.ddl_sort_vtx.setMaximumWidth(35)
+        sort_vtx_option.layout().addWidget(lbl_sort_vtx)
+        sort_vtx_option.layout().addWidget(self.ddl_sort_vtx)
+        sort_vtx_option.layout().setContentsMargins(0, 0, 0, 0)
 
-        for ctrl in [self.chk_mesh, self.mesh_settings, self.chk_skel, self.chk_locs, self.chk_sel_only]:
+        self.debug_settings.layout().addWidget(self.chk_split_vtx)
+        self.debug_settings.layout().addWidget(sort_vtx_option)
+        self.debug_settings.layout().setContentsMargins(4, 4, 4, 4)
+        self.debug_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.debug_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        self.debug_settings.setVisible(False)
+
+        for ctrl in [
+            self.chk_mesh,
+            self.chk_skel,
+            self.chk_locs,
+            self.chk_sel_only,
+            self.chk_debug,
+            self.debug_settings,
+        ]:
             options_group.layout().addWidget(ctrl)
 
+        # TODO: better way to set defaults in multiple places?
         for ctrl in [self.chk_mesh, self.chk_skel, self.chk_locs]:
             ctrl.setChecked(True)
 
-        self.chk_mesh.toggled.connect(self.mesh_settings.setVisible)
+        self.chk_debug.toggled.connect(self.debug_settings.setVisible)
 
 
 class AnimExport_UI(CustomFileDialog):
@@ -1009,13 +1037,13 @@ class AnimExport_UI(CustomFileDialog):
 
         self.lbl_start = QtWidgets.QLabel("Start frame:")
         self.spn_start = QtWidgets.QSpinBox()
-        self.spn_start.setFixedWidth(65)
         self.spn_start.setObjectName("frame_start")
+        self.spn_start.setFixedWidth(65)
 
         self.lbl_end = QtWidgets.QLabel("End frame:")
         self.spn_end = QtWidgets.QSpinBox()
-        self.spn_end.setFixedWidth(65)
         self.spn_end.setObjectName("frame_end")
+        self.spn_end.setFixedWidth(65)
 
         self.start_group = QtWidgets.QHBoxLayout()
         self.start_group.setContentsMargins(0, 0, 0, 0)
@@ -1028,7 +1056,7 @@ class AnimExport_UI(CustomFileDialog):
 
         self.range_settings.layout().addLayout(self.start_group)
         self.range_settings.layout().addLayout(self.end_group)
-        self.range_settings.layout().setContentsMargins(16, 4, 4, 4)
+        self.range_settings.layout().setContentsMargins(4, 4, 4, 4)
         self.range_settings.layout().setAlignment(QtCore.Qt.AlignRight)
         self.range_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
 

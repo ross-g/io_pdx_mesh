@@ -155,7 +155,7 @@ def get_mesh_index(blender_mesh):
 
 
 def check_mesh_material(blender_obj):
-    """ Object needs at least one of it's materials to be a PDX material if we're going to export it. """
+    """Object needs at least one of it's materials to be a PDX material if we're going to export it. """
     result = False
 
     materials = [slot.material for slot in blender_obj.material_slots]
@@ -213,11 +213,15 @@ def get_material_textures(blender_material):
     return texture_dict
 
 
-def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=False):
-    """Returns a dictionary of mesh information neccessary for the exporter.
-    By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
-    exported separately!"""
-    # get mesh and Bmesh data structures for this object
+def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, sort_vertices=True, round_data=False):
+    """Returns a dictionary of mesh information neccessary to the exporter.
+    This performs a tri-split on all points to create unique vertices where points have split UV or Normal data.
+        `split_all_vertices` will enable tri-split on all points even where points share data.
+    Points are processed in order of vertex id for each triangle to maintain compatibility with the official exporter.
+        `sort_vertices` will allow for descending/DCC-native/ascending vertex order.
+    """
+    print("get_mesh_info", blender_obj, mat_index, split_all_vertices, sort_vertices, round_data)
+    # get mesh data structures for this object
     mesh = blender_obj.data.copy()  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.name = blender_obj.data.name + "_export"
     mesh.transform(blender_obj.matrix_world)
@@ -240,22 +244,24 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
     export_verts = []
     unique_verts = set()
 
-    # for tri in bm.faces:  # all Bmesh faces were triangulated previously
     # store data for each loop triangle
     for tri in mesh.loop_triangles:
         if tri.material_index != mat_index:
             continue  # skip this triangle if it has the wrong material index
 
-        # implementation note: the official PDX exporter seems to process verts, in vertex order, for each triangle
-        # we must sort the list of loops in vert order, as by default Blender can return a different order
-        # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
-        _sorted = sorted(enumerate([mesh.loops[i] for i in tri.loops]), key=lambda x: x[1].vertex_index)
-        sorted_indices = [i[0] for i in _sorted]  # track sorting change
-        sorted_loops = [i[1] for i in _sorted]
+        tri_loops = [mesh.loops[i] for i in tri.loops]
+        # process verts for each triangle, sort the list of tri-verts in vertex order or use default Blender ordering
+        if sort_vertices is not None:
+            _sorted = sorted(enumerate(tri_loops), key=lambda x: x[1].vertex_index, reverse=not sort_vertices)
+            indices = [i[0] for i in _sorted]  # track sorting change
+            tri_loops = [i[1] for i in _sorted]
+        else:
+            indices = [0, 1, 2]
 
         dict_vert_idx = []
 
-        for loop in sorted_loops:
+        # iterate over tri verts
+        for loop in tri_loops:
             vert_id = loop.vertex_index
 
             # position
@@ -320,7 +326,7 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
         # tri-faces (converting handedness to Game space)
         mesh_dict["tri"].extend(
             # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
-            [dict_vert_idx[sorted_indices[0]], dict_vert_idx[sorted_indices[2]], dict_vert_idx[sorted_indices[1]]]
+            [dict_vert_idx[indices[0]], dict_vert_idx[indices[2]], dict_vert_idx[indices[1]]]
         )
 
     # calculate min and max bounds of mesh
@@ -581,7 +587,7 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
 
 
 def swap_coord_space(data):
-    """ Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up). """
+    """Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up). """
     global SPACE_MATRIX
 
     # matrix
@@ -1240,9 +1246,13 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False):
+def export_meshfile(
+    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, split_verts=False, **kwargs
+):
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(meshpath))
+
+    sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element("File")
@@ -1284,7 +1294,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split
                 meshnode_xml = Xml.SubElement(objnode_xml, "mesh")
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, split_verts)
+                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, split_verts, sort_verts)
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:

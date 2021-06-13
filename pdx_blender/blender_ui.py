@@ -357,8 +357,9 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
         box.prop(self, "chk_mesh")
         if self.chk_mesh:
             mesh_settings = box.box()
-            mesh_settings.use_property_split = True
-            mesh_settings.prop(self, "chk_joinmats")
+            split = mesh_settings.split(factor=0.2)
+            _, col = split.column(), split.column()
+            col.prop(self, "chk_joinmats")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
         # box.prop(self, 'chk_bonespace')  # TODO: works but overcomplicates things, disabled for now
@@ -480,10 +481,25 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         description="Filter export by selection",
         default=False,
     )
+    chk_debug: BoolProperty(
+        name="Debug options",
+        description="Non-standard options",
+        default=False,
+    )
     chk_split_vtx: BoolProperty(
         name="Split all vertices",
-        description="Splits all vertices during export",
+        description="Splits all vertices (per triangle) during export",
         default=False,
+    )
+    ddl_sort_vtx: EnumProperty(
+        name="Sort vertices",
+        description="Sort all vertex data by id during export",
+        items=(
+            ("+", "Incr", "Ascending id sort"),
+            ("~", "Native", "Blender native order"),
+            ("-", "Decr", "Descending id sort")
+        ),
+        default="+",
     )
     # fmt:on
 
@@ -491,13 +507,16 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         box = self.layout.box()
         box.label(text="Settings:", icon="EXPORT")
         box.prop(self, "chk_mesh")
-        if self.chk_mesh:
-            mesh_settings = box.box()
-            mesh_settings.use_property_split = True
-            mesh_settings.prop(self, "chk_split_vtx")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
         box.prop(self, "chk_selected")
+        box.prop(self, "chk_debug")
+        if self.chk_debug:
+            debug_settings = box.box()
+            split = debug_settings.split(factor=0.2)
+            _, col = split.column(), split.column()
+            col.prop(self, "chk_split_vtx")
+            col.prop(self, "ddl_sort_vtx")
 
     def execute(self, context):
         try:
@@ -506,8 +525,9 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_mesh=self.chk_mesh,
                 exp_skel=self.chk_skel,
                 exp_locs=self.chk_locs,
-                split_verts=self.chk_split_vtx,
                 exp_selected=self.chk_selected,
+                split_verts=self.chk_split_vtx,
+                sort_verts=self.ddl_sort_vtx,
             )
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed exporting {}".format(self.filepath))
             IO_PDX_SETTINGS.last_export_mesh = self.filepath
@@ -563,7 +583,6 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
         box = self.layout.box()
         box.label(text="Settings:", icon="EXPORT")
         box.prop(settings, "custom_range")
-
         if settings.custom_range:
             range_settings = box.box()
             range_settings.use_property_split = True

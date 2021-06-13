@@ -159,7 +159,7 @@ def connect_nodeplugs(source_mobject, source_mplug, dest_mobject, dest_mplug):
 
 
 def util_round(data, ndigits=0):
-    """ Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed). """
+    """Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed). """
     return tuple(round(x, ndigits) for x in data)
 
 
@@ -364,10 +364,13 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
+def get_mesh_info(maya_mesh, split_all_vertices=False, sort_vertices=True, round_data=False):
     """Returns a dictionary of mesh information neccessary to the exporter.
-    By default this merges vertices across triangles where normal and UV data is shared, otherwise each tri-vert is
-    exported separately!"""
+    This performs a tri-split on all points to create unique vertices where points have split UV or Normal data.
+        `split_all_vertices` will enable tri-split on all points even where points share data.
+    Points are processed in order of vertex id for each triangle to maintain compatibility with the official exporter.
+        `sort_vertices` will allow for descending/DCC-native/ascending vertex order.
+    """
     # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
         meshfaces = maya_mesh
@@ -415,17 +418,17 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
         for tri in xrange(0, num_triangles):
             tri_vert_ids = mesh.getPolygonTriangleVertices(face_id, tri)  # vertices making this triangle
 
-            # implementation note: the official PDX exporter seems to process verts, in vertex order, for each triangle
-            # we must sort the list of tri-verts in vertex order, as by default Maya can return a different order
-            # required to support exporting new Blendshape targets where the base mesh came from the PDX exporter
-            _sorted = sorted(enumerate(tri_vert_ids), key=lambda x: x[1])
-            sorted_indices = [i[0] for i in _sorted]  # track sorting change
-            sorted_tri_vert_ids = [i[1] for i in _sorted]
+            # process verts for each triangle, sort the list of tri-verts in vertex order or use default Maya ordering
+            if sort_vertices is not None:
+                _sorted = sorted(enumerate(tri_vert_ids), key=lambda x: x[1], reverse=not sort_vertices)
+                indices = [i[0] for i in _sorted]  # track sorting change
+                tri_vert_ids = [i[1] for i in _sorted]
+            else:
+                indices = [0, 1, 2]
 
             dict_vert_idx = []
-
-            # loop over tri verts
-            for vert_id in sorted_tri_vert_ids:
+            # iterate over tri verts
+            for vert_id in tri_vert_ids:
                 _local_id = face_vert_ids.index(vert_id)  # face relative vertex index
 
                 # position
@@ -496,7 +499,7 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
             # tri-faces (converting handedness to Game space)
             mesh_dict["tri"].extend(
                 # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
-                [dict_vert_idx[sorted_indices[0]], dict_vert_idx[sorted_indices[2]], dict_vert_idx[sorted_indices[1]]]
+                [dict_vert_idx[indices[0]], dict_vert_idx[indices[2]], dict_vert_idx[indices[1]]]
             )
 
     # calculate min and max bounds of mesh
@@ -513,9 +516,7 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, round_data=False):
 
 
 def get_mesh_skin_info(maya_mesh, vertex_ids=None):
-    """
-    pmc.skinPercent(skin, maya_mesh, normalize=True, pruneWeights=0.1)
-    """
+    """pmc.skinPercent(skin, maya_mesh, normalize=True, pruneWeights=0.1) """
     skinclusters = list(set(pmc.listConnections(maya_mesh, type="skinCluster")))
     if not skinclusters:
         return None
@@ -740,7 +741,7 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
 
 
 def swap_coord_space(data):
-    """ Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up). """
+    """Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up). """
     global SPACE_MATRIX
 
     # matrix
@@ -770,7 +771,7 @@ def swap_coord_space(data):
 
 
 def create_filetexture(tex_filepath):
-    """ Creates & connects up a new file node and place2dTexture node, uses the supplied filepath. """
+    """Creates and connects up a new file node and place2dTexture node, uses the supplied filepath. """
     newFile = pmc.shadingNode("file", asTexture=True)
     new2dTex = pmc.shadingNode("place2dTexture", asUtility=True)
 
@@ -843,7 +844,7 @@ def create_material(PDX_material, mesh, texture_folder):
 
 
 def create_locator(PDX_locator, PDX_bone_dict):
-    """ Creates a Maya Locator object. """
+    """Creates a Maya Locator object. """
     # create locator
     new_loc = pmc.spaceLocator()
     pmc.select(new_loc)
@@ -1027,7 +1028,7 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
 
 
 def create_mesh(PDX_mesh, name=None):
-    """ Creates a Maya mesh object. """
+    """Creates a Maya mesh object. """
     # temporary name used during creation
     tmp_mesh_name = "io_pdx_mesh"
 
@@ -1386,11 +1387,12 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
 
 
 def export_meshfile(
-    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, split_verts=False, exp_selected=False, **kwargs
+    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, split_verts=False, **kwargs
 ):
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(meshpath))
 
+    sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Exporting")
 
@@ -1448,7 +1450,7 @@ def export_meshfile(
                 mesh = [meshface for meshface in group.members(flatten=True) if meshface.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(mesh, split_verts)
+                mesh_info_dict, vert_ids = get_mesh_info(mesh, split_verts, sort_verts)
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
