@@ -171,7 +171,7 @@ def get_material_shader(blender_material):
 
 
 def get_material_textures(blender_material):
-    texture_dict = dict()
+    texture_dict = {}
 
     node_tree = blender_material.node_tree
     nodes = node_tree.nodes
@@ -201,8 +201,9 @@ def get_material_textures(blender_material):
                     first_link = next(i for i in input_node.inputs if i.is_linked)
                     input_node = first_link.links[0].from_node
 
-                tex_filepath = input_node.image.filepath_from_user()
-                texture_dict[pdxmaterial_slot] = tex_filepath
+                if input_node.image is not None:
+                    tex_filepath = input_node.image.filepath_from_user()
+                    texture_dict[pdxmaterial_slot] = tex_filepath
 
             except StopIteration:
                 IO_PDX_LOG.warning(

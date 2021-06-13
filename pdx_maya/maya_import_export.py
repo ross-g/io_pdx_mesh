@@ -340,17 +340,26 @@ def get_material_shader(maya_material):
 
 
 def get_material_textures(maya_material):
-    texture_dict = dict()
+    texture_dict = {}
 
-    if maya_material.color.connections():
-        texture_dict["diff"] = maya_material.color.connections()[0].fileTextureName.get()
+    basecolor = maya_material.color.connections()
+    if basecolor:
+        filepath = basecolor[0].fileTextureName.get()
+        if filepath:
+            texture_dict["diff"] = filepath
 
-    if maya_material.normalCamera.connections():
-        bump2d = maya_material.normalCamera.connections()[0]
-        texture_dict["n"] = bump2d.bumpValue.connections()[0].fileTextureName.get()
+    roughness = maya_material.specularColor.connections()
+    if roughness:
+        filepath = roughness[0].fileTextureName.get()
+        if filepath:
+            texture_dict["spec"] = filepath
 
-    if maya_material.specularColor.connections():
-        texture_dict["spec"] = maya_material.specularColor.connections()[0].fileTextureName.get()
+    normal = maya_material.normalCamera.connections()
+    if normal:
+        bump2d = normal[0]
+        filepath = bump2d.bumpValue.connections()[0].fileTextureName.get()
+        if filepath:
+            texture_dict["n"] = filepath
 
     return texture_dict
 
