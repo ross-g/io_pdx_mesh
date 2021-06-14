@@ -574,17 +574,17 @@ if __name__ == "__main__":
     from pathlib import Path
 
     parser = argparse.ArgumentParser(description="io_pdx_mesh CLI")
-    parser.add_argument("file")
+    parser.add_argument("path")
     parser.add_argument("--outdir", "-out", required=False, default=None)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--totext", "-txt", action="store_true", default=True)
+    group.add_argument("--totext", "-txt", action="store_true", default=False)
     group.add_argument("--tojson", "-json", action="store_true", default=False)
     args = parser.parse_args()
 
     file_list = []
-    path = Path(args.file)
+    path = Path(args.path)
     suffix = ".json" if args.tojson else ".txt"
-    print_only = args.outdir is None
+    outdir = None
 
     # run on this single file
     if path.is_file():
@@ -609,9 +609,9 @@ if __name__ == "__main__":
         for fullpath in all_files:
             file_list.append([fullpath, (outdir / fullpath.relative_to(path)).with_suffix(suffix)])
 
+    print_only = args.totext is False and args.tojson is False
     n = len(file_list)
     for i, (filepath, outpath) in enumerate(file_list):
-        print("{0}/{1} : {2} --> {3}".format(i + 1, n, filepath.relative_to(path), outpath.relative_to(outdir)))
         pdx_data = PDXData(read_meshfile(str(filepath)))
 
         if print_only:
@@ -619,12 +619,14 @@ if __name__ == "__main__":
             print(str(filepath))
             print()
             print(str(pdx_data))
+
         else:
+            print("{0}/{1} : {2} --> {3}".format(i + 1, n, filepath.relative_to(path.parent), outpath.relative_to(outdir)))
             outpath.parent.mkdir(parents=True, exist_ok=True)
             with open(str(outpath), "wt") as fp:
                 if args.totext:
                     fp.write(str(pdx_data) + "\n")
-                elif args.tojson:
+                if args.tojson:
                     json.dump(pdx_data, fp, indent=2, cls=PDXDataJSON)
 
 
