@@ -357,7 +357,7 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
         box.prop(self, "chk_mesh")
         if self.chk_mesh:
             mesh_settings = box.box()
-            split = mesh_settings.split(factor=0.2)
+            split = mesh_settings.split(factor=0.1)
             _, col = split.column(), split.column()
             col.prop(self, "chk_joinmats")
         box.prop(self, "chk_skel")
@@ -462,22 +462,27 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         maxlen=1024,
     )
     chk_mesh: BoolProperty(
-        name="Export mesh",
+        name="Meshes",
         description="Export meshes",
         default=True,
     )
+    chk_mesh_blendshape: BoolProperty(
+        name="As blendshape",
+        description="Export meshes as blendshapes",
+        default=False,
+    )
     chk_skel: BoolProperty(
-        name="Export skeleton",
+        name="Skeleton",
         description="Export related armatures",
         default=True,
     )
     chk_locs: BoolProperty(
-        name="Export locators",
+        name="Locators",
         description="Export empties data",
         default=True,
     )
     chk_selected: BoolProperty(
-        name="Selected Only",
+        name="Selected only",
         description="Filter export by selection",
         default=False,
     )
@@ -507,13 +512,18 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         box = self.layout.box()
         box.label(text="Settings:", icon="EXPORT")
         box.prop(self, "chk_mesh")
+        if self.chk_mesh:
+            mesh_settings = box.box()
+            split = mesh_settings.split(factor=0.1)
+            _, col = split.column(), split.column()
+            col.prop(self, "chk_mesh_blendshape")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
         box.prop(self, "chk_selected")
         box.prop(self, "chk_debug")
         if self.chk_debug:
             debug_settings = box.box()
-            split = debug_settings.split(factor=0.2)
+            split = debug_settings.split(factor=0.1)
             _, col = split.column(), split.column()
             col.prop(self, "chk_split_vtx")
             col.prop(self, "ddl_sort_vtx")
@@ -526,6 +536,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_skel=self.chk_skel,
                 exp_locs=self.chk_locs,
                 exp_selected=self.chk_selected,
+                as_blendshape=self.chk_mesh_blendshape,
                 split_verts=self.chk_split_vtx,
                 sort_verts=self.ddl_sort_vtx,
             )

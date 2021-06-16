@@ -364,12 +364,14 @@ def get_material_textures(maya_material):
     return texture_dict
 
 
-def get_mesh_info(maya_mesh, split_all_vertices=False, sort_vertices=True, round_data=False):
+def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices=True):
     """Returns a dictionary of mesh information neccessary to the exporter.
+
     This performs a tri-split on all points to create unique vertices where points have split UV or Normal data.
-        `split_all_vertices` will enable tri-split on all points even where points share data.
+    `split_all` will enable tri-split on all points even where points share data.
+
     Points are processed in order of vertex id for each triangle to maintain compatibility with the official exporter.
-        `sort_vertices` will allow for descending/DCC-native/ascending vertex order.
+    `sort_vertices` will allow for descending/DCC-native/ascending vertex order.
     """
     # get references to MeshFace and Mesh types
     if type(maya_mesh) == pmc.general.MeshFace:
@@ -380,10 +382,6 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, sort_vertices=True, round
         mesh = maya_mesh
     else:
         raise RuntimeError("Unsupported mesh type encountered. {0}".format(type(maya_mesh)))
-
-    # we will need to test vertices for equality based on their attributes
-    # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
-    UniqueVertex = namedtuple("UniqueVertex", ["id", "p", "n", "uv"])
 
     # API mesh function set
     mesh_obj = get_mobject(mesh.name())
@@ -404,6 +402,11 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, sort_vertices=True, round
 
     # build a blank dictionary of mesh information for the exporter
     mesh_dict = {x: [] for x in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "min", "max"]}
+
+    # we will need to test vertices for equality based on their attributes and some split criteria
+    # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
+    split_criteria = split_criteria or ["id", "p", "n", "uv"]
+    UniqueVertex = namedtuple("UniqueVertex", split_criteria)
 
     # collect all unique verts in the order that we process them
     export_verts = []
@@ -433,16 +436,12 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, sort_vertices=True, round
 
                 # position
                 _position = vertices[vert_id]
-                _position = swap_coord_space(_position)
-                if round_data:
-                    _position = util_round(list(_position), PDX_DECIMALPTS)
+                _position = tuple(swap_coord_space(_position))
 
                 # normal
                 vert_norm_id = face.normalIndex(_local_id)
                 _normal = list(normals[vert_norm_id])
-                _normal = swap_coord_space(_normal)
-                if round_data:
-                    _normal = util_round(list(_normal), PDX_DECIMALPTS)
+                _normal = tuple(swap_coord_space(_normal))
 
                 # uv
                 _uv_coords = ()
@@ -451,8 +450,6 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, sort_vertices=True, round
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
                         uv = uv_coords[i][vert_uv_id]
                         uv = swap_coord_space(uv)
-                        if round_data:
-                            uv = util_round(list(uv), PDX_DECIMALPTS)
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
                         uv = (0.0, 0.0)
@@ -464,15 +461,14 @@ def get_mesh_info(maya_mesh, split_all_vertices=False, sort_vertices=True, round
                     _binormal_sign = 1.0 if mFn_Mesh.isRightHandedTangent(vert_tangent_id, uv_setnames[0]) else -1.0
                     _tangent = list(tangents[vert_tangent_id])
                     _tangent = swap_coord_space(_tangent)
-                    if round_data:
-                        _tangent = util_round(list(_tangent), PDX_DECIMALPTS)
 
-                # check if this tri-vert is new and unique, or can if we can just use an existing vertex
-                new_vert = UniqueVertex(vert_id, tuple(_position), tuple(_normal), _uv_coords)
+                # check if this tri-verts vertex data is new and unique, or can if we can just use an existing vertex
+                vdata = {"id": vert_id, "p": _position, "n": _normal, "uv": _uv_coords}
+                new_vert = UniqueVertex(*[vdata.get(x) for x in split_criteria])
 
                 # test if we have already stored this vertex in the unique set
                 i = None
-                if not split_all_vertices:
+                if not split_all:
                     if new_vert in unique_verts:
                         # no new data to be added to the mesh dict, the tri will reference an existing vert
                         i = export_verts.index(new_vert)
@@ -1294,10 +1290,10 @@ def create_anim_keys(joint_name, key_dict, timestart):
 
 
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_materials=True, **kwargs):
+    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
+
     start = time.time()
     IO_PDX_LOG.info("importing - {0}".format(meshpath))
-
-    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Importing")
 
     # read the file into an XML structure
@@ -1386,14 +1382,16 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
     progress("finished")
 
 
-def export_meshfile(
-    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, split_verts=False, **kwargs
-):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, **kwargs):
+    # kwargs wrangling
+    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
+    as_blendshape = kwargs.get("as_blendshape", False)
+    split_by = ["id", "p", "uv"] if as_blendshape else None
+    split_verts = kwargs.get("split_verts", False)
+    sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
+
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(meshpath))
-
-    sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
-    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Exporting")
 
     current_selection = pmc.selected()
@@ -1450,7 +1448,9 @@ def export_meshfile(
                 mesh = [meshface for meshface in group.members(flatten=True) if meshface.node() == shape][0]
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(mesh, split_verts, sort_verts)
+                mesh_info_dict, vert_ids = get_mesh_info(
+                    mesh, split_criteria=split_by, split_all=split_verts, sort_vertices=sort_verts
+                )
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
@@ -1558,10 +1558,10 @@ def export_meshfile(
 
 
 def import_animfile(animpath, frame_start=1, **kwargs):
+    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
+
     start = time.time()
     IO_PDX_LOG.info("importing - {0}".format(animpath))
-
-    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Importing")
 
     # read the file into an XML structure
@@ -1668,10 +1668,10 @@ def import_animfile(animpath, frame_start=1, **kwargs):
 
 
 def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
+    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
+
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(animpath))
-
-    progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
     progress("show", 10, "Exporting")
 
     curr_frame = pmc.currentTime(query=True)

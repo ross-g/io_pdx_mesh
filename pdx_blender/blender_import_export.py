@@ -213,24 +213,21 @@ def get_material_textures(blender_material):
     return texture_dict
 
 
-def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, sort_vertices=True, round_data=False):
+def get_mesh_info(blender_obj, mat_id, split_criteria=None, split_all=False, sort_vertices=True):
     """Returns a dictionary of mesh information neccessary to the exporter.
+
     This performs a tri-split on all points to create unique vertices where points have split UV or Normal data.
-        `split_all_vertices` will enable tri-split on all points even where points share data.
+    `split_all` will enable tri-split on all points even where points share data.
+
     Points are processed in order of vertex id for each triangle to maintain compatibility with the official exporter.
-        `sort_vertices` will allow for descending/DCC-native/ascending vertex order.
+    `sort_vertices` will allow for descending/DCC-native/ascending vertex order.
     """
-    print("get_mesh_info", blender_obj, mat_index, split_all_vertices, sort_vertices, round_data)
     # get mesh data structures for this object
     mesh = blender_obj.data.copy()  # blender_obj.to_mesh(bpy.context.scene, True, 'PREVIEW')
     mesh.name = blender_obj.data.name + "_export"
     mesh.transform(blender_obj.matrix_world)
     mesh.calc_loop_triangles()
     mesh.calc_normals_split()
-
-    # we will need to test vertices for equality based on their attributes
-    # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
-    UniqueVertex = namedtuple("UniqueVertex", ["id", "p", "n", "uv"])
 
     # cache some mesh data
     uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)][:PDX_MAXUVSETS]
@@ -240,13 +237,18 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, sort_vertice
     # build a blank dictionary of mesh information for the exporter
     mesh_dict = {x: [] for x in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "min", "max"]}
 
+    # we will need to test vertices for equality based on their attributes and some split criteria
+    # critically: whether per-face vertices (sharing an object-relative vert id) share normals and uvs
+    split_criteria = split_criteria or ["id", "p", "n", "uv"]
+    UniqueVertex = namedtuple("UniqueVertex", split_criteria)
+
     # collect all unique verts in the order that we process them
     export_verts = []
     unique_verts = set()
 
     # store data for each loop triangle
     for tri in mesh.loop_triangles:
-        if tri.material_index != mat_index:
+        if tri.material_index != mat_id:
             continue  # skip this triangle if it has the wrong material index
 
         tri_loops = [mesh.loops[i] for i in tri.loops]
@@ -267,14 +269,10 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, sort_vertice
             # position
             _position = mesh.vertices[vert_id].co
             _position = tuple(swap_coord_space(_position))
-            if round_data:
-                _position = util_round(_position, PDX_DECIMALPTS)
 
             # normal
             _normal = loop.normal
             _normal = tuple(swap_coord_space(_normal))
-            if round_data:
-                _normal = util_round(_normal, PDX_DECIMALPTS)
 
             # uv
             _uv_coords = ()
@@ -282,8 +280,6 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, sort_vertice
                 uv_layer = mesh.uv_layers[uv_set]
                 uv = uv_layer.data[loop.index].uv
                 uv = tuple(swap_coord_space(tuple(uv)))
-                if round_data:
-                    uv = util_round(uv, PDX_DECIMALPTS)
                 _uv_coords += (uv,)
 
             # tangent (omitted if there were no UVs)
@@ -291,15 +287,14 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, sort_vertice
                 _bitangent_sign = loop.bitangent_sign
                 _tangent = loop.tangent
                 _tangent = tuple(swap_coord_space(_tangent))
-                if round_data:
-                    _tangent = util_round(_tangent, PDX_DECIMALPTS)
 
-            # check if this tri-vert is new and unique, or can if we can just use an existing vertex
-            new_vert = UniqueVertex(vert_id, _position, _normal, _uv_coords)
+            # check if this tri-verts vertex data is new and unique, or can if we can just use an existing vertex
+            vdata = {"id": vert_id, "p": _position, "n": _normal, "uv": _uv_coords}
+            new_vert = UniqueVertex(*[vdata.get(x) for x in split_criteria])
 
             # test if we have already stored this vertex in the unique set
             i = None
-            if not split_all_vertices:
+            if not split_all:
                 if new_vert in unique_verts:
                     # no new data to be added to the mesh dict, the tri will reference an existing vert
                     i = export_verts.index(new_vert)
@@ -1246,13 +1241,15 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_meshfile(
-    meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, split_verts=False, **kwargs
-):
+def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, **kwargs):
+    # kwargs wrangling
+    as_blendshape = kwargs.get("as_blendshape", False)
+    split_by = ["id", "p", "uv"] if as_blendshape else None
+    split_verts = kwargs.get("split_verts", False)
+    sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
+
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(meshpath))
-
-    sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
 
     # create an XML structure to store the object hierarchy
     root_xml = Xml.Element("File")
@@ -1294,7 +1291,9 @@ def export_meshfile(
                 meshnode_xml = Xml.SubElement(objnode_xml, "mesh")
 
                 # get all necessary info about this set of faces and determine which unique verts they include
-                mesh_info_dict, vert_ids = get_mesh_info(obj, mat_idx, split_verts, sort_verts)
+                mesh_info_dict, vert_ids = get_mesh_info(
+                    obj, mat_idx, split_criteria=split_by, split_all=split_verts, sort_vertices=sort_verts
+                )
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:

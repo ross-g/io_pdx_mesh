@@ -956,8 +956,20 @@ class MeshExport_UI(CustomFileDialog):
         self.setSidebarUrls([QtCore.QUrl.fromLocalFile(last_directory)])
         self.setDefaultSuffix(".mesh")
 
-        self.chk_mesh = QtWidgets.QCheckBox("Mesh")
+        self.chk_mesh = QtWidgets.QCheckBox("Meshes")
         self.chk_mesh.setObjectName("exp_mesh")
+
+        self.mesh_settings = QtWidgets.QGroupBox()
+        self.mesh_settings.setLayout(QtWidgets.QVBoxLayout())
+
+        self.chk_mesh_blendshape = QtWidgets.QCheckBox("As blendshape")
+        self.chk_mesh_blendshape.setObjectName("as_blendshape")
+
+        self.mesh_settings.layout().addWidget(self.chk_mesh_blendshape)
+        self.mesh_settings.layout().setContentsMargins(4, 4, 4, 4)
+        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        self.mesh_settings.setVisible(True)
 
         self.chk_skel = QtWidgets.QCheckBox("Skeleton")
         self.chk_skel.setObjectName("exp_skel")
@@ -998,6 +1010,7 @@ class MeshExport_UI(CustomFileDialog):
 
         for ctrl in [
             self.chk_mesh,
+            self.mesh_settings,
             self.chk_skel,
             self.chk_locs,
             self.chk_sel_only,
@@ -1010,6 +1023,7 @@ class MeshExport_UI(CustomFileDialog):
         for ctrl in [self.chk_mesh, self.chk_skel, self.chk_locs]:
             ctrl.setChecked(True)
 
+        self.chk_mesh.toggled.connect(self.mesh_settings.setVisible)
         self.chk_debug.toggled.connect(self.debug_settings.setVisible)
 
 
