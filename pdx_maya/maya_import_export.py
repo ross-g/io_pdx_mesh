@@ -392,11 +392,11 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
     normals = mesh.getNormals(space="world")  # list of vectors for each vertex per face
     triangles = mesh.getTriangles()
     uv_setnames = [uv_set for uv_set in mesh.getUVSetNames() if mFn_Mesh.numUVs(uv_set) > 0][:PDX_MAXUVSETS]
-    uv_coords = {}
+    uv_data = {}
     tangents = None
     for i, uv_set in enumerate(uv_setnames):
         _u, _v = mesh.getUVs(uvSet=uv_set)
-        uv_coords[i] = zip(_u, _v)
+        uv_data[i] = list(zip(_u, _v))
     if uv_setnames:
         tangents = mesh.getTangents(space="world", uvSet=uv_setnames[0])
 
@@ -448,7 +448,7 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
                 for i, uv_set in enumerate(uv_setnames):
                     try:
                         vert_uv_id = face.getUVIndex(_local_id, uv_set)
-                        uv = uv_coords[i][vert_uv_id]
+                        uv = uv_data[i][vert_uv_id]
                         uv = swap_coord_space(uv)
                     # case where verts are unmapped, eg when two meshes are merged with different UV set counts
                     except RuntimeError:
@@ -580,7 +580,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
             vert_weights[vtx] = {inf: weight / total for inf, weight in inf_weights.items()}
 
         # store influence and weight data
-        for influence, weight in vert_weights[vtx].iteritems():
+        for influence, weight in vert_weights[vtx].items():
             skin_dict["ix"].append(influence)
             skin_dict["w"].append(weight)
 
@@ -1470,7 +1470,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 # populate material attributes
                 materialnode_xml.set("shader", [get_material_shader(maya_mat)])
                 mat_texture_dict = get_material_textures(maya_mat)
-                for slot, texture in mat_texture_dict.iteritems():
+                for slot, texture in mat_texture_dict.items():
                     materialnode_xml.set(slot, [os.path.split(texture)[1]])
 
                 # create parent element for skin data, if the mesh is skinned
