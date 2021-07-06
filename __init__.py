@@ -34,7 +34,7 @@ bl_info = {
     "warning": "this add-on is beta",
     "project_name": "io_pdx_mesh",
     "project_url": "https://github.com/ross-g/io_pdx_mesh",
-    "wiki_url": "https://github.com/ross-g/io_pdx_mesh/wiki",
+    "doc_url": "https://github.com/ross-g/io_pdx_mesh/wiki",
     "tracker_url": "https://github.com/ross-g/io_pdx_mesh/issues",
     "forum_url": "https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/",
 }
