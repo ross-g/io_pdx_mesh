@@ -1628,11 +1628,7 @@ def import_animfile(animpath, frame_start=1, **kwargs):
     all_bone_keyframes = OrderedDict()
     for bone in info:
         bone_name = clean_imported_name(bone.tag)
-        key_data = dict()
-        all_bone_keyframes[bone_name] = key_data
-
-        for sample_type in bone.attrib["sa"][0]:
-            key_data[sample_type] = []
+        all_bone_keyframes[bone_name] = {sample_type: [] for sample_type in bone.attrib["sa"][0]}
 
     # then traverse the samples data to store keys per bone
     s_index, q_index, t_index = 0, 0, 0

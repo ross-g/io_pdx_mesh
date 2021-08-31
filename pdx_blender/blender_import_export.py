@@ -1058,7 +1058,7 @@ def create_mesh(PDX_mesh, name=None):
     return new_mesh, new_obj
 
 
-def create_fcurve(armature, bone_name, data_type, index):
+def create_fcurve(armature, bone_name, data_type, array_idx):
     # create anim data block on the armature
     if armature.animation_data is None:
         armature.animation_data_create()
@@ -1070,25 +1070,25 @@ def create_fcurve(armature, bone_name, data_type, index):
     action = anim_data.action
 
     # determine data path
-    data_path = 'pose.bones["{0}"].{1}'.format(bone_name, data_type)
+    data_path = f'pose.bones["{bone_name}"].{data_type}'
 
     # check if the fcurve for this data path and index already exists
     for curve in anim_data.action.fcurves:
         if curve.data_path != data_path:
             continue
-        if index < 0 or curve.array_index == index:
+        if array_idx < 0 or curve.array_index == array_idx:
             return curve
 
     # otherwise create a new fcurve inside the correct group
     if bone_name not in action.groups:  # create group if it doesn't exist
         action.groups.new(bone_name)
-    f_curve = anim_data.action.fcurves.new(data_path, index, bone_name)
+    f_curve = anim_data.action.fcurves.new(data_path, index=array_idx, action_group=bone_name)
 
     return f_curve
 
 
 def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
-    # TODO: this is very slow, create f-curves directly instead of keyframing
+    # TODO: this is very slow, create fcurves directly instead of keyframing
     pose_bone = armature.pose.bones[bone_name]
 
     # validate keyframe counts per attribute
@@ -1490,11 +1490,7 @@ def import_animfile(animpath, frame_start=1):
     all_bone_keyframes = OrderedDict()
     for bone in info:
         bone_name = clean_imported_name(bone.tag)
-        key_data = dict()
-        all_bone_keyframes[bone_name] = key_data
-
-        for sample_type in bone.attrib["sa"][0]:
-            key_data[sample_type] = []
+        all_bone_keyframes[bone_name] = {sample_type: [] for sample_type in bone.attrib["sa"][0]}
 
     # then traverse the samples data to store keys per bone
     s_index, q_index, t_index = 0, 0, 0

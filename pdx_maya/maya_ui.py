@@ -458,7 +458,7 @@ class PDX_UI(QtWidgets.QDialog):
             self.update_version.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
         if self.about_popup:
             self.about_popup.clicked.connect(self.show_update_notes)
-        self.help_wiki.clicked.connect(partial(webbrowser.open, bl_info["wiki_url"]))
+        self.help_wiki.clicked.connect(partial(webbrowser.open, bl_info["doc_url"]))
         self.help_forum.clicked.connect(partial(webbrowser.open, bl_info["forum_url"]))
         self.help_source.clicked.connect(partial(webbrowser.open, bl_info["project_url"]))
 

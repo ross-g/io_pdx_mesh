@@ -800,6 +800,6 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = bl_info["wiki_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = bl_info["doc_url"]
         col.operator("wm.url_open", icon="QUESTION", text="Paradox forums").url = bl_info["forum_url"]
         col.operator("wm.url_open", icon="QUESTION", text="Source code").url = bl_info["project_url"]
