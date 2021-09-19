@@ -20,6 +20,14 @@ from collections import OrderedDict
 
 from .settings import PDXsettings
 
+# vendored package imports
+root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
+site.addsitedir(path.join(root_path, "external"))
+from appdirs import user_data_dir  # noqa
+
+# Py2, Py3 compatibility
+PY2 = sys.version_info[0] < 3
+
 
 bl_info = {
     "author": "ross-g",
@@ -45,16 +53,12 @@ bl_info = {
 ========================================================================================================================
 """
 
-root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 
 # setup module logging
 log_name = bl_info["project_name"]
 log_format = "[%(name)s] %(levelname)s:  %(message)s"
 
 # setup module preferences
-site.addsitedir(path.join(root_path, "external"))
-from appdirs import user_data_dir  # noqa
-
 config_path = path.join(user_data_dir(bl_info["project_name"], False), "settings.json")
 IO_PDX_SETTINGS = PDXsettings(config_path)
 
