@@ -3,7 +3,7 @@
   
   
 ## IO PDX MESH
-This project aims to allow editing of mesh and animation files used in the various Clausewitz Engine games created by [Paradox Development Studios](https://www.paradoxplaza.com) It's designed to run in *both* Maya (2018+) and Blender (2.83+).
+This project aims to allow editing of mesh and animation files used in the various [Clausewitz Engine games](https://en.wikipedia.org/wiki/Paradox_Development_Studio#List_of_games_developed) created by [Paradox Development Studios](https://www.paradoxplaza.com) It's designed to run in *both* Maya (2018+) and Blender (2.83+).
 
 ### Download
 Click here to view the [latest relase](https://github.com/ross-g/io_pdx_mesh/releases/latest) and download the __*io_pdx_mesh.zip*__ file (this works with both Maya and Blender).
