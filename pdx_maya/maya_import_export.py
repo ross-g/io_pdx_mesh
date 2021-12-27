@@ -798,7 +798,7 @@ def create_filetexture(tex_filepath):
 
 
 def create_shader(PDX_material, shader_name, texture_dir):
-    new_shader = pmc.shadingNode("phong", asShader=True, name=shader_name)
+    new_shader = pmc.shadingNode("phong", asShader=True, name=shader_name, skipSelect=True)
     new_shadinggroup = pmc.sets(renderable=True, noSurfaceShader=True, empty=True, name="{0}_SG".format(shader_name))
     pmc.connectAttr(new_shader.outColor, new_shadinggroup.surfaceShader)
 
@@ -832,11 +832,11 @@ def create_shader(PDX_material, shader_name, texture_dir):
 
 def create_material(PDX_material, mesh, texture_folder):
     shader_name = "PDXmat_" + mesh.name()
-    shader, s_group = create_shader(PDX_material, shader_name, texture_folder)
+    shader, group = create_shader(PDX_material, shader_name, texture_folder)
 
     pmc.select(mesh)
     mesh.backfaceCulling.set(1)
-    pmc.hyperShade(assign=s_group)
+    pmc.hyperShade(assign=group)
 
 
 def create_locator(PDX_locator, PDX_bone_dict):

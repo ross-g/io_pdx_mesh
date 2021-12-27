@@ -21,6 +21,7 @@ try:
 
     importlib.reload(blender_import_export)
     from .blender_import_export import (
+        PDX_SHADER,
         create_shader,
         export_animfile,
         export_meshfile,
@@ -28,7 +29,6 @@ try:
         import_animfile,
         import_meshfile,
         list_scene_pdx_meshes,
-        PDX_SHADER,
         set_ignore_joints,
         set_local_axis_display,
     )
@@ -132,6 +132,10 @@ class material_popup(object):
         name="Shader",
         default="",
     )
+    apply_mat: BoolProperty(
+        name="Apply material to selected?",
+        default=False,
+    )
     # fmt:on
 
 
@@ -149,8 +153,14 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
             mat_type = self.custom_type
         # create a mock PDXData object for convenience here to pass to the create_shader function
         mat_pdx = type("Material", (PDXData, object), {"shader": [mat_type]})
-        create_shader(mat_pdx, mat_name, None, template_only=True)
+        shader = create_shader(mat_pdx, mat_name, None, template_only=True)
         IO_PDX_LOG.info("Created material: {0} ({1})".format(mat_name, mat_type))
+        if self.apply_mat:
+            selected_objs = [obj for obj in context.selected_objects if isinstance(obj.data, bpy.types.Mesh)]
+            for obj in selected_objs:
+                # for each selected mesh, append the new material
+                obj.data.materials.append(shader)
+                IO_PDX_LOG.info("Applied material: {0} to {1}".format(shader, obj))
         return {"FINISHED"}
 
     def invoke(self, context, event):
@@ -174,6 +184,9 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
         if self.use_custom:
             mat_type.enabled = False
             col2.enabled = True
+        self.layout.separator()
+        apply = self.layout.row()
+        apply.prop(self, "apply")
         self.layout.separator()
 
 

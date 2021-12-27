@@ -656,6 +656,7 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
         self.use_custom = QtWidgets.QCheckBox("Custom type:", self)
         self.custom_type = QtWidgets.QLineEdit(self)
         self.custom_type.setEnabled(False)
+        self.apply_mat = QtWidgets.QCheckBox("Apply material to selected?", self)
         self.btn_okay = QtWidgets.QPushButton("Save", self)
         self.btn_cancel = QtWidgets.QPushButton("Cancel", self)
 
@@ -674,7 +675,9 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
         form_layout.addRow("Material type:", self.mat_type)
         form_layout.addRow(self.use_custom, self.custom_type)
         main_layout.addWidget(grp_create)
-        main_layout.addSpacing(1)
+        main_layout.addSpacing(4)
+        main_layout.addWidget(self.apply_mat)
+        main_layout.addSpacing(4)
         btn_layout = QtWidgets.QHBoxLayout()
         btn_layout.addWidget(self.btn_okay)
         btn_layout.addWidget(self.btn_cancel)
@@ -700,8 +703,15 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
             mat_type = self.custom_type.text()
         # create a mock PDXData object for convenience here to pass to the create_shader function
         mat_pdx = type(str("Material"), (PDXData, object), {"shader": [mat_type]})
-        create_shader(mat_pdx, mat_name, None)
+        shader, group = create_shader(mat_pdx, mat_name, None)
         IO_PDX_LOG.info("Created material: {0} ({1})".format(mat_name, mat_type))
+        if self.apply_mat.isChecked():
+            selected_objs = [mesh for mesh in pmc.ls(selection=True, type="mesh", dag=True, noIntermediate=True)]
+            for obj in selected_objs:
+                # for each selected mesh, assign the new material
+                obj.backfaceCulling.set(1)
+                pmc.sets(group, edit=True, forceElement=obj)
+                IO_PDX_LOG.info("Applied material: {0} to {1}".format(shader, obj))
         self.close()
 
     def showEvent(self, event):
