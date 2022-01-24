@@ -3,6 +3,7 @@
 
     As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
     mirror all positions, normals etc about the XY plane and flip texture coordinates in V.
+    Note - Maya treats matrices as row-major.
 
     author : ross-g
 """
@@ -499,9 +500,9 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
             )
 
     # calculate min and max bounds of mesh
-    x_vtx_pos = set([mesh_dict["p"][j] for j in xrange(0, len(mesh_dict["p"]), 3)])
-    y_vtx_pos = set([mesh_dict["p"][j + 1] for j in xrange(0, len(mesh_dict["p"]), 3)])
-    z_vtx_pos = set([mesh_dict["p"][j + 2] for j in xrange(0, len(mesh_dict["p"]), 3)])
+    x_vtx_pos = set(mesh_dict["p"][::3])
+    y_vtx_pos = set(mesh_dict["p"][1::3])
+    z_vtx_pos = set(mesh_dict["p"][2::3])
     mesh_dict["min"] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
     mesh_dict["max"] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
 

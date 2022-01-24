@@ -328,9 +328,9 @@ def get_mesh_info(blender_obj, mat_id, split_criteria=None, split_all=False, sor
         )
 
     # calculate min and max bounds of mesh
-    x_vtx_pos = set([mesh_dict["p"][j] for j in range(0, len(mesh_dict["p"]), 3)])
-    y_vtx_pos = set([mesh_dict["p"][j + 1] for j in range(0, len(mesh_dict["p"]), 3)])
-    z_vtx_pos = set([mesh_dict["p"][j + 2] for j in range(0, len(mesh_dict["p"]), 3)])
+    x_vtx_pos = set(mesh_dict["p"][::3])
+    y_vtx_pos = set(mesh_dict["p"][1::3])
+    z_vtx_pos = set(mesh_dict["p"][2::3])
     mesh_dict["min"] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
     mesh_dict["max"] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
 
