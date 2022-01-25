@@ -711,7 +711,7 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
                 # for each selected mesh, assign the new material
                 obj.backfaceCulling.set(1)
                 pmc.sets(group, edit=True, forceElement=obj)
-                IO_PDX_LOG.info("Applied material: {0} to {1}".format(shader, obj))
+                IO_PDX_LOG.info("Applied material: {0} to object: {1}".format(shader, obj))
         self.close()
 
     def showEvent(self, event):

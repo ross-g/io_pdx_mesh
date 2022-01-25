@@ -160,7 +160,7 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
             for obj in selected_objs:
                 # for each selected mesh, append the new material
                 obj.data.materials.append(shader)
-                IO_PDX_LOG.info("Applied material: {0} to {1}".format(shader, obj))
+                IO_PDX_LOG.info("Applied material: {0} to object: {1}".format(shader.name, obj.name))
         return {"FINISHED"}
 
     def invoke(self, context, event):
@@ -186,7 +186,7 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
             col2.enabled = True
         self.layout.separator()
         apply = self.layout.row()
-        apply.prop(self, "apply")
+        apply.prop(self, "apply_mat")
         self.layout.separator()
 
 
