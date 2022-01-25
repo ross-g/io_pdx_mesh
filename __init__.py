@@ -98,7 +98,7 @@ try:
 except ImportError:
     pass
 else:
-    logging.basicConfig(level=logging.DEBUG, format=log_format)
+    logging.basicConfig(level=logging.INFO, format=log_format)
     IO_PDX_LOG = logging.getLogger(log_name)
 
     if version < bl_info["blender"]:
@@ -120,7 +120,7 @@ except ImportError:
     pass
 else:
     IO_PDX_LOG = logging.getLogger(log_name)
-    IO_PDX_LOG.setLevel(logging.DEBUG)
+    IO_PDX_LOG.setLevel(logging.INFO)
     IO_PDX_LOG.propagate = False
     IO_PDX_LOG.handlers = []
     console = logging.StreamHandler(sys.stdout)
