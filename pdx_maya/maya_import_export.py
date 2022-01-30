@@ -21,7 +21,6 @@ try:
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-import maya.cmds as mel
 import maya.cmds as cmds
 import pymel.core as pmc
 import pymel.core.datatypes as pmdt
@@ -36,6 +35,7 @@ from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaterni
 
 from .. import pdx_data
 from .. import IO_PDX_LOG
+from ..external import pathlib
 
 # Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
 if sys.version_info >= (3, 0):
@@ -1386,10 +1386,17 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, **kwargs):
     # kwargs wrangling
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
+    # debug logging option
+    debug = kwargs.get("debug", False)
+    # export mesh(es) as blendshapes
     as_blendshape = kwargs.get("as_blendshape", False)
     split_by = ["id", "p", "uv"] if as_blendshape else None
+    # full vertex split option
     split_verts = kwargs.get("split_verts", False)
+    # vertex sorting options
     sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
+    # with plain text file option
+    plain_txt = kwargs.get("plain_txt", False)
 
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(meshpath))
@@ -1551,7 +1558,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                     locnode_xml.set(key, loc_info_dict[key])
 
     # write the binary file from our XML structure
+    IO_PDX_LOG.info("writing .mesh file -")
     pdx_data.write_meshfile(meshpath, root_xml)
+    if plain_txt:
+        IO_PDX_LOG.info("writing .txt file -")
+        with open(str(pathlib.Path(meshpath).with_suffix(".txt")), "wt") as fp:
+            fp.write(str(pdx_data.PDXData(root_xml)) + "\n")
 
     pmc.select(None)
     IO_PDX_LOG.info("export finished! ({0:.4f} sec)".format(time.time() - start))

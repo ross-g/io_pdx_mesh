@@ -11,6 +11,7 @@
 
 import os
 import time
+import pathlib
 from operator import itemgetter
 from collections import OrderedDict, namedtuple, defaultdict
 
@@ -1246,10 +1247,17 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
 
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, **kwargs):
     # kwargs wrangling
+    # debug logging option
+    debug = kwargs.get("exp_debug", False)
+    # export mesh(es) as blendshapes
     as_blendshape = kwargs.get("as_blendshape", False)
     split_by = ["id", "p", "uv"] if as_blendshape else None
+    # full vertex split option
     split_verts = kwargs.get("split_verts", False)
+    # vertex sorting options
     sort_verts = {"+": True, "~": None, "-": False}.get(kwargs.get("sort_verts", "+"))
+    # with plain text file option
+    plain_txt = kwargs.get("plain_txt", False)
 
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(meshpath))
@@ -1393,7 +1401,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                     locnode_xml.set(key, loc_info_dict[key])
 
     # write the binary file from our XML structure
+    IO_PDX_LOG.info("writing .mesh file -")
     pdx_data.write_meshfile(meshpath, root_xml)
+    if plain_txt:
+        IO_PDX_LOG.info("writing .txt file -")
+        with open(str(pathlib.Path(meshpath).with_suffix(".txt")), "wt") as fp:
+            fp.write(str(pdx_data.PDXData(root_xml)) + "\n")
 
     if bpy.ops.object.mode_set.poll():
         bpy.ops.object.mode_set(mode="OBJECT")

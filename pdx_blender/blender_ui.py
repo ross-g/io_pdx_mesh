@@ -500,7 +500,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         default=False,
     )
     chk_debug: BoolProperty(
-        name="Debug options",
+        name="[debug options]",
         description="Non-standard options",
         default=False,
     )
@@ -518,6 +518,11 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
             ("-", "Decr", "Descending id sort")
         ),
         default="+",
+    )
+    chk_plain_txt: BoolProperty(
+        name="Also export plain text",
+        description="Exports a plain text file along with binary",
+        default=False,
     )
     # fmt:on
 
@@ -538,8 +543,10 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
             debug_settings = box.box()
             split = debug_settings.split(factor=0.1)
             _, col = split.column(), split.column()
+            col.alignment = "RIGHT"
             col.prop(self, "chk_split_vtx")
             col.prop(self, "ddl_sort_vtx")
+            col.prop(self, "chk_plain_txt")
 
     def execute(self, context):
         try:
@@ -550,8 +557,10 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_locs=self.chk_locs,
                 exp_selected=self.chk_selected,
                 as_blendshape=self.chk_mesh_blendshape,
+                exp_debug=self.chk_debug,
                 split_verts=self.chk_split_vtx,
                 sort_verts=self.ddl_sort_vtx,
+                plain_txt=self.chk_plain_txt,
             )
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed exporting {}".format(self.filepath))
             IO_PDX_SETTINGS.last_export_mesh = self.filepath

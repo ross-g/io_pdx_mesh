@@ -910,8 +910,7 @@ class MeshImport_UI(CustomFileDialog):
         self.chk_locs.setObjectName("imp_locs")
 
         self.mesh_settings.layout().addWidget(self.chk_joinmats)
-        self.mesh_settings.layout().setContentsMargins(4, 4, 4, 4)
-        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.mesh_settings.layout().setContentsMargins(20, 4, 4, 4)
         self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
 
         for ctrl in [self.chk_mesh, self.mesh_settings, self.chk_skel, self.chk_locs]:
@@ -968,6 +967,7 @@ class MeshExport_UI(CustomFileDialog):
 
         self.chk_mesh = QtWidgets.QCheckBox("Meshes")
         self.chk_mesh.setObjectName("exp_mesh")
+        self.chk_mesh.setToolTip("Export meshes")
 
         self.mesh_settings = QtWidgets.QGroupBox()
         self.mesh_settings.setLayout(QtWidgets.QVBoxLayout())
@@ -976,29 +976,32 @@ class MeshExport_UI(CustomFileDialog):
         self.chk_mesh_blendshape.setObjectName("as_blendshape")
 
         self.mesh_settings.layout().addWidget(self.chk_mesh_blendshape)
-        self.mesh_settings.layout().setContentsMargins(4, 4, 4, 4)
-        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.mesh_settings.layout().setContentsMargins(20, 4, 4, 4)
         self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
         self.mesh_settings.setVisible(True)
 
         self.chk_skel = QtWidgets.QCheckBox("Skeleton")
         self.chk_skel.setObjectName("exp_skel")
+        self.chk_skel.setToolTip("Export related joints")
 
         self.chk_locs = QtWidgets.QCheckBox("Locators")
         self.chk_locs.setObjectName("exp_locs")
+        self.chk_locs.setToolTip("Export locators data")
 
         self.chk_sel_only = QtWidgets.QCheckBox("Selection only")
         self.chk_sel_only.setObjectName("exp_selected")
         self.chk_sel_only.setToolTip("Filter export by selection")
 
-        self.chk_debug = QtWidgets.QCheckBox("Debug options")
+        self.chk_debug = QtWidgets.QCheckBox("[debug options]")
         self.chk_debug.setObjectName("exp_debug")
+        self.chk_debug.setToolTip("Non-standard options")
 
         self.debug_settings = QtWidgets.QGroupBox()
         self.debug_settings.setLayout(QtWidgets.QVBoxLayout())
 
         self.chk_split_vtx = QtWidgets.QCheckBox("Split all vertices")
         self.chk_split_vtx.setObjectName("split_verts")
+        self.chk_split_vtx.setToolTip("Splits all vertices (per triangle) during export")
 
         sort_vtx_option = QtWidgets.QWidget(self)
         sort_vtx_option.setLayout(QtWidgets.QHBoxLayout())
@@ -1011,10 +1014,14 @@ class MeshExport_UI(CustomFileDialog):
         sort_vtx_option.layout().addWidget(self.ddl_sort_vtx)
         sort_vtx_option.layout().setContentsMargins(0, 0, 0, 0)
 
+        self.chk_plain_txt = QtWidgets.QCheckBox("Also export plain text")
+        self.chk_plain_txt.setObjectName("plain_txt")
+        self.chk_plain_txt.setToolTip("Exports a plain text file along with binary")
+
         self.debug_settings.layout().addWidget(self.chk_split_vtx)
         self.debug_settings.layout().addWidget(sort_vtx_option)
-        self.debug_settings.layout().setContentsMargins(4, 4, 4, 4)
-        self.debug_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.debug_settings.layout().addWidget(self.chk_plain_txt)
+        self.debug_settings.layout().setContentsMargins(20, 4, 4, 4)
         self.debug_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
         self.debug_settings.setVisible(False)
 
@@ -1080,8 +1087,7 @@ class AnimExport_UI(CustomFileDialog):
 
         self.range_settings.layout().addLayout(self.start_group)
         self.range_settings.layout().addLayout(self.end_group)
-        self.range_settings.layout().setContentsMargins(4, 4, 4, 4)
-        self.range_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.range_settings.layout().setContentsMargins(20, 4, 4, 4)
         self.range_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
 
         options_group.layout().addWidget(self.chk_custom)
