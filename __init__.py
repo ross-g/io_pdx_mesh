@@ -21,12 +21,8 @@ from collections import OrderedDict
 from .settings import PDXsettings
 
 # vendored package imports
-root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
-site.addsitedir(path.join(root_path, "external"))
-from appdirs import user_data_dir  # noqa
-
-# Py2, Py3 compatibility
-PY2 = sys.version_info[0] < 3
+from .external.appdirs import user_data_dir  # user settings directory
+from .external.six import PY2  # Py2, Py3 compatibility
 
 
 bl_info = {
@@ -64,6 +60,7 @@ config_path = path.join(user_data_dir(bl_info["project_name"], False), "settings
 IO_PDX_SETTINGS = PDXsettings(config_path)
 
 # setup engine/export settings
+root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 export_settings = path.join(root_path, "clausewitz.json")
 ENGINE_SETTINGS = {}
 try:

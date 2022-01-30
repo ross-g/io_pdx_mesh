@@ -13,10 +13,7 @@ from . import PY2
 from .pdx_data import PDXData, PDXDataJSON, read_meshfile
 
 # vendored package imports
-from . import root_path
-
-site.addsitedir(path.join(root_path, "external"))
-import click  # noqa
+from external import click
 
 
 """ ====================================================================================================================
