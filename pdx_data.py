@@ -11,6 +11,7 @@
 from __future__ import print_function, unicode_literals
 
 import json
+import logging
 from struct import pack, unpack_from
 
 try:
@@ -22,6 +23,8 @@ try:
     basestring
 except NameError:
     basestring = str
+
+DATA_LOG = logging.getLogger("io_pdx_data")
 
 
 """ ====================================================================================================================
@@ -287,6 +290,7 @@ def read_meshfile(filepath):
 
 
 def writeProperty(prop_name, prop_data):
+    DATA_LOG.debug("writeProperty:")
     datastring = b""
 
     try:
@@ -311,6 +315,7 @@ def writeProperty(prop_name, prop_data):
 
 
 def writeObject(obj_xml, obj_depth):
+    DATA_LOG.debug("writeObject: %s", obj_depth * "-")
     datastring = b""
 
     # write object hierarchy depth
@@ -329,6 +334,7 @@ def writeObject(obj_xml, obj_depth):
 
 
 def writeString(string):
+    DATA_LOG.debug("writeString: '%s'", string)
     datastring = b""
 
     string = string.encode("latin-1")
@@ -338,6 +344,7 @@ def writeString(string):
 
 
 def writeData(data_array):
+    DATA_LOG.debug("writeData: [%s]", ", ".join([str(d) for d in data_array]))
     datastring = b""
 
     # determine the data type in the array
@@ -555,8 +562,8 @@ General binary format is:
     header    (@@b@ for binary, @@t@ for text)
     pdxasset    (int)  number of assets? file format version?
         object    (object)  parent item for all 3D objects
-            lodperc    (float)  list of LOD switches, percentage size of bounding sphere?  [IMPERATOR]
-            loddist    (float)  list of LOD switches, some distance metric?  [EU4/STELLARIS/HOI4]
+            lodperc    (float)  list of LOD switches, percentage size on screen of bounding sphere?  [IR/CK3]
+            loddist    (float)  list of LOD switches, distance from camera of object pivot?  [EU4/STELLARIS/HOI4]
             shape    (object)
                 ...  multiple shapes, used for meshes under different node transforms
             shape    (object)
@@ -566,15 +573,15 @@ General binary format is:
                 mesh    (object)
                     ...
                 mesh    (object)
-                    p    (float)  verts
+                    p    (float)  positions
                     n    (float)  normals
                     ta    (float)  tangents
-                    u0    (float)  UVs
-                    tri    (int)  triangles
-                    boundingsphere    (float)  centre and radius of mesh spherical bounds  [IMPERATOR/CK3]
+                    u0    (float)  UVs channel 0 ... etc
+                    tri    (int)  triangles indices
+                    boundingsphere    (float)  centre, radius bounding sphere of mesh  [IR/CK3]
                     aabb    (object)
-                        min    (float)  min bounding box
-                        max    (float)  max bounding box
+                        min    (float)  min bounding box of mesh
+                        max    (float)  max bounding box of mesh
                     material    (object)
                         shader    (string)  shader name
                         diff    (string)  diffuse texture
@@ -594,7 +601,7 @@ General binary format is:
                 p    (float)  position
                 q    (float)  quarternion
                 pa    (string)  parent name
-                tx    (float)  worldspace transform, 4*4 matrix (allow locator scale)  [IMPERATOR]
+                tx    (float)  worldspace transform, 4*4 matrix (allow locator scale)  [IR/CK3]
 
 
 .anim file format
