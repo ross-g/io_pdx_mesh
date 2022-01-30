@@ -4,6 +4,11 @@ import json
 import warnings
 from os import path
 
+try:
+    import xml.etree.cElementTree as Xml
+except ImportError:
+    import xml.etree.ElementTree as Xml
+
 from . import PY2
 from .pdx_data import PDXData, PDXDataJSON, read_meshfile
 
@@ -57,19 +62,24 @@ def convert_to(inpath, outpath, out_format):
                 files.append([fullpath, (out_folder / fullpath.relative_to(inpath)).with_suffix(f".{out_format}")])
 
     for i, (in_file, out_file) in enumerate(files):
-        pdx_data = PDXData(read_meshfile(str(in_file)))
+        pdx_Xml = read_meshfile(str(in_file))
+        pdx_Data = PDXData(pdx_Xml)
         if out_format:
             print(f"{i + 1}/{len(files)} : {in_file.relative_to(inpath.parent)} --> {out_file.relative_to(out_folder)}")
             out_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(str(out_file), "wt") as fp:
-                if out_format == "txt":
-                    fp.write(str(pdx_data) + "\n")
-                if out_format == "json":
-                    json.dump(pdx_data, fp, indent=2, cls=PDXDataJSON)
+            if out_format == "txt":
+                with open(str(out_file), "wt") as fp:
+                    fp.write(str(pdx_Data) + "\n")
+            if out_format == "json":
+                with open(str(out_file), "wt") as fp:
+                    json.dump(pdx_Data, fp, indent=2, cls=PDXDataJSON)
+            if out_format == "xml":
+                tree = Xml.ElementTree(pdx_Xml)
+                tree.write(str(out_file))
         else:
             print("-" * 120)
             print(f"{i + 1}/{len(files)} : {in_file.relative_to(inpath.parent)}",  end="\n")
-            print(str(pdx_data))
+            print(str(pdx_Data))
 
 
 if __name__ == "__main__":
