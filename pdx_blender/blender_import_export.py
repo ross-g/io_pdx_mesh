@@ -25,21 +25,23 @@ import bmesh
 import math
 from mathutils import Vector, Matrix, Quaternion
 
-from .. import pdx_data
 from .. import IO_PDX_LOG
+from .. import pdx_data
+from ..library import (
+    get_lod_level,
+    PDX_SHADER,
+    PDX_ANIMATION,
+    PDX_IGNOREJOINT,
+    PDX_MESHINDEX,
+    PDX_MAXSKININFS,
+    PDX_MAXUVSETS,
+)
 
 
 """ ====================================================================================================================
     Variables.
 ========================================================================================================================
 """
-
-PDX_SHADER = "shader"
-PDX_ANIMATION = "animation"
-PDX_IGNOREJOINT = "pdxIgnoreJoint"
-PDX_MESHINDEX = "meshindex"
-PDX_MAXSKININFS = 4
-PDX_MAXUVSETS = 4
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4

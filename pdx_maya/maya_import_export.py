@@ -33,9 +33,18 @@ import maya.OpenMayaAnim as OpenMayaAnim
 import maya.api.OpenMaya as OpenMayaAPI
 from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion
 
-from .. import pdx_data
 from .. import IO_PDX_LOG
+from .. import pdx_data
 from ..external import pathlib
+from ..library import (
+    get_lod_level,
+    PDX_SHADER,
+    PDX_ANIMATION,
+    PDX_IGNOREJOINT,
+    PDX_MESHINDEX,
+    PDX_MAXSKININFS,
+    PDX_MAXUVSETS,
+)
 
 # Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
 if sys.version_info >= (3, 0):
@@ -46,13 +55,6 @@ if sys.version_info >= (3, 0):
     Variables.
 ========================================================================================================================
 """
-
-PDX_SHADER = "shader"
-PDX_ANIMATION = "animation"
-PDX_IGNOREJOINT = "pdxIgnoreJoint"
-PDX_MESHINDEX = "meshindex"
-PDX_MAXSKININFS = 4
-PDX_MAXUVSETS = 4
 
 PDX_DECIMALPTS = 5
 PDX_ROUND_ROT = 4
