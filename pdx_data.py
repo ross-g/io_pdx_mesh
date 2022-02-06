@@ -430,6 +430,11 @@ def write_meshfile(filepath, root_xml):
             current_depth = 2
             datastring += writeObject(shape_xml, current_depth)
 
+            # write shape properties
+            for prop in ["lod"]:
+                if shape_xml.get(prop) is not None:
+                    datastring += writeProperty(prop, shape_xml.get(prop))
+
             # write each mesh
             for child_xml in shape_xml:
                 current_depth = 3
@@ -438,7 +443,7 @@ def write_meshfile(filepath, root_xml):
                 if child_xml.tag == "mesh":
                     mesh_xml = child_xml
                     # write mesh properties
-                    for prop in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
+                    for prop in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "boundingsphere"]:
                         if mesh_xml.get(prop) is not None:
                             datastring += writeProperty(prop, mesh_xml.get(prop))
 

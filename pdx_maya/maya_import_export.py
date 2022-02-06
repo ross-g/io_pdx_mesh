@@ -501,12 +501,17 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
                 [dict_vert_idx[indices[0]], dict_vert_idx[indices[2]], dict_vert_idx[indices[1]]]
             )
 
-    # calculate min and max bounds of mesh
+    # calculate mesh bounds
     x_vtx_pos = set(mesh_dict["p"][::3])
     y_vtx_pos = set(mesh_dict["p"][1::3])
     z_vtx_pos = set(mesh_dict["p"][2::3])
+    # min and max axis aligned bounding box
     mesh_dict["min"] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
     mesh_dict["max"] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
+    # centre and radius of bounding sphere
+    centre = MVector(*[(mesh_dict["max"][axis] + mesh_dict["min"][axis]) * 0.5 for axis in range(3)])
+    radius = max(((MVector(*vertex.p) - centre).length() for vertex in unique_verts))
+    mesh_dict["boundingsphere"] = [centre.x, centre.y, centre.z, radius]
 
     # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in export_verts]
@@ -1435,7 +1440,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
             obj_name = shape.name()
             IO_PDX_LOG.info("writing node - {0}".format(obj_name))
             progress("update", 1, "writing node")
-            shapenode_xml = Xml.SubElement(object_xml, obj_name)
+            objnode_xml = Xml.SubElement(object_xml, obj_name)
+
+            # populate LOD attribute on object element
+            lod_match = get_lod_level(obj_name)
+            if lod_match:
+                objnode_xml.set("lod", [lod_match])
 
             # one shape can have multiple materials on a per meshface basis
             shading_groups = list(set(shape.connections(type="shadingEngine")))
@@ -1451,7 +1461,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 # create parent element for this mesh (mesh here being geometry sharing a material, within one shape)
                 IO_PDX_LOG.info("writing mesh - {0}".format(mat_idx))
                 progress("update", 1, "writing mesh")
-                meshnode_xml = Xml.SubElement(shapenode_xml, "mesh")
+                meshnode_xml = Xml.SubElement(objnode_xml, "mesh")
 
                 # check which faces are using this shading group
                 # (groups are shared across shapes, so only select group members that are components of this shape)
@@ -1463,7 +1473,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 )
 
                 # populate mesh attributes
-                for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
+                for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri",  "boundingsphere"]:
                     if key in mesh_info_dict and mesh_info_dict[key]:
                         meshnode_xml.set(key, mesh_info_dict[key])
 
@@ -1498,7 +1508,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
             if exp_skel and bone_info_list:
                 IO_PDX_LOG.info("writing skeleton -")
                 progress("update", 1, "writing skeleton")
-                skeletonnode_xml = Xml.SubElement(shapenode_xml, "skeleton")
+                skeletonnode_xml = Xml.SubElement(objnode_xml, "skeleton")
 
                 # create sub-elements for each bone, populate bone attributes
                 for bone_info_dict in bone_info_list:
@@ -1512,7 +1522,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
         obj_name = "skel_frame"
         IO_PDX_LOG.info("writing node - {0}".format(obj_name))
         progress("update", 1, "writing node")
-        shapenode_xml = Xml.SubElement(object_xml, obj_name)
+        objnode_xml = Xml.SubElement(object_xml, obj_name)
 
         maya_bones = [bone for bone in pmc.ls(type="joint")]
         # optionally intersect with selection
@@ -1529,7 +1539,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
         if exp_skel and bone_info_list:
             IO_PDX_LOG.info("writing skeleton -")
             progress("update", 1, "writing skeleton")
-            skeletonnode_xml = Xml.SubElement(shapenode_xml, "skeleton")
+            skeletonnode_xml = Xml.SubElement(objnode_xml, "skeleton")
 
             # create sub-elements for each bone, populate bone attributes
             for bone_info_dict in bone_info_list:

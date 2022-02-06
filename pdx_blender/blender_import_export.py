@@ -330,12 +330,17 @@ def get_mesh_info(blender_obj, mat_id, split_criteria=None, split_all=False, sor
             [dict_vert_idx[indices[0]], dict_vert_idx[indices[2]], dict_vert_idx[indices[1]]]
         )
 
-    # calculate min and max bounds of mesh
+    # calculate mesh bounds
     x_vtx_pos = set(mesh_dict["p"][::3])
     y_vtx_pos = set(mesh_dict["p"][1::3])
     z_vtx_pos = set(mesh_dict["p"][2::3])
+    # min and max axis aligned bounding box
     mesh_dict["min"] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
     mesh_dict["max"] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
+    # centre and radius of bounding sphere
+    centre = Vector([(mesh_dict["max"][axis] + mesh_dict["min"][axis]) * 0.5 for axis in range(3)])
+    radius = max(((Vector(vertex.p) - centre) for vertex in unique_verts))
+    mesh_dict["boundingsphere"] = [centre.x, centre.y, centre.z, radius.length]
 
     # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in export_verts]
@@ -1291,6 +1296,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
             IO_PDX_LOG.info("writing node - {0}".format(obj_name))
             objnode_xml = Xml.SubElement(object_xml, obj_name)
 
+            # populate LOD attribute on object element
+            lod_match = get_lod_level(obj_name)
+            if lod_match:
+                objnode_xml.set("lod", [lod_match])
+
             # one object can have multiple materials on a per face basis
             materials = list(obj.data.materials)
 
@@ -1309,7 +1319,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 )
 
                 # populate mesh attributes
-                for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
+                for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "boundingsphere"]:
                     if key in mesh_info_dict and mesh_info_dict[key]:
                         meshnode_xml.set(key, mesh_info_dict[key])
 
