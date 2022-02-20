@@ -28,3 +28,17 @@ Click here to view the [latest relase](https://github.com/ross-g/io_pdx_mesh/rel
 * Switch to the `Add-ons` tab and select `Install Add-on from file`. Pick the zip file you have downloaded.  
 * Tick the checkbox to enable the add-on and you should see a new tab in the `Sidebar` of the `3D View`. (`View > Sidebar` if you have it closed)  
 * The `Sidebar` will now have a `PDX Blender Tools` tab.
+
+<br>
+<br>
+
+---
+
+
+#### Supporters
+El Tyranos, creator of CK3's [Community Flavor Pack](https://communityflavorpack.com/)
+
+
+Kindly provided a PyCharm license from JetBrains for [Open Source projects](https://jb.gg/OpenSourceSupport).
+
+<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/PyCharm_icon.png" alt="PyCharm logo." width="50" height="50">
