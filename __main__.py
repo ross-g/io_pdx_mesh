@@ -13,7 +13,7 @@ from . import PY2
 from .pdx_data import PDXData, PDXDataJSON, read_meshfile
 
 # vendored package imports
-from external import click
+from .external import click
 
 
 """ ====================================================================================================================
