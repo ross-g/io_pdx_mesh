@@ -78,9 +78,6 @@ if maya_up == "z":
     ))
 # fmt: on
 
-# simple datatype for animation clips
-AnimClip = namedtuple("AnimClip", ["name", "start", "end"])
-
 
 """ ====================================================================================================================
     API functions.
@@ -214,74 +211,6 @@ def set_ignore_joints(state):
         except Exception:
             pmc.addAttr(joint, longName=PDX_IGNOREJOINT, attributeType="bool")
             getattr(joint, PDX_IGNOREJOINT).set(state)
-
-
-def get_animation_clips(bone_list):
-    anim_clips = []
-    root_bone = get_skeleton_hierarchy(bone_list)[0]
-
-    # parse the string attribute and produce a list of AnimClip tuples
-    attr_string = None
-    if hasattr(root_bone, PDX_ANIMATION):
-        attr_string = getattr(root_bone, PDX_ANIMATION).get()
-
-    if attr_string and attr_string != "":
-        for clip_string in attr_string.split("@"):
-            anim_clip = AnimClip(
-                clip_string.split("~")[0], int(clip_string.split("~")[1]), int(clip_string.split("~")[2])
-            )
-            anim_clips.append(anim_clip)
-
-        # sort clips by start frame
-        anim_clips.sort(key=lambda clip: clip.start)
-
-    return anim_clips
-
-
-def set_animation_clips(bone_list, clips_list):
-    root_bone = get_skeleton_hierarchy(bone_list)[0]
-
-    # sort clips by start frame
-    clips_list.sort(key=lambda clip: clip.start)
-
-    # write the attribute string back to the root bone
-    attr_string = "@".join(["~".join([str(getattr(clip, f)) for f in clip._fields]) for clip in clips_list])
-    getattr(root_bone, PDX_ANIMATION).set(attr_string)
-
-
-def edit_animation_clip(bone_list, anim_name, start, end):
-    root_bone = get_skeleton_hierarchy(bone_list)[0]
-
-    if not hasattr(root_bone, PDX_ANIMATION):
-        # add the animation attribute, PDX tool uses ENUM attr and keyframes but we use a string and separators
-        pmc.addAttr(root_bone, longName=PDX_ANIMATION, dataType="string")
-
-    # get all existing animation clips
-    anim_clips = get_animation_clips([root_bone])
-    anim_clips_names = [clip.name for clip in anim_clips]
-
-    new_clip = AnimClip(anim_name, start, end)
-
-    # check if we're editing or adding a clip (names are unique)
-    if new_clip.name in anim_clips_names:
-        i = anim_clips_names.index(new_clip.name)
-        anim_clips[i] = new_clip
-    else:
-        anim_clips.append(new_clip)
-
-    set_animation_clips(bone_list, anim_clips)
-
-
-def remove_animation_clip(bone_list, anim_name):
-    # get all existing animation clips
-    anim_clips = get_animation_clips(bone_list)
-    anim_clips_names = [clip.name for clip in anim_clips]
-
-    # find and remove the existing clip
-    i = anim_clips_names.index(anim_name)
-    anim_clips.pop(i)
-
-    set_animation_clips(bone_list, anim_clips)
 
 
 def get_animation_fps():
@@ -1679,9 +1608,6 @@ def import_animfile(animpath, frame_start=1, **kwargs):
             progress("update", 1, "setting keyframes on bone")
             bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
             create_anim_keys(bone_long_name, bone_keys, frame_start)
-
-    animation_name = os.path.split(os.path.splitext(animpath)[0])[1]
-    edit_animation_clip(bone_list, animation_name, frame_start, (frame_start + framecount - 1))
 
     pmc.select(None)
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))

@@ -36,20 +36,16 @@ try:
     reload(maya_import_export)
 
     from .maya_import_export import (
-        PDX_ANIMATION,
         PDX_SHADER,
         create_shader,
         export_animfile,
         export_meshfile,
-        get_animation_clips,
         get_animation_fps,
         get_mesh_index,
         import_animfile,
         import_meshfile,
         list_scene_pdx_materials,
         list_scene_pdx_meshes,
-        list_scene_rootbones,
-        remove_animation_clip,
         set_animation_fps,
         set_ignore_joints,
         set_local_axis_display,
@@ -870,7 +866,7 @@ class MeshIndexPopup_UI(QtWidgets.QWidget):
             item = self.list_meshes.item(i)
             maya_mesh = pmc.PyNode(item.data(QtCore.Qt.UserRole))  # type: pmc.nt.Mesh
             set_mesh_index(maya_mesh, i)
-            IO_PDX_LOG.info("\t{0} - {0}".format(maya_mesh.name(), i))
+            IO_PDX_LOG.info("\t{0} - {1}".format(maya_mesh.name(), i))
 
         self.close()
 

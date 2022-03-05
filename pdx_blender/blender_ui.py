@@ -21,6 +21,7 @@ try:
 
     importlib.reload(blender_import_export)
     from .blender_import_export import (
+        PDX_MESHINDEX,
         PDX_SHADER,
         create_shader,
         export_animfile,
@@ -292,7 +293,7 @@ class IOPDX_OT_mesh_index_popup(Operator):
 
     def execute(self, context):
         for i, item in enumerate(context.scene.io_pdx_group.coll):
-            item.ref.data["meshindex"] = i
+            item.ref.data[PDX_MESHINDEX] = i
         return {"FINISHED"}
 
     def invoke(self, context, event):
