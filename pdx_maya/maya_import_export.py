@@ -1615,7 +1615,14 @@ def import_animfile(animpath, frame_start=1, **kwargs):
 
 
 def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
+    # kwargs wrangling
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
+    # debug logging option
+    debug = kwargs.get("exp_debug", False)
+    # allow non-uniform scale
+    uniform_scale = kwargs.get("uniform_scale", True)
+    # with plain text file option
+    plain_txt = kwargs.get("plain_txt", False)
 
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(animpath))
@@ -1680,7 +1687,10 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
         _translation = swap_coord_space(bone.getTranslation())
         # bone rotation must be pre-multiplied by joint orientation
         _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
-        _scale = [bone.getScale()[0]]  # animation supports uniform scale only
+        _scale = list(bone.getScale())
+        # animation may support either uniform / non-uniform scale
+        if uniform_scale:
+            _scale = [_scale[0]]
 
         # set initial attributes
         bone_xml.set("t", list(_translation))
@@ -1700,12 +1710,17 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     t_packed, q_packed, s_packed = [], [], []
     for i in xrange(frame_samples):
         for bone in all_bone_keyframes:
-            if "t" in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]["t"].pop(0))
-            if "q" in all_bone_keyframes[bone]:
-                q_packed.extend(all_bone_keyframes[bone]["q"].pop(0))
-            if "s" in all_bone_keyframes[bone]:
-                s_packed.append(all_bone_keyframes[bone]["s"].pop(0)[0])  # support uniform scale only
+            bone_key_data = all_bone_keyframes[bone]
+            if "t" in bone_key_data:
+                t_packed.extend(bone_key_data["t"].pop(0))
+            if "q" in bone_key_data:
+                q_packed.extend(bone_key_data["q"].pop(0))
+            if "s" in bone_key_data:
+                # animation may support either uniform / non-uniform scale
+                if uniform_scale:
+                    s_packed.append(bone_key_data["s"].pop(0)[0])
+                else:
+                    s_packed.extend(bone_key_data["s"].pop(0))
 
     if t_packed:
         samples_xml.set("t", t_packed)
@@ -1717,6 +1732,10 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     # write the binary file from our XML structure
     IO_PDX_LOG.info("writing .anim file")
     pdx_data.write_animfile(animpath, root_xml)
+    if plain_txt:
+        IO_PDX_LOG.info("writing .txt file -")
+        with open(str(pathlib.Path(animpath).with_suffix(".txt")), "wt") as fp:
+            fp.write(str(pdx_data.PDXData(root_xml)) + "\n")
 
     pmc.currentTime(curr_frame, edit=True)
 

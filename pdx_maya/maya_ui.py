@@ -1086,12 +1086,44 @@ class AnimExport_UI(CustomFileDialog):
         self.range_settings.layout().setContentsMargins(20, 4, 4, 4)
         self.range_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
 
-        options_group.layout().addWidget(self.chk_custom)
-        options_group.layout().addWidget(self.range_settings)
+        self.chk_uniform_scale = QtWidgets.QCheckBox("Uniform scale only")
+        self.chk_uniform_scale.setObjectName("uniform_scale")
+        self.chk_uniform_scale.setToolTip(
+            "Exports only uniform scale animation data, newer games support non-uniformly scaled bones"
+        )
 
+        self.chk_debug = QtWidgets.QCheckBox("[debug options]")
+        self.chk_debug.setObjectName("exp_debug")
+        self.chk_debug.setToolTip("Non-standard options")
+
+        self.debug_settings = QtWidgets.QGroupBox()
+        self.debug_settings.setLayout(QtWidgets.QVBoxLayout())
+
+        self.chk_plain_txt = QtWidgets.QCheckBox("Also export plain text")
+        self.chk_plain_txt.setObjectName("plain_txt")
+        self.chk_plain_txt.setToolTip("Exports a plain text file along with binary")
+
+        self.debug_settings.layout().addWidget(self.chk_plain_txt)
+        self.debug_settings.layout().setContentsMargins(20, 4, 4, 4)
+        self.debug_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        self.debug_settings.setVisible(False)
+
+        for ctrl in [
+            self.chk_custom,
+            self.range_settings,
+            self.chk_uniform_scale,
+            self.chk_debug,
+            self.debug_settings,
+        ]:
+            options_group.layout().addWidget(ctrl)
+
+        # TODO: better way to set defaults in multiple places?
         self.chk_custom.setChecked(False)
         self.range_settings.setVisible(False)
+        self.chk_uniform_scale.setChecked(True)
+
         self.chk_custom.toggled.connect(self.range_settings.setVisible)
+        self.chk_debug.toggled.connect(self.debug_settings.setVisible)
 
 
 class MayaProgress(object):
