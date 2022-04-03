@@ -214,7 +214,7 @@ def parseData(bdata, pos):
 
     else:
         raise NotImplementedError(
-            "Unknown data type encountered. {} at position {}\n{}".format(datatype, pos, bdata[pos - 10 : pos + 10])
+            "Unknown data type encountered. {} at position {}\neg: {}".format(datatype, pos, bdata[pos - 10 : pos + 10])
         )
 
     return datavalues, pos
@@ -354,7 +354,7 @@ def writeData(data_array):
     elif len(types) < 1:
         return datastring
     else:
-        raise NotImplementedError("Mixed data type encountered. {} - {}".format(types, data_array))
+        raise NotImplementedError("Mixed data types encountered. - {}".format(types))
 
     if all(isinstance(d, int) for d in data_array):
         # write integer data
@@ -397,7 +397,7 @@ def writeData(data_array):
         datastring += pack("x")
 
     else:
-        raise NotImplementedError("Unknown data type encountered. {}\n{}".format(datatype, data_array))
+        raise NotImplementedError("Unknown data type encountered. {}\neg: {}".format(datatype, data_array[0]))
 
     return datastring
 
