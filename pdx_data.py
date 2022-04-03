@@ -625,9 +625,9 @@ General binary format is:
                 sa    (string)  animation curve types, combination of 's', 't', 'q'
                 t    (float)  initial translation as vector
                 q    (float)  initial rotation as quaternion
-                s    (float)  initial scale as single float
+                s    (float)  initial scale as single float, or vector (non-uniform scale) [CK3]
         samples    (object)
             t   (floats)    list of translations (size 3), by bone, by frame (translation from parent, in parent space)
             q   (floats)    list of rotations (size 4), by bone, by frame (rotation from parent, in parent space)
-            s   (floats)    list of scales (size 1), by bone, by frame
+            s   (floats)    list of scales (size 1, or size 3 [CK3]), by bone, by frame
 """

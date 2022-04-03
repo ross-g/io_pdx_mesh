@@ -862,7 +862,6 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
         # create joint
         new_bone = armt.edit_bones.new(name=unique_name)
         new_bone.select = True
-        new_bone.inherit_scale = "NONE"
         bone_list[index] = new_bone
 
         # connect to parent
@@ -1135,7 +1134,7 @@ def create_anim_keys(armature, bone_name, key_dict, timestart, pose):
 
         # over-ride initial pose offset based on keyed attributes
         if "s" in key_dict:
-            _scale = Matrix.Scale(key_dict["s"][k][0], 4)
+            _scale = Matrix.Diagonal(key_dict["s"][k]).to_4x4()
             _scale = swap_coord_space(_scale)
 
         if "q" in key_dict:
@@ -1454,25 +1453,21 @@ def import_animfile(animpath, frame_start=1):
     bpy.context.scene.frame_set(frame_start)
 
     # find armature and bones being animated in the scene
-    IO_PDX_LOG.info("finding armature and bones -")
+    IO_PDX_LOG.info("finding armature -")
     matching_rigs = [get_rig_from_bone_name(clean_imported_name(bone.tag)) for bone in info]
     matching_rigs = list(set(rig for rig in matching_rigs if rig))
+
+    # break on failing to find an armature to animate
     if len(matching_rigs) != 1:
         raise RuntimeError("Missing unique armature required for animation: {0}".format(matching_rigs))
     rig = matching_rigs[0]
 
-    # clear any current pose before attempting to load the animation
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.mode_set(mode="POSE")
-    bpy.ops.pose.select_all(action="SELECT")
-    bpy.ops.pose.transforms_clear()
-    bpy.ops.object.mode_set(mode="OBJECT")
-
-    # check armature has all required bones
+    # check armature has all required bones, check scale uniformity
+    IO_PDX_LOG.info("finding bones -")
+    scale_length = set()
     bone_errors = []
-    initial_pose = dict()
     for bone in info:
-        pose_bone, edit_bone = None, None
+        scale_length.add(len(bone.attrib["s"]))
         bone_name = clean_imported_name(bone.tag)
         try:
             pose_bone = rig.pose.bones[bone_name]
@@ -1481,12 +1476,37 @@ def import_animfile(animpath, frame_start=1):
             bone_errors.append(bone_name)
             IO_PDX_LOG.warning("failed to find bone - {0}".format(bone_name))
 
-        # and set initial transform
-        if pose_bone and edit_bone:
-            pose_bone.rotation_mode = "QUATERNION"
+    # break on missing bones
+    if bone_errors:
+        raise RuntimeError("Missing bones required for animation: {0}".format(bone_errors))
 
+    # break on variable size scale vectors
+    if len(scale_length) != 1:
+        raise NotImplementedError("Mixed length scale vectors ({0}) are not supported".format(scale_length))
+    # support both uniform ([x]) and non-uniform ([x,y,z]) scale data
+    scale_length = scale_length.pop()
+    scale_padding = 4 - scale_length
+    IO_PDX_LOG.info("animation supports {0}uniform scale -".format("non-" if scale_length > 1 else ""))
+
+    # clear any current pose before attempting to load the animation
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="POSE")
+    bpy.ops.pose.select_all(action="SELECT")
+    bpy.ops.pose.transforms_clear()
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    # set the initial pose (includes un-keyframed bones)
+    initial_pose = dict()
+    IO_PDX_LOG.info("setting initial pose on bones - {0}".format(len(info)))
+    for bone in info:
+        bone_name = clean_imported_name(bone.tag)
+        pose_bone = rig.pose.bones[bone_name]
+        edit_bone = pose_bone.bone  # rig.data.bones[bone_name]
+
+        # set initial transform
+        if pose_bone and edit_bone:
             # compose transform parts
-            _scale = Matrix.Scale(bone.attrib["s"][0], 4)
+            _scale = Matrix.Diagonal(bone.attrib["s"] * scale_padding).to_4x4()
             _rotation = (
                 Quaternion((bone.attrib["q"][3], bone.attrib["q"][0], bone.attrib["q"][1], bone.attrib["q"][2]))
                 .to_matrix()
@@ -1502,6 +1522,7 @@ def import_animfile(animpath, frame_start=1):
                 parent_matrix = edit_bone.parent.matrix_local
 
             # apply transform and set initial pose keyframe (not all bones in this initial pose will be animated)
+            pose_bone.rotation_mode = "QUATERNION"
             pose_bone.matrix = (offset_matrix.transposed() @ parent_matrix.transposed()).transposed()
             pose_bone.keyframe_insert(data_path="scale", index=-1, group=bone_name)
             pose_bone.keyframe_insert(data_path="rotation_quaternion", index=-1, group=bone_name)
@@ -1510,10 +1531,6 @@ def import_animfile(animpath, frame_start=1):
             # record the initial pose as the basis for subsequent keyframes
             initial_pose[bone_name] = pose_bone.matrix
 
-    # break on bone errors
-    if bone_errors:
-        raise RuntimeError("Missing bones required for animation: {0}".format(bone_errors))
-
     # check which transform types are animated on each bone
     all_bone_keyframes = OrderedDict()
     for bone in info:
@@ -1521,20 +1538,23 @@ def import_animfile(animpath, frame_start=1):
         all_bone_keyframes[bone_name] = {sample_type: [] for sample_type in bone.attrib["sa"][0]}
 
     # then traverse the samples data to store keys per bone
-    s_index, q_index, t_index = 0, 0, 0
+    s_idx, q_idx, t_idx = 0, 0, 0               # track offsets into samples data arrays
+    s_len, q_len, t_len = scale_length, 4, 3    # track stride across samples data arrays
     for _ in range(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
-
             if "s" in bone_key_data:
-                bone_key_data["s"].append(samples.attrib["s"][s_index : s_index + 1])
-                s_index += 1
+                frame_bone_scale = samples.attrib["s"][s_idx : s_idx + s_len] * scale_padding
+                bone_key_data["s"].append(frame_bone_scale)
+                s_idx += s_len
             if "q" in bone_key_data:
-                bone_key_data["q"].append(samples.attrib["q"][q_index : q_index + 4])
-                q_index += 4
+                frame_bone_quat = samples.attrib["q"][q_idx : q_idx + q_len]
+                bone_key_data["q"].append(frame_bone_quat)
+                q_idx += q_len
             if "t" in bone_key_data:
-                bone_key_data["t"].append(samples.attrib["t"][t_index : t_index + 3])
-                t_index += 3
+                frame_bone_trans = samples.attrib["t"][t_idx : t_idx + t_len]
+                bone_key_data["t"].append(frame_bone_trans)
+                t_idx += t_len
 
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
