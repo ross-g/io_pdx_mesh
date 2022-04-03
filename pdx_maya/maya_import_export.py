@@ -625,7 +625,7 @@ def get_skeleton_hierarchy(bone_list):
     return valid_bones
 
 
-def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
+def get_scene_animdata(export_bones, startframe, endframe):
     # store transform for each bone over the frame range
     frames_data = defaultdict(list)
 
@@ -641,14 +641,15 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
                 _scale = bone.getScale()
 
                 frames_data[bone.name()].append((_translation, _rotation, _scale))
-
     except Exception as err:
         IO_PDX_LOG.error(err)
         raise
-
     finally:
         cmds.refresh(suspend=False)
         cmds.refresh(force=True)
+
+    # convert from defaultdict after building up the data
+    frames_data = dict(frames_data)
 
     # create an ordered dictionary of all animated bones to store sample data
     all_bone_keyframes = OrderedDict()
@@ -656,14 +657,13 @@ def get_scene_animdata(export_bones, startframe, endframe, round_data=True):
         all_bone_keyframes[bone.name()] = dict()
 
     # determine if any transform attributes were animated over this frame range for each bone
+    # FIXME: this should look at f-curves and keys, not just a set() of transform data
     for bone in export_bones:
         # convert data from list of tuples [(t,q,s)] to three nested lists [t][q][s]
         t_list, q_list, s_list = zip(*frames_data[bone.name()])
-
-        if round_data:
-            t_list = [util_round(list(t), PDX_ROUND_TRANS) for t in t_list]
-            q_list = [util_round(list(q), PDX_ROUND_ROT) for q in q_list]
-            s_list = [util_round(list(s), PDX_ROUND_SCALE) for s in s_list]
+        t_list = [tuple(t) for t in t_list]
+        q_list = [tuple(q) for q in q_list]
+        s_list = [tuple(s) for s in s_list]
 
         # store any animated transform samples per attribute
         for attr, attr_list in zip(["t", "q", "s"], [t_list, q_list, s_list]):
@@ -1542,7 +1542,7 @@ def import_animfile(animpath, frame_start=1, **kwargs):
 
     pmc.currentTime(frame_start, edit=True)
 
-    # find bones being animated in the scene
+    # check scene has all required bones, check scale uniformity
     IO_PDX_LOG.info("finding bones -")
     progress("update", 1, "finding bones")
     bone_errors = []
@@ -1639,7 +1639,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     info_xml = Xml.SubElement(root_xml, "info")
 
     # fill in animation info and initial pose
-    IO_PDX_LOG.info("writing animation info -")
+    IO_PDX_LOG.info("gathering animation info -")
     fps = get_animation_fps()  # pmc.mel.currentTimeUnitToFPS()
     info_xml.set("fps", [float(fps)])
 
@@ -1663,8 +1663,8 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     all_bone_keyframes = get_scene_animdata(export_bones, frame_start, frame_end)
 
     # for each bone, write sample types and describe the initial offset from parent
-    IO_PDX_LOG.info("writing initial bone transforms -")
-    progress("update", 1, "writing initial bone transforms")
+    IO_PDX_LOG.info("gathering initial bone transforms -")
+    progress("update", 1, "gathering initial bone transforms")
     pmc.currentTime(frame_start, edit=True)
     for bone in export_bones:
         bone_name = bone.name()
@@ -1682,18 +1682,19 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
         _rotation = swap_coord_space(bone.getRotation(quaternion=True) * bone.getOrientation())
         _scale = [bone.getScale()[0]]  # animation supports uniform scale only
 
-        bone_xml.set("t", util_round(list(_translation), PDX_ROUND_TRANS))
-        bone_xml.set("q", util_round(list(_rotation), PDX_ROUND_ROT))
-        bone_xml.set("s", util_round(list(_scale), PDX_ROUND_SCALE))
+        # set initial attributes
+        bone_xml.set("t", list(_translation))
+        bone_xml.set("q", list(_rotation))
+        bone_xml.set("s", list(_scale))
 
     # create root element for animation keyframe data
     samples_xml = Xml.SubElement(root_xml, "samples")
-    IO_PDX_LOG.info("writing keyframes -")
-    progress("update", 1, "writing keyframes")
+    IO_PDX_LOG.info("gathering keyframes -")
+    progress("update", 1, "gathering keyframes")
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
         if bone_keys:
-            IO_PDX_LOG.info("writing {0} keyframes for bone - {1}".format(list(bone_keys.keys()), bone_name))
+            IO_PDX_LOG.info("gathering {0} keyframes for bone - {1}".format(list(bone_keys.keys()), bone_name))
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
@@ -1714,6 +1715,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
         samples_xml.set("s", s_packed)
 
     # write the binary file from our XML structure
+    IO_PDX_LOG.info("writing .anim file")
     pdx_data.write_animfile(animpath, root_xml)
 
     pmc.currentTime(curr_frame, edit=True)

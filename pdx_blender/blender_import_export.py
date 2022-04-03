@@ -536,7 +536,7 @@ def get_skeleton_hierarchy(rig):
     return valid_bones
 
 
-def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True):
+def get_scene_animdata(rig, export_bones, startframe, endframe):
     # store transform for each bone over the frame range
     frames_data = defaultdict(list)
 
@@ -548,12 +548,10 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
             # build a matrix describing the transform from parent bone
             parent_matrix = Matrix()
             if pose_bone.parent:
-                # parent_matrix = pose_bone.parent.matrix.copy()
                 parent_matrix = rig.convert_space(
                     pose_bone=pose_bone.parent, matrix=pose_bone.parent.matrix, from_space="POSE", to_space="WORLD"
                 )
 
-            # offset_matrix = parent_matrix.inverted_safe() @ pose_bone.matrix
             pose_matrix = rig.convert_space(
                 pose_bone=pose_bone, matrix=pose_bone.matrix, from_space="POSE", to_space="WORLD"
             )
@@ -562,24 +560,22 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
 
             frames_data[bone.name].append((_translation, _rotation, _scale))
 
+    # convert from defaultdict after building up the data
+    frames_data = dict(frames_data)
+
     # create an ordered dictionary of all animated bones to store sample data
     all_bone_keyframes = OrderedDict()
     for bone in export_bones:
         all_bone_keyframes[bone.name] = dict()
 
     # determine if any transform attributes were animated over this frame range for each bone
+    # FIXME: this should look at f-curves and keys, not just a set() of transform data
     for bone in export_bones:
         # convert data from list of tuples [(t,q,s)] to three nested lists [t][q][s]
         t_list, q_list, s_list = zip(*frames_data[bone.name])
-
-        if round_data:
-            t_list = [util_round(t, PDX_ROUND_TRANS) for t in t_list]
-            q_list = [util_round(q, PDX_ROUND_ROT) for q in q_list]
-            s_list = [util_round(s, PDX_ROUND_SCALE) for s in s_list]
-        else:
-            t_list = [t.freeze() for t in t_list]  # call freeze so Blender data can be hashed into a set
-            q_list = [q.freeze() for q in q_list]
-            s_list = [s.freeze() for s in s_list]
+        t_list = [t.freeze() for t in t_list]  # call freeze so Blender data can be hashed into a set
+        q_list = [q.freeze() for q in q_list]
+        s_list = [s.freeze() for s in s_list]
 
         # convert quaternions from wxyz to xyzw
         q_list = [(q.x, q.y, q.z, q.w) for q in q_list]
@@ -1654,10 +1650,10 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
         if uniform_scale:
             _scale = [_scale[0]]
 
-        # round to required precisions and set attribute
-        bone_xml.set("t", util_round(_translation, PDX_ROUND_TRANS))
-        bone_xml.set("q", util_round(_rotation, PDX_ROUND_ROT))
-        bone_xml.set("s", util_round(_scale, PDX_ROUND_SCALE))
+        # set initial attributes
+        bone_xml.set("t", list(_translation))
+        bone_xml.set("q", list(_rotation))
+        bone_xml.set("s", list(_scale))
 
     # create root element for animation keyframe data
     samples_xml = Xml.SubElement(root_xml, "samples")
