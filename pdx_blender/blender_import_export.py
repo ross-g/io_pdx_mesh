@@ -490,7 +490,7 @@ def get_locators_info(blender_empties):
 
         locator_list[i]["p"] = list(_position)
         # convert quaternions from wxyz to xyzw
-        locator_list[i]["q"] = list([_rotation[1], _rotation[2], _rotation[3], _rotation[0]])
+        locator_list[i]["q"] = list([_rotation.x, _rotation.y, _rotation.z, _rotation.w])
 
         is_scaled = util_round(list(_scale), PDX_ROUND_SCALE) != (1.0, 1.0, 1.0)
         # TODO: check engine config here to see if full 'tx' attribute is supported
@@ -582,7 +582,7 @@ def get_scene_animdata(rig, export_bones, startframe, endframe, round_data=True)
             s_list = [s.freeze() for s in s_list]
 
         # convert quaternions from wxyz to xyzw
-        q_list = [(q[1], q[2], q[3], q[0]) for q in q_list]
+        q_list = [(q.x, q.y, q.z, q.w) for q in q_list]
 
         # store any animated transform samples per attribute
         for attr, attr_list in zip(["t", "q", "s"], [t_list, q_list, s_list]):
@@ -1560,7 +1560,7 @@ def import_animfile(animpath, frame_start=1):
         bone_keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if bone_keys.values():
-            IO_PDX_LOG.info("setting {0} keyframes on bone - {1}".format(list(bone_keys.keys()), bone_name))
+            IO_PDX_LOG.info("setting {0} keyframes on bone - {1}".format(",".join(bone_keys.keys()), bone_name))
             create_anim_keys(rig, bone_name, bone_keys, frame_start, initial_pose)
 
     bpy.context.scene.frame_set(frame_start)
@@ -1570,7 +1570,15 @@ def import_animfile(animpath, frame_start=1):
     IO_PDX_LOG.info("import finished! ({0:.4f} sec)".format(time.time() - start))
 
 
-def export_animfile(animpath, frame_start=1, frame_end=10):
+def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
+    # kwargs wrangling
+    # debug logging option
+    debug = kwargs.get("exp_debug", False)
+    # allow non-uniform scale
+    uniform_scale = kwargs.get("uniform_scale", True)
+    # with plain text file option
+    plain_txt = kwargs.get("plain_txt", False)
+
     start = time.time()
     IO_PDX_LOG.info("exporting - {0}".format(animpath))
 
@@ -1592,7 +1600,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10):
     info_xml = Xml.SubElement(root_xml, "info")
 
     # fill in animation info and initial pose
-    IO_PDX_LOG.info("writing animation info -")
+    IO_PDX_LOG.info("gathering animation info -")
     fps = bpy.context.scene.render.fps
     info_xml.set("fps", [float(fps)])
 
@@ -1618,7 +1626,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10):
     all_bone_keyframes = get_scene_animdata(rig, export_bones, frame_start, frame_end)
 
     # for each bone, write sample types and describe the initial offset from parent
-    IO_PDX_LOG.info("writing initial bone transforms -")
+    IO_PDX_LOG.info("gathering initial bone transforms -")
     bpy.context.scene.frame_set(frame_start)
     for bone in export_bones:
         pose_bone = rig.pose.bones[bone.name]
@@ -1641,9 +1649,10 @@ def export_animfile(animpath, frame_start=1, frame_end=10):
         _translation, _rotation, _scale = swap_coord_space(offset_matrix).decompose()
 
         # convert quaternions from wxyz to xyzw
-        _rotation = [list(_rotation)[1], list(_rotation)[2], list(_rotation)[3], list(_rotation)[0]]
-        # animation supports uniform scale only
-        _scale = [_scale[0]]
+        _rotation = [_rotation.x, _rotation.y, _rotation.z, _rotation.w]
+        # animation may support either uniform / non-uniform scale
+        if uniform_scale:
+            _scale = [_scale[0]]
 
         # round to required precisions and set attribute
         bone_xml.set("t", util_round(_translation, PDX_ROUND_TRANS))
@@ -1652,22 +1661,27 @@ def export_animfile(animpath, frame_start=1, frame_end=10):
 
     # create root element for animation keyframe data
     samples_xml = Xml.SubElement(root_xml, "samples")
-    IO_PDX_LOG.info("writing keyframes -")
+    IO_PDX_LOG.info("gathering keyframes -")
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
         if bone_keys:
-            IO_PDX_LOG.info("writing {0} keyframes for bone - {1}".format(list(bone_keys.keys()), bone_name))
+            IO_PDX_LOG.info("gathering {0} keyframes for bone - {1}".format(",".join(bone_keys.keys()), bone_name))
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
-    for i in range(frame_samples):
+    for _ in range(frame_samples):
         for bone in all_bone_keyframes:
-            if "t" in all_bone_keyframes[bone]:
-                t_packed.extend(all_bone_keyframes[bone]["t"].pop(0))
-            if "q" in all_bone_keyframes[bone]:
-                q_packed.extend(all_bone_keyframes[bone]["q"].pop(0))
-            if "s" in all_bone_keyframes[bone]:
-                s_packed.append(all_bone_keyframes[bone]["s"].pop(0)[0])  # support uniform scale only
+            bone_key_data = all_bone_keyframes[bone]
+            if "t" in bone_key_data:
+                t_packed.extend(bone_key_data["t"].pop(0))
+            if "q" in bone_key_data:
+                q_packed.extend(bone_key_data["q"].pop(0))
+            if "s" in bone_key_data:
+                # animation may support either uniform / non-uniform scale
+                if uniform_scale:
+                    s_packed.append(bone_key_data["s"].pop(0)[0])
+                else:
+                    s_packed.extend(bone_key_data["s"].pop(0))
 
     if t_packed:
         samples_xml.set("t", t_packed)
@@ -1677,7 +1691,12 @@ def export_animfile(animpath, frame_start=1, frame_end=10):
         samples_xml.set("s", s_packed)
 
     # write the binary file from our XML structure
+    IO_PDX_LOG.info("writing .anim file")
     pdx_data.write_animfile(animpath, root_xml)
+    if plain_txt:
+        IO_PDX_LOG.info("writing .txt file -")
+        with open(str(pathlib.Path(animpath).with_suffix(".txt")), "wt") as fp:
+            fp.write(str(pdx_data.PDXData(root_xml)) + "\n")
 
     bpy.context.scene.frame_set(curr_frame)
 

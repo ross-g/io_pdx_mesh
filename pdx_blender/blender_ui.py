@@ -601,13 +601,28 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
     )
     int_start: IntProperty(
         name="Start frame",
-        description="Start frame",
+        description="Custom start frame",
         default=1,
     )
     int_end: IntProperty(
         name="End frame",
-        description="End frame",
+        description="Custom end frame",
         default=100,
+    )
+    chk_uniform_scale: BoolProperty(
+        name="Uniform scale animation",
+        description="Exports only uniform scale animation data, newer games support non-uniformly scaled bones",
+        default=True,
+    )
+    chk_debug: BoolProperty(
+        name="[debug options]",
+        description="Non-standard options",
+        default=False,
+    )
+    chk_plain_txt: BoolProperty(
+        name="Also export plain text",
+        description="Exports a plain text file along with binary",
+        default=False,
     )
     # fmt:on
 
@@ -623,15 +638,33 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
             col = range_settings.column()
             col.prop(self, "int_start")
             col.prop(self, "int_end")
+        box.prop(self, "chk_uniform_scale")
+        box.prop(self, "chk_debug")
+        if self.chk_debug:
+            debug_settings = box.box()
+            split = debug_settings.split(factor=0.1)
+            _, col = split.column(), split.column()
+            col.alignment = "RIGHT"
+            col.prop(self, "chk_plain_txt")
 
     def execute(self, context):
         settings = context.scene.io_pdx_export
 
         try:
             if settings.custom_range:
-                export_animfile(self.filepath, frame_start=self.int_start, frame_end=self.int_end)
+                start, end = self.int_start, self.int_end
             else:
-                export_animfile(self.filepath, frame_start=context.scene.frame_start, frame_end=context.scene.frame_end)
+                start, end = context.scene.frame_start, context.scene.frame_end
+
+            export_animfile(
+                self.filepath,
+                frame_start=start,
+                frame_end=end,
+                exp_debug=self.chk_debug,
+                uniform_scale=self.chk_uniform_scale,
+                plain_txt=self.chk_plain_txt,
+            )
+
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed exporting {}".format(self.filepath))
             IO_PDX_SETTINGS.last_export_anim = self.filepath
 
