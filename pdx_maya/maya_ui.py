@@ -989,7 +989,7 @@ class MeshExport_UI(CustomFileDialog):
         self.chk_sel_only.setToolTip("Filter export by selection")
 
         self.chk_debug = QtWidgets.QCheckBox("[debug options]")
-        self.chk_debug.setObjectName("exp_debug")
+        self.chk_debug.setObjectName("debug_mode")
         self.chk_debug.setToolTip("Non-standard options")
 
         self.debug_settings = QtWidgets.QGroupBox()
@@ -1093,7 +1093,7 @@ class AnimExport_UI(CustomFileDialog):
         )
 
         self.chk_debug = QtWidgets.QCheckBox("[debug options]")
-        self.chk_debug.setObjectName("exp_debug")
+        self.chk_debug.setObjectName("debug_mode")
         self.chk_debug.setToolTip("Non-standard options")
 
         self.debug_settings = QtWidgets.QGroupBox()

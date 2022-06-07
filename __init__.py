@@ -51,7 +51,7 @@ bl_info = {
 
 
 # setup module logging
-log_name = bl_info["project_name"]
+log_name = "io_pdx"
 log_format = "[%(name)s] %(levelname)s:  %(message)s"
 log_lvl = logging.INFO
 

@@ -558,7 +558,7 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_locs=self.chk_locs,
                 exp_selected=self.chk_selected,
                 as_blendshape=self.chk_mesh_blendshape,
-                exp_debug=self.chk_debug,
+                debug_mode=self.chk_debug,
                 split_verts=self.chk_split_vtx,
                 sort_verts=self.ddl_sort_vtx,
                 plain_txt=self.chk_plain_txt,
@@ -660,7 +660,7 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
                 self.filepath,
                 frame_start=start,
                 frame_end=end,
-                exp_debug=self.chk_debug,
+                debug_mode=self.chk_debug,
                 uniform_scale=self.chk_uniform_scale,
                 plain_txt=self.chk_plain_txt,
             )

@@ -24,7 +24,7 @@ try:
 except NameError:
     basestring = str
 
-DATA_LOG = logging.getLogger("io_pdx_data")
+DATA_LOG = logging.getLogger("io_pdx.data")
 
 
 """ ====================================================================================================================

@@ -7,6 +7,7 @@
 
 import json
 import time
+import logging
 from datetime import datetime, date
 
 # Py2, Py3 compatibility
@@ -15,7 +16,9 @@ try:
 except ImportError:
     from urllib2 import urlopen, Request, URLError
 
-from . import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS
+from . import bl_info, IO_PDX_SETTINGS
+
+UPDATER_LOG = logging.getLogger("io_pdx.updater")
 
 
 """ ====================================================================================================================
@@ -75,10 +78,10 @@ class Github_API(object):
             try:
                 release_list = self.get_data(releases_url, TIMEOUT)
             except URLError as err:
-                IO_PDX_LOG.warning("Unable to check for update. ({})".format(err.reason))
+                UPDATER_LOG.warning("Unable to check for update. ({})".format(err.reason))
                 return
             except Exception as err:
-                IO_PDX_LOG.error("Failed on check for update. ({})".format(err))
+                UPDATER_LOG.error("Failed on check for update. ({})".format(err))
                 return
             self.LATEST_RELEASE = release_list[0]
 
@@ -97,7 +100,7 @@ class Github_API(object):
             IO_PDX_SETTINGS.github_latest_notes = self.LATEST_NOTES
 
             IO_PDX_SETTINGS.last_update_check = str(date.today())
-            IO_PDX_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
+            UPDATER_LOG.info("Checked for update. ({0:.4f} sec)".format(time.time() - start))
 
         else:
             # used cached release data in settings
@@ -105,7 +108,7 @@ class Github_API(object):
             self.LATEST_URL = IO_PDX_SETTINGS.github_latest_url
             self.LATEST_NOTES = IO_PDX_SETTINGS.github_latest_notes
 
-            IO_PDX_LOG.info("Skipped update check. (already ran today)")
+            UPDATER_LOG.info("Skipped update check. (already ran today)")
 
         self.AT_LATEST = self.CURRENT_VERSION == self.LATEST_VERSION
 

@@ -11,7 +11,7 @@ import json
 import logging
 import os.path as path
 
-SETTINGS_LOG = logging.getLogger("io_pdx_settings")
+SETTINGS_LOG = logging.getLogger("io_pdx.settings")
 
 
 """ ====================================================================================================================
@@ -31,7 +31,7 @@ class PDXsettings(object):
                 os.makedirs(path.dirname(filepath))
                 with open(filepath, "w") as _:
                     pass
-            except OSError as err:
+            except OSError:
                 SETTINGS_LOG.error("Failed creating new settings file", exc_info=True)
 
         # default settings

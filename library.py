@@ -6,6 +6,8 @@
 """
 
 import re
+import logging
+import functools
 
 
 PDX_SHADER = "shader"
@@ -23,3 +25,27 @@ def get_lod_level(*names):
         lod_match = re.match(LOD_PATTERN, name, re.IGNORECASE)
         if lod_match:
             return int(lod_match.group("level"))
+
+
+def allow_debug_logging(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        debug_enabled = kwargs.get("debug_mode", False)
+
+        # enabled debug logging level
+        if debug_enabled:
+            root_level = logging.root.level
+            io_pdx_level = logging.getLogger("io_pdx").level
+            logging.root.setLevel(logging.DEBUG)
+            logging.getLogger("io_pdx").setLevel(logging.DEBUG)
+
+        value = func(*args, **kwargs)
+
+        # restore logging level
+        if debug_enabled:
+            logging.root.setLevel(root_level)
+            logging.getLogger("io_pdx").setLevel(io_pdx_level)
+
+        return value
+
+    return wrapper

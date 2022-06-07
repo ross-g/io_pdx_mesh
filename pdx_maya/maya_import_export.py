@@ -13,6 +13,7 @@ from __future__ import print_function, unicode_literals
 import os
 import sys
 import time
+import logging
 from operator import itemgetter
 from collections import OrderedDict, namedtuple, defaultdict
 
@@ -38,6 +39,7 @@ from .. import pdx_data
 from ..external import pathlib
 from ..library import (
     get_lod_level,
+    allow_debug_logging,
     PDX_SHADER,
     PDX_ANIMATION,
     PDX_IGNOREJOINT,
@@ -1226,6 +1228,7 @@ def create_anim_keys(joint_name, key_dict, timestart):
 """
 
 
+@allow_debug_logging
 def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_materials=True, **kwargs):
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
 
@@ -1287,7 +1290,7 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
 
                 # create the material
                 if pdx_material:
-                    IO_PDX_LOG.info("creating material - {0}".format(pdx_material.name))
+                    IO_PDX_LOG.info("creating material - {0}".format(pdx_material.shader[0]))
                     progress("update", 1, "creating material")
                     create_material(pdx_material, mesh, os.path.split(meshpath)[0])
 
@@ -1299,7 +1302,6 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
 
             if join_materials and len(created) > 1:
                 name = created[0].name()
-                print(name)
                 try:
                     joined_mesh = pmc.polyUniteSkinned(*created, constructionHistory=False, mergeUVSets=1)[0]
                 except RuntimeError:  # Maya raises this when using polyUniteSkinned on a group of unskinned meshes
@@ -1319,11 +1321,10 @@ def import_meshfile(meshpath, imp_mesh=True, imp_skel=True, imp_locs=True, join_
     progress("finished")
 
 
+@allow_debug_logging
 def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_selected=False, **kwargs):
     # kwargs wrangling
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
-    # debug logging option
-    debug = kwargs.get("debug", False)
     # export mesh(es) as blendshapes
     as_blendshape = kwargs.get("as_blendshape", False)
     split_by = ["id", "p", "uv"] if as_blendshape else None
@@ -1364,10 +1365,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
         # sort meshes for export by index
         maya_meshes.sort(key=lambda mesh: get_mesh_index(mesh))
 
-        for shape in maya_meshes:
+        for i, shape in enumerate(maya_meshes):
             # create parent element for node data, if exporting meshes
             obj_name = shape.name()
-            IO_PDX_LOG.info("writing node - {0}".format(obj_name))
+
+            IO_PDX_LOG.info("writing node {0}/{1} - {2}".format(i + 1, len(maya_meshes), obj_name))
             progress("update", 1, "writing node")
             objnode_xml = Xml.SubElement(object_xml, obj_name)
 
@@ -1512,6 +1514,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
     progress("finished")
 
 
+@allow_debug_logging
 def import_animfile(animpath, frame_start=1, **kwargs):
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
 
@@ -1615,11 +1618,10 @@ def import_animfile(animpath, frame_start=1, **kwargs):
     progress("finished")
 
 
+@allow_debug_logging
 def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
     # kwargs wrangling
     progress = kwargs.get("progress_fn", lambda *args, **kwargs: None)
-    # debug logging option
-    debug = kwargs.get("exp_debug", False)
     # allow non-uniform scale
     uniform_scale = kwargs.get("uniform_scale", True)
     # with plain text file option
