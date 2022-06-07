@@ -1293,7 +1293,8 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
 
             # populate LOD attribute on object element
             lod_match = get_lod_level(obj_name)
-            if lod_match:
+            if lod_match is not None:
+                IO_PDX_LOG.info("writing lod index - {0}".format(lod_match))
                 objnode_xml.set("lod", [lod_match])
 
             # one object can have multiple materials on a per face basis

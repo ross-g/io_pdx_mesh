@@ -22,4 +22,4 @@ def get_lod_level(*names):
     for name in names:
         lod_match = re.match(LOD_PATTERN, name, re.IGNORECASE)
         if lod_match:
-            return int(lod_match.groupdict()["level"])
+            return int(lod_match.group("level"))
