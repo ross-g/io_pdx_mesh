@@ -109,26 +109,8 @@ class PDXDataJSON(json.JSONEncoder):
 """
 
 
-def parseProperty(bdata, pos):
-    # starting at '!'
-    pos += 1
-
-    # get length of property name
-    prop_name_length = unpack_from("b", bdata, offset=pos)[0]
-    pos += 1
-
-    # get property name as string
-    prop_name = parseString(bdata, pos, prop_name_length)
-    pos += prop_name_length
-
-    # get property data
-    prop_values, pos = parseData(bdata, pos)
-
-    return prop_name, prop_values, pos
-
-
 def parseObject(bdata, pos):
-    # skip and record any repeated '[' characters
+    # record any repeated `[` characters as object depth
     objdepth = 0
     while unpack_from("c", bdata, offset=pos)[0].decode() == "[":
         objdepth += 1
@@ -147,6 +129,24 @@ def parseObject(bdata, pos):
     return obj_name, objdepth, pos
 
 
+def parseProperty(bdata, pos):
+    # skip starting `!`
+    pos += 1
+
+    # get length of property name
+    prop_name_length = unpack_from("b", bdata, offset=pos)[0]
+    pos += 1
+
+    # get property name as string
+    prop_name = parseString(bdata, pos, prop_name_length)
+    pos += prop_name_length
+
+    # get property data
+    prop_values, pos = parseData(bdata, pos)
+
+    return prop_name, prop_values, pos
+
+
 def parseString(bdata, pos, length):
     val_tuple = unpack_from("c" * length, bdata, offset=pos)  # TODO: should fmt here be "s" * length ?
 
@@ -161,53 +161,35 @@ def parseString(bdata, pos, length):
 
 
 def parseData(bdata, pos):
-    # determine the  data type
+    # determine the data type
     datatype = unpack_from("c", bdata, offset=pos)[0].decode()
+    pos += 1
+    # determine the data count
+    datacount = unpack_from("i", bdata, offset=pos)[0]
+    pos += 4
+    # collect data values
     # TODO: use an array here instead of list for memory efficiency?
     datavalues = []
 
+    # handle integer data
     if datatype == "i":
-        # handle integer data
-        pos += 1
+        val = unpack_from("i" * datacount, bdata, offset=pos)
+        datavalues.extend(val)
+        pos += 4 * datacount
 
-        # count
-        size = unpack_from("i", bdata, offset=pos)[0]
-        pos += 4
-
-        # values
-        for i in range(0, size):
-            val = unpack_from("i", bdata, offset=pos)[0]
-            datavalues.append(val)
-            pos += 4
-
+    # handle float data
     elif datatype == "f":
-        # handle float data
-        pos += 1
+        val = unpack_from("f" * datacount, bdata, offset=pos)
+        datavalues.extend(val)
+        pos += 4 * datacount
 
-        # count
-        size = unpack_from("i", bdata, offset=pos)[0]
-        pos += 4
-
-        # values
-        for i in range(0, size):
-            val = unpack_from("f", bdata, offset=pos)[0]
-            datavalues.append(val)
-            pos += 4
-
+    # handle string data
     elif datatype == "s":
-        # handle string data
-        pos += 1
-
-        # count
-        size = unpack_from("i", bdata, offset=pos)[0]
-        # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
-        pos += 4
-
+        # TODO: we are assuming that we always have a data count of 1 string, not an array of multiple strings
         # string length
         str_data_length = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
-        # value
         val = parseString(bdata, pos, str_data_length)
         datavalues.append(val)
         pos += str_data_length
@@ -235,9 +217,9 @@ def read_meshfile(filepath):
     pos = 0
 
     # read the file header '@@b@'
-    header = unpack_from("c" * 4, fdata, pos)
+    header = unpack_from("4c", fdata, pos)
     if bytes(b"".join(header)) == b"@@b@":
-        pos = 4
+        pos += 4
     else:
         raise NotImplementedError("Unknown file header. {}".format(header))
 
@@ -248,16 +230,8 @@ def read_meshfile(filepath):
     # parse through until EOF
     while pos < eof:
         next_char = unpack_from("c", fdata, offset=pos)[0].decode()
-        # we have a property
-        if next_char == "!":
-            # check the property type and values
-            prop_name, prop_values, pos = parseProperty(fdata, pos)
-
-            # assign property values to the parent object
-            parent_element.set(prop_name, prop_values)
-
         # we have an object
-        elif next_char == "[":
+        if next_char == "[":
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
 
@@ -275,6 +249,14 @@ def read_meshfile(filepath):
             # update depth
             depth_list.append(parent_element)
             current_depth = depth
+
+        # we have a property (of the last read object)
+        elif next_char == "!":
+            # check the property type and values
+            prop_name, prop_values, pos = parseProperty(fdata, pos)
+
+            # assign property values to the parent object
+            parent_element.set(prop_name, prop_values)
 
         # we have something that we can't parse
         else:
