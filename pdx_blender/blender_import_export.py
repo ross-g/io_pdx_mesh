@@ -56,6 +56,7 @@ SPACE_MATRIX = Matrix((
     (0, 1, 0, 0),
     (0, 0, 0, 1)
 ))
+SPACE_MATRIX_INV = SPACE_MATRIX.inverted_safe()
 BONESPACE_MATRIX = Matrix((
     (0, 1, 0, 0),
     (-1, 0, 0, 0),
@@ -589,21 +590,19 @@ def get_scene_animdata(rig, export_bones, startframe, endframe):
     return all_bone_keyframes
 
 
-def swap_coord_space(data):
-    """Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up). """
-    global SPACE_MATRIX
-
+def swap_coord_space(data, space_mat=SPACE_MATRIX, space_mat_inv=SPACE_MATRIX_INV):
+    """Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up)."""
     # matrix
     if type(data) == Matrix:
-        return SPACE_MATRIX @ data.to_4x4() @ SPACE_MATRIX.inverted_safe()
+        return space_mat @ data.to_4x4() @ space_mat_inv
     # quaternion
     elif type(data) == Quaternion:
         mat = data.to_matrix()
-        return (SPACE_MATRIX @ mat.to_4x4() @ SPACE_MATRIX.inverted_safe()).to_quaternion()
+        return (space_mat @ mat.to_4x4() @ space_mat_inv).to_quaternion()
     # vector
     elif type(data) == Vector or len(data) == 3:
         vec = Vector(data)
-        return vec @ SPACE_MATRIX
+        return vec @ space_mat
     # uv coordinate
     elif len(data) == 2:
         return data[0], 1 - data[1]

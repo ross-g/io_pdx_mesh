@@ -78,6 +78,7 @@ if maya_up == "z":
         (0, 1, 0, 0),
         (0, 0, 0, 1)
     ))
+SPACE_MATRIX_INV = SPACE_MATRIX.inverse()
 # fmt: on
 
 
@@ -675,22 +676,20 @@ def get_scene_animdata(export_bones, startframe, endframe):
     return all_bone_keyframes
 
 
-def swap_coord_space(data):
-    """Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up). """
-    global SPACE_MATRIX
-
+def swap_coord_space(data, space_mat=SPACE_MATRIX, space_mat_inv=SPACE_MATRIX_INV):
+    """Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up)."""
     # matrix
     if type(data) == MMatrix or type(data) == pmdt.Matrix:
         mat = MMatrix(data)
-        return SPACE_MATRIX * mat * SPACE_MATRIX.inverse()
+        return space_mat * mat * space_mat_inv
     # quaternion
     elif type(data) == MQuaternion or type(data) == pmdt.Quaternion:
         mat = MMatrix(data.asMatrix())
-        return MTransformationMatrix(SPACE_MATRIX * mat * SPACE_MATRIX.inverse()).rotation(asQuaternion=True)
+        return MTransformationMatrix(space_mat * mat * space_mat_inv).rotation(asQuaternion=True)
     # vector
     elif type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
         vec = MVector(data)
-        return vec * SPACE_MATRIX
+        return vec * space_mat
     # uv coordinate
     elif len(data) == 2:
         return data[0], 1 - data[1]
