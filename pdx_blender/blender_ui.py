@@ -610,7 +610,7 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
         default=100,
     )
     chk_uniform_scale: BoolProperty(
-        name="Uniform scale animation",
+        name="Uniform scale only",
         description="Exports only uniform scale animation data, newer games support non-uniformly scaled bones",
         default=True,
     )
