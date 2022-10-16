@@ -48,6 +48,7 @@ Temporary Items
 
 # =========================
 # Project specific ignores
+external/numpy_maya/numpy*/
 test files/
 *.pyc
 .vscode/

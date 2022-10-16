@@ -8,7 +8,6 @@
 from __future__ import unicode_literals
 
 import sys
-import site
 import json
 import inspect
 import logging
@@ -22,7 +21,6 @@ from .settings import PDXsettings
 
 # vendored package imports
 from .external.appdirs import user_data_dir  # user settings directory
-from .external.six import PY2  # Py2, Py3 compatibility
 
 
 bl_info = {
