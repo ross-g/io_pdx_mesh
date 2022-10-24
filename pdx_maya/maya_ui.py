@@ -29,6 +29,7 @@ except ImportError:
 from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
+from ..external import numpy
 
 try:
     from . import maya_import_export
@@ -380,7 +381,9 @@ class PDX_UI(QtWidgets.QDialog):
         grp_Info = CollapsingGroupBox("Info", self)
         grp_Info.setObjectName("grpInfo")
 
-        lbl_Current = QtWidgets.QLabel("current version: {0}".format(github.CURRENT_VERSION), self)
+        lbl_Current = QtWidgets.QLabel(
+            "current version: {} {}".format(github.CURRENT_VERSION, "[np]" if numpy is not None else ""), self
+        )
         self.update_version, self.about_popup = None, None
         if github.AT_LATEST is False:  # update info appears if we aren't at the latest tag version
             self.update_version = btn_UpdateVersion = QtWidgets.QPushButton(

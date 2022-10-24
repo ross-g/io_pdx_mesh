@@ -13,7 +13,6 @@ from __future__ import print_function, unicode_literals
 import os
 import sys
 import time
-import logging
 from operator import itemgetter
 from collections import OrderedDict, namedtuple, defaultdict
 
@@ -37,6 +36,7 @@ from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaterni
 from .. import IO_PDX_LOG
 from .. import pdx_data
 from ..external import pathlib
+from ..external import numpy as np
 from ..library import (
     get_lod_level,
     allow_debug_logging,

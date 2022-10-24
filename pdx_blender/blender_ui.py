@@ -15,6 +15,7 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
+from ..external import numpy
 
 try:
     from . import blender_import_export
@@ -835,7 +836,7 @@ class IOPDX_PT_PDXblender_info(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.label(text="current version: {}".format(github.CURRENT_VERSION))
+        col.label(text="current version: {} {}".format(github.CURRENT_VERSION, "[np]" if numpy is not None else ""))
         if github.AT_LATEST is False:  # update info appears if we aren't at the latest tag version
             btn_txt = "NEW UPDATE {}".format(github.LATEST_VERSION)
             split = col.split(factor=0.7, align=True)

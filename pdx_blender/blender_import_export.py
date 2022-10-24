@@ -11,7 +11,6 @@
 
 import os
 import time
-import pathlib
 from operator import itemgetter
 from collections import OrderedDict, namedtuple, defaultdict
 
@@ -27,6 +26,8 @@ from mathutils import Vector, Matrix, Quaternion
 
 from .. import IO_PDX_LOG
 from .. import pdx_data
+from ..external import pathlib
+from ..external import numpy as np
 from ..library import (
     get_lod_level,
     allow_debug_logging,
