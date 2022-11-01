@@ -338,8 +338,12 @@ def get_mesh_info(blender_obj, mat_index, split_all_vertices=False, round_data=F
     x_vtx_pos = set([mesh_dict["p"][j] for j in range(0, len(mesh_dict["p"]), 3)])
     y_vtx_pos = set([mesh_dict["p"][j + 1] for j in range(0, len(mesh_dict["p"]), 3)])
     z_vtx_pos = set([mesh_dict["p"][j + 2] for j in range(0, len(mesh_dict["p"]), 3)])
-    mesh_dict["min"] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
-    mesh_dict["max"] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
+    try:
+        mesh_dict["min"] = [min(x_vtx_pos), min(y_vtx_pos), min(z_vtx_pos)]
+        mesh_dict["max"] = [max(x_vtx_pos), max(y_vtx_pos), max(z_vtx_pos)]
+    except ValueError:
+        print("Unused material slots detected, do Object > Clean Up > Remove Unused Material Slots on your mesh and try again.\n")
+        raise
 
     # create an ordered list of vertex ids that we have gathered into the mesh dict
     vert_id_list = [vert.id for vert in export_verts]
