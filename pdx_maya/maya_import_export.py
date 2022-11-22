@@ -13,7 +13,6 @@ from __future__ import print_function, unicode_literals
 import os
 import sys
 import time
-import logging
 from operator import itemgetter
 from collections import OrderedDict, namedtuple, defaultdict
 
@@ -1161,9 +1160,11 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_scale_data = OpenMaya.MDoubleArray()
 
         for scale_data in key_dict["s"]:
-            x_scale_data.append(scale_data[0])
-            y_scale_data.append(scale_data[0])
-            z_scale_data.append(scale_data[0])
+            # TODO: if maya_up == "z"
+            s = MVector(*scale_data)
+            x_scale_data.append(s[0])
+            y_scale_data.append(s[1])
+            z_scale_data.append(s[2])
 
         # add keys to the new curves
         for attrib, data_array in zip(animated_attrs, [x_scale_data, y_scale_data, z_scale_data]):
@@ -1542,16 +1543,15 @@ def import_animfile(animpath, frame_start=1, **kwargs):
     progress("update", 1, "setting playback range")
     pmc.playbackOptions(edit=True, minTime=frame_start)
     pmc.playbackOptions(edit=True, maxTime=(frame_start + framecount - 1))
-
     pmc.currentTime(frame_start, edit=True)
 
     # check scene has all required bones, check scale uniformity
     IO_PDX_LOG.info("finding bones -")
     progress("update", 1, "finding bones")
+    scale_length = set()
     bone_errors = []
-    bone_list = []
     for bone in info:
-        bone_joint = None
+        scale_length.add(len(bone.attrib["s"]))
         bone_name = clean_imported_name(bone.tag)
         try:
             matching_bones = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)  # type: pmc.nodetypes.joint
@@ -1561,47 +1561,73 @@ def import_animfile(animpath, frame_start=1, **kwargs):
             IO_PDX_LOG.warning("failed to find bone - {0}".format(bone_name))
             progress("update", 1, "failed to find bone!")
 
+    # break on missing bones
+    if bone_errors:
+        raise RuntimeError("Missing bones required for animation: {0}".format(bone_errors))
+
+    # break on variable size scale vectors
+    if len(scale_length) != 1:
+        raise NotImplementedError("Mixed length scale vectors ({0}) are not supported".format(scale_length))
+    # support both uniform ([x]) and non-uniform ([x,y,z]) scale data
+    scale_length = scale_length.pop()
+    scale_padding = 4 - scale_length
+    IO_PDX_LOG.info("animation supports {0}uniform scale -".format("non-" if scale_length > 1 else ""))
+
+    # clear any current pose before attempting to load the animation
+    # TODO: clear existing anim curves from bones and restore bind pose
+
+    # set the initial pose (includes un-keyframed bones)
+    initial_pose = dict()
+    IO_PDX_LOG.info("setting initial pose on bones - {0}".format(len(info)))
+    for bone in info:
+        bone_name = clean_imported_name(bone.tag)
+        matching_bones = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)  # type: pmc.nodetypes.joint
+        bone_joint = matching_bones[0]
+
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
         if bone_joint:
             # compose transform parts
-            _scale = [bone.attrib["s"][0], bone.attrib["s"][0], bone.attrib["s"][0]]
+            _scale = MVector(*bone.attrib["s"] * scale_padding)
             _rotation = MQuaternion(*bone.attrib["q"])
             _translation = MVector(*bone.attrib["t"])
 
             bone_joint.setScale(_scale)
-            bone_joint.setRotation(swap_coord_space(_rotation))
-            bone_joint.setTranslation(swap_coord_space(_translation))
+            bone_joint.setRotation(_rotation)
+            bone_joint.setTranslation(_translation)
 
             # zero out joint orientation
             bone_joint.jointOrient.set(0.0, 0.0, 0.0)
+            # apply transform
+            # TODO: set initial pose keyframe (not all bones in this initial pose will be animated)
+            bone_joint.setMatrix(swap_coord_space(bone_joint.getMatrix()))
 
-            bone_list.append(bone_joint)
-
-    # break on bone errors
-    if bone_errors:
-        raise RuntimeError("Missing bones required for animation:\n{0}".format(bone_errors))
+            # record the initial pose
+            initial_pose[bone_name] = bone_joint.getMatrix()
 
     # check which transform types are animated on each bone
     all_bone_keyframes = OrderedDict()
     for bone in info:
         bone_name = clean_imported_name(bone.tag)
-        all_bone_keyframes[bone_name] = {sample_type: [] for sample_type in bone.attrib["sa"][0]}
+        all_bone_keyframes[bone_name] = OrderedDict((sample_type, []) for sample_type in bone.attrib["sa"][0])
 
     # then traverse the samples data to store keys per bone
-    s_index, q_index, t_index = 0, 0, 0
+    s_idx, q_idx, t_idx = 0, 0, 0               # track offsets into samples data arrays
+    s_len, q_len, t_len = scale_length, 4, 3    # track stride across samples data arrays
     for _ in xrange(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
-
             if "s" in bone_key_data:
-                bone_key_data["s"].append(samples.attrib["s"][s_index : s_index + 1])
-                s_index += 1
+                frame_bone_scale = samples.attrib["s"][s_idx : s_idx + s_len] * scale_padding
+                bone_key_data["s"].append(frame_bone_scale)
+                s_idx += s_len
             if "q" in bone_key_data:
-                bone_key_data["q"].append(samples.attrib["q"][q_index : q_index + 4])
-                q_index += 4
+                frame_bone_quat = samples.attrib["q"][q_idx : q_idx + q_len]
+                bone_key_data["q"].append(frame_bone_quat)
+                q_idx += q_len
             if "t" in bone_key_data:
-                bone_key_data["t"].append(samples.attrib["t"][t_index : t_index + 3])
-                t_index += 3
+                frame_bone_trans = samples.attrib["t"][t_idx : t_idx + t_len]
+                bone_key_data["t"].append(frame_bone_trans)
+                t_idx += t_len
 
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
