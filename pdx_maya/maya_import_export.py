@@ -1634,6 +1634,9 @@ def import_animfile(animpath, frame_start=1, **kwargs):
         # check bone has keyframe values
         if bone_keys.values():
             IO_PDX_LOG.info("setting {0} keyframes on bone - {1}".format(list(bone_keys.keys()), bone_name))
+            non_uni_keys = [i for i, data in enumerate(bone_keys.get("s", [])) if not len(set(data)) == 1]
+            if any(non_uni_keys):
+                IO_PDX_LOG.debug("Bone: {0} has non-uniform scale keyframes at: {1}".format(bone_name, non_uni_keys))
             progress("update", 1, "setting keyframes on bone")
             bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
             create_anim_keys(bone_long_name, bone_keys, frame_start)
