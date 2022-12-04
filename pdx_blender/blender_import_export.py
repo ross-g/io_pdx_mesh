@@ -36,6 +36,10 @@ from ..library import (
     PDX_MESHINDEX,
     PDX_MAXSKININFS,
     PDX_MAXUVSETS,
+    PDX_DECIMALPTS,
+    PDX_ROUND_ROT,
+    PDX_ROUND_TRANS,
+    PDX_ROUND_SCALE,
 )
 
 
@@ -43,11 +47,6 @@ from ..library import (
     Variables.
 ========================================================================================================================
 """
-
-PDX_DECIMALPTS = 5
-PDX_ROUND_ROT = 4
-PDX_ROUND_TRANS = 3
-PDX_ROUND_SCALE = 2
 
 # fmt: off
 SPACE_MATRIX = Matrix((
@@ -88,9 +87,9 @@ def clean_imported_name(name):
 
 def get_bmesh(mesh_data, **kwargs):
     """Returns a BMesh from existing mesh data.
-        `face_normals=True`
-        `use_shape_key=False`
-        `shape_key_index=0`
+    `face_normals=True`
+    `use_shape_key=False`
+    `shape_key_index=0`
     """
     bm = bmesh.new()
     bm.from_mesh(mesh_data, **kwargs)
@@ -163,7 +162,7 @@ def get_mesh_index(blender_mesh):
 
 
 def check_mesh_material(blender_obj):
-    """Object needs at least one of it's materials to be a PDX material if we're going to export it. """
+    """Object needs at least one of it's materials to be a PDX material if we're going to export it."""
     result = False
 
     materials = [slot.material for slot in blender_obj.material_slots]
@@ -897,7 +896,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
             ))
             # fmt: on
             c_dist = c_mat.to_translation() - safemat.to_translation()
-            bone_dists.append(math.sqrt(c_dist.x ** 2 + c_dist.y ** 2 + c_dist.z ** 2))
+            bone_dists.append(math.sqrt(c_dist.x**2 + c_dist.y**2 + c_dist.z**2))
 
         avg_dist = 5.0
         if bone_children:
@@ -1541,8 +1540,8 @@ def import_animfile(animpath, frame_start=1, **kwargs):
         all_bone_keyframes[bone_name] = {sample_type: [] for sample_type in bone.attrib["sa"][0]}
 
     # then traverse the samples data to store keys per bone
-    s_idx, q_idx, t_idx = 0, 0, 0               # track offsets into samples data arrays
-    s_len, q_len, t_len = scale_length, 4, 3    # track stride across samples data arrays
+    s_idx, q_idx, t_idx = 0, 0, 0  # track offsets into samples data arrays
+    s_len, q_len, t_len = scale_length, 4, 3  # track stride across samples data arrays
     for _ in range(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
