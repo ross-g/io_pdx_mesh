@@ -21,6 +21,8 @@ try:
 
     importlib.reload(blender_import_export)
     from .blender_import_export import (
+        PDX_MESHINDEX,
+        PDX_SHADER,
         create_shader,
         export_animfile,
         export_meshfile,
@@ -28,7 +30,6 @@ try:
         import_animfile,
         import_meshfile,
         list_scene_pdx_meshes,
-        PDX_SHADER,
         set_ignore_joints,
         set_local_axis_display,
     )
@@ -132,6 +133,10 @@ class material_popup(object):
         name="Shader",
         default="",
     )
+    apply_mat: BoolProperty(
+        name="Apply material to selected?",
+        default=False,
+    )
     # fmt:on
 
 
@@ -147,10 +152,16 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
         mat_type = self.mat_type
         if self.use_custom or mat_type == "__NONE__":
             mat_type = self.custom_type
-        # create a mock PDXData object for convenience here to pass to the create_material function
+        # create a mock PDXData object for convenience here to pass to the create_shader function
         mat_pdx = type("Material", (PDXData, object), {"shader": [mat_type]})
-        create_shader(mat_pdx, mat_name, None, placeholder=True)
+        shader = create_shader(mat_pdx, mat_name, None, template_only=True)
         IO_PDX_LOG.info("Created material: {0} ({1})".format(mat_name, mat_type))
+        if self.apply_mat:
+            selected_objs = [obj for obj in context.selected_objects if isinstance(obj.data, bpy.types.Mesh)]
+            for obj in selected_objs:
+                # for each selected mesh, append the new material
+                obj.data.materials.append(shader)
+                IO_PDX_LOG.info("Applied material: {0} to object: {1}".format(shader.name, obj.name))
         return {"FINISHED"}
 
     def invoke(self, context, event):
@@ -174,6 +185,9 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
         if self.use_custom:
             mat_type.enabled = False
             col2.enabled = True
+        self.layout.separator()
+        apply = self.layout.row()
+        apply.prop(self, "apply_mat")
         self.layout.separator()
 
 
@@ -279,7 +293,7 @@ class IOPDX_OT_mesh_index_popup(Operator):
 
     def execute(self, context):
         for i, item in enumerate(context.scene.io_pdx_group.coll):
-            item.ref.data["meshindex"] = i
+            item.ref.data[PDX_MESHINDEX] = i
         return {"FINISHED"}
 
     def invoke(self, context, event):
@@ -357,8 +371,9 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
         box.prop(self, "chk_mesh")
         if self.chk_mesh:
             mesh_settings = box.box()
-            mesh_settings.use_property_split = True
-            mesh_settings.prop(self, "chk_joinmats")
+            split = mesh_settings.split(factor=0.1)
+            _, col = split.column(), split.column()
+            col.prop(self, "chk_joinmats")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
         # box.prop(self, 'chk_bonespace')  # TODO: works but overcomplicates things, disabled for now
@@ -461,28 +476,53 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         maxlen=1024,
     )
     chk_mesh: BoolProperty(
-        name="Export mesh",
+        name="Meshes",
         description="Export meshes",
         default=True,
     )
+    chk_mesh_blendshape: BoolProperty(
+        name="As blendshape",
+        description="Export meshes as blendshapes",
+        default=False,
+    )
     chk_skel: BoolProperty(
-        name="Export skeleton",
+        name="Skeleton",
         description="Export related armatures",
         default=True,
     )
     chk_locs: BoolProperty(
-        name="Export locators",
+        name="Locators",
         description="Export empties data",
         default=True,
     )
     chk_selected: BoolProperty(
-        name="Selected Only",
+        name="Selected only",
         description="Filter export by selection",
+        default=False,
+    )
+    chk_debug: BoolProperty(
+        name="[debug options]",
+        description="Non-standard options",
         default=False,
     )
     chk_split_vtx: BoolProperty(
         name="Split all vertices",
-        description="Splits all vertices during export",
+        description="Splits all vertices (per triangle) during export",
+        default=False,
+    )
+    ddl_sort_vtx: EnumProperty(
+        name="Sort vertices",
+        description="Sort all vertex data by id during export",
+        items=(
+            ("+", "Incr", "Ascending id sort"),
+            ("~", "Native", "Blender native order"),
+            ("-", "Decr", "Descending id sort")
+        ),
+        default="+",
+    )
+    chk_plain_txt: BoolProperty(
+        name="Also export plain text",
+        description="Exports a plain text file along with binary",
         default=False,
     )
     # fmt:on
@@ -493,11 +533,21 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
         box.prop(self, "chk_mesh")
         if self.chk_mesh:
             mesh_settings = box.box()
-            mesh_settings.use_property_split = True
-            mesh_settings.prop(self, "chk_split_vtx")
+            split = mesh_settings.split(factor=0.1)
+            _, col = split.column(), split.column()
+            col.prop(self, "chk_mesh_blendshape")
         box.prop(self, "chk_skel")
         box.prop(self, "chk_locs")
         box.prop(self, "chk_selected")
+        box.prop(self, "chk_debug")
+        if self.chk_debug:
+            debug_settings = box.box()
+            split = debug_settings.split(factor=0.1)
+            _, col = split.column(), split.column()
+            col.alignment = "RIGHT"
+            col.prop(self, "chk_split_vtx")
+            col.prop(self, "ddl_sort_vtx")
+            col.prop(self, "chk_plain_txt")
 
     def execute(self, context):
         try:
@@ -506,8 +556,12 @@ class IOPDX_OT_export_mesh(Operator, ExportHelper):
                 exp_mesh=self.chk_mesh,
                 exp_skel=self.chk_skel,
                 exp_locs=self.chk_locs,
-                split_verts=self.chk_split_vtx,
                 exp_selected=self.chk_selected,
+                as_blendshape=self.chk_mesh_blendshape,
+                debug_mode=self.chk_debug,
+                split_verts=self.chk_split_vtx,
+                sort_verts=self.ddl_sort_vtx,
+                plain_txt=self.chk_plain_txt,
             )
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed exporting {}".format(self.filepath))
             IO_PDX_SETTINGS.last_export_mesh = self.filepath
@@ -547,13 +601,28 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
     )
     int_start: IntProperty(
         name="Start frame",
-        description="Start frame",
+        description="Custom start frame",
         default=1,
     )
     int_end: IntProperty(
         name="End frame",
-        description="End frame",
+        description="Custom end frame",
         default=100,
+    )
+    chk_uniform_scale: BoolProperty(
+        name="Uniform scale only",
+        description="Exports only uniform scale animation data, newer games support non-uniformly scaled bones",
+        default=True,
+    )
+    chk_debug: BoolProperty(
+        name="[debug options]",
+        description="Non-standard options",
+        default=False,
+    )
+    chk_plain_txt: BoolProperty(
+        name="Also export plain text",
+        description="Exports a plain text file along with binary",
+        default=False,
     )
     # fmt:on
 
@@ -563,22 +632,39 @@ class IOPDX_OT_export_anim(Operator, ExportHelper):
         box = self.layout.box()
         box.label(text="Settings:", icon="EXPORT")
         box.prop(settings, "custom_range")
-
         if settings.custom_range:
             range_settings = box.box()
             range_settings.use_property_split = True
             col = range_settings.column()
             col.prop(self, "int_start")
             col.prop(self, "int_end")
+        box.prop(self, "chk_uniform_scale")
+        box.prop(self, "chk_debug")
+        if self.chk_debug:
+            debug_settings = box.box()
+            split = debug_settings.split(factor=0.1)
+            _, col = split.column(), split.column()
+            col.alignment = "RIGHT"
+            col.prop(self, "chk_plain_txt")
 
     def execute(self, context):
         settings = context.scene.io_pdx_export
 
         try:
             if settings.custom_range:
-                export_animfile(self.filepath, frame_start=self.int_start, frame_end=self.int_end)
+                start, end = self.int_start, self.int_end
             else:
-                export_animfile(self.filepath, frame_start=context.scene.frame_start, frame_end=context.scene.frame_end)
+                start, end = context.scene.frame_start, context.scene.frame_end
+
+            export_animfile(
+                self.filepath,
+                frame_start=start,
+                frame_end=end,
+                debug_mode=self.chk_debug,
+                uniform_scale=self.chk_uniform_scale,
+                plain_txt=self.chk_plain_txt,
+            )
+
             self.report({"INFO"}, "[io_pdx_mesh] Finsihed exporting {}".format(self.filepath))
             IO_PDX_SETTINGS.last_export_anim = self.filepath
 
@@ -770,6 +856,6 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = bl_info["wiki_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = bl_info["doc_url"]
         col.operator("wm.url_open", icon="QUESTION", text="Paradox forums").url = bl_info["forum_url"]
         col.operator("wm.url_open", icon="QUESTION", text="Source code").url = bl_info["project_url"]

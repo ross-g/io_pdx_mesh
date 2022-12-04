@@ -13,8 +13,10 @@ from imp import reload
 from textwrap import wrap
 from functools import partial
 
+import maya.cmds as cmds
 import pymel.core as pmc
 import maya.OpenMayaUI as OpenMayaUI
+import maya.api.OpenMaya as OpenMayaAPI
 
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -28,24 +30,26 @@ from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
 
+# Py2, Py3 compatibility (Maya 2022+ adopts Py3)
+from ..external.six.moves import range
+
 try:
     from . import maya_import_export
+
     reload(maya_import_export)
 
     from .maya_import_export import (
+        PDX_SHADER,
         create_shader,
         export_animfile,
         export_meshfile,
-        get_animation_clips,
+        get_animation_fps,
         get_mesh_index,
         import_animfile,
         import_meshfile,
         list_scene_pdx_materials,
         list_scene_pdx_meshes,
-        list_scene_rootbones,
-        PDX_ANIMATION,
-        PDX_SHADER,
-        remove_animation_clip,
+        set_animation_fps,
         set_ignore_joints,
         set_local_axis_display,
         set_mesh_index,
@@ -56,7 +60,6 @@ except Exception as err:
 
 # Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
 if sys.version_info >= (3, 0):
-    xrange = range
     long = int
 
 
@@ -98,13 +101,13 @@ def move_dialog_onscreen(dialog):
         else:
             # partially offscreen, move
             if frame.left() < screen.left():
-                x_pos += (screen.left() - frame.left())
+                x_pos += screen.left() - frame.left()
             if frame.right() > screen.right():
-                x_pos += (screen.right() - frame.right())
+                x_pos += screen.right() - frame.right()
             if frame.top() < screen.top():
-                y_pos += (screen.top() - frame.top())
+                y_pos += screen.top() - frame.top()
             if frame.bottom() > screen.bottom():
-                y_pos += (screen.bottom() - frame.bottom())
+                y_pos += screen.bottom() - frame.bottom()
 
             dialog.move(x_pos, y_pos)
 
@@ -218,7 +221,7 @@ class CustomFileDialog(QtWidgets.QFileDialog):
                     value = ctrl.value()
 
                 # store this controls value against its identifier
-                if name is not None and value is not None:
+                if name not in [None, ""] and value is not None:
                     ctrl_values[name] = value
                 # check all children of this control
                 ctrl_values.update(widget_values(ctrl))
@@ -365,7 +368,9 @@ class PDX_UI(QtWidgets.QDialog):
         self.ddl_EngineSelect = QtWidgets.QComboBox(self)
         self.ddl_EngineSelect.addItems(ENGINE_SETTINGS.keys())
         lbl_SetupAnimation = QtWidgets.QLabel("Animation:", self)
-        self.spn_AnimationFps = QtWidgets.QDoubleSpinBox(self)
+        self.spn_AnimationFps = QtWidgets.QSpinBox(self)
+        self.spn_AnimationFps.setPrefix("FPS ")
+        self.spn_AnimationFps.setKeyboardTracking(False)
 
         grp_Setup.inner.layout().addWidget(lbl_SetupEngine, 0, 0)
         grp_Setup.inner.layout().addWidget(self.ddl_EngineSelect, 0, 1)
@@ -445,21 +450,24 @@ class PDX_UI(QtWidgets.QDialog):
         self.hide_axis_locators.clicked.connect(partial(set_local_axis_display, False, object_type="locator"))
 
         self.ddl_EngineSelect.currentIndexChanged.connect(self.set_engine)
+        self.spn_AnimationFps.valueChanged.connect(self.set_fps)
 
         if self.update_version:
             self.update_version.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
         if self.about_popup:
             self.about_popup.clicked.connect(self.show_update_notes)
-        self.help_wiki.clicked.connect(partial(webbrowser.open, bl_info["wiki_url"]))
+        self.help_wiki.clicked.connect(partial(webbrowser.open, bl_info["doc_url"]))
         self.help_forum.clicked.connect(partial(webbrowser.open, bl_info["forum_url"]))
         self.help_source.clicked.connect(partial(webbrowser.open, bl_info["project_url"]))
 
     def showEvent(self, event):
         self.read_ui_settings()
+        self.id = OpenMayaAPI.MEventMessage.addEventCallback("timeUnitChanged", partial(self.on_timeUnitChanged, self))
         event.accept()
 
     def closeEvent(self, event):
         self.write_ui_settings()
+        OpenMayaAPI.MEventMessage.removeCallback(self.id)
         if self.popup:
             self.popup.close()
         event.accept()
@@ -484,6 +492,8 @@ class PDX_UI(QtWidgets.QDialog):
 
         # restore engine selection
         self.ddl_EngineSelect.setCurrentText(IO_PDX_SETTINGS.last_set_engine or ENGINE_SETTINGS.keys()[0])
+        # restore scene animation fps
+        self.spn_AnimationFps.setValue(int(get_animation_fps()))
 
         # ensure dialog was not restored offscreen after groupbox state is restored
         move_dialog_onscreen(self)
@@ -501,7 +511,7 @@ class PDX_UI(QtWidgets.QDialog):
         result, files, options = MeshImport_UI.runPopup(self)
         if result and files:
             mesh_filepath = files[0]
-            options["progress_fn"] = MayaProgress
+            options["progress_fn"] = MayaProgress()
             try:
                 import_meshfile(mesh_filepath, **options)
                 IO_PDX_SETTINGS.last_import_mesh = mesh_filepath
@@ -519,7 +529,7 @@ class PDX_UI(QtWidgets.QDialog):
         result, files, options = MeshExport_UI.runPopup(self)
         if result and files:
             mesh_filepath = files[0]
-            options["progress_fn"] = MayaProgress
+            options["progress_fn"] = MayaProgress()
             try:
                 export_meshfile(mesh_filepath, **options)
                 QtWidgets.QMessageBox.information(self, "SUCCESS", "Mesh export finished!\n\n{0}".format(mesh_filepath))
@@ -538,7 +548,7 @@ class PDX_UI(QtWidgets.QDialog):
         result, files, options = AnimImport_UI.runPopup(self)
         if result and files:
             anim_filepath = files[0]
-            options["progress_fn"] = MayaProgress
+            options["progress_fn"] = MayaProgress()
             try:
                 import_animfile(anim_filepath, **options)
                 IO_PDX_SETTINGS.last_import_anim = anim_filepath
@@ -557,14 +567,16 @@ class PDX_UI(QtWidgets.QDialog):
         if result and files:
             anim_filepath = files[0]
             try:
-                options["progress_fn"] = MayaProgress
+                options["progress_fn"] = MayaProgress()
                 if options["custom_range"]:
                     export_animfile(anim_filepath, **options)
                 else:
                     options["frame_start"] = pmc.playbackOptions(query=True, minTime=True)
                     options["frame_end"] = pmc.playbackOptions(query=True, maxTime=True)
                     export_animfile(anim_filepath, **options)
-                QtWidgets.QMessageBox.information(self, "SUCCESS", "Animation export finished!\n\n{0}".format(anim_filepath))
+                QtWidgets.QMessageBox.information(
+                    self, "SUCCESS", "Animation export finished!\n\n{0}".format(anim_filepath)
+                )
                 IO_PDX_SETTINGS.last_export_anim = anim_filepath
             except Exception as err:
                 IO_PDX_LOG.warning("FAILED to export {0}".format(anim_filepath))
@@ -587,6 +599,20 @@ class PDX_UI(QtWidgets.QDialog):
         sel_engine = self.ddl_EngineSelect.currentText()
         IO_PDX_SETTINGS.last_set_engine = sel_engine
         IO_PDX_LOG.info("Set game engine to: '{0}'".format(sel_engine))
+
+    @QtCore.Slot()
+    def set_fps(self, fps):
+        prev_fps = int(get_animation_fps())
+        try:
+            set_animation_fps(fps)
+        except RuntimeError:
+            QtWidgets.QMessageBox.warning(self, "ERROR", "Unsupported animation speed. ({0} fps)".format(fps))
+            self.spn_AnimationFps.setValue(int(prev_fps))
+
+    @QtCore.Slot()
+    def on_timeUnitChanged(self, *args):
+        curr_fps = int(get_animation_fps())
+        self.spn_AnimationFps.setValue(curr_fps)
 
     @QtCore.Slot()
     def show_update_notes(self):
@@ -628,6 +654,7 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
         self.use_custom = QtWidgets.QCheckBox("Custom type:", self)
         self.custom_type = QtWidgets.QLineEdit(self)
         self.custom_type.setEnabled(False)
+        self.apply_mat = QtWidgets.QCheckBox("Apply material to selected?", self)
         self.btn_okay = QtWidgets.QPushButton("Save", self)
         self.btn_cancel = QtWidgets.QPushButton("Cancel", self)
 
@@ -646,7 +673,9 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
         form_layout.addRow("Material type:", self.mat_type)
         form_layout.addRow(self.use_custom, self.custom_type)
         main_layout.addWidget(grp_create)
-        main_layout.addSpacing(1)
+        main_layout.addSpacing(4)
+        main_layout.addWidget(self.apply_mat)
+        main_layout.addSpacing(4)
         btn_layout = QtWidgets.QHBoxLayout()
         btn_layout.addWidget(self.btn_okay)
         btn_layout.addWidget(self.btn_cancel)
@@ -672,8 +701,15 @@ class MaterialCreatePopup_UI(QtWidgets.QWidget):
             mat_type = self.custom_type.text()
         # create a mock PDXData object for convenience here to pass to the create_shader function
         mat_pdx = type(str("Material"), (PDXData, object), {"shader": [mat_type]})
-        create_shader(mat_pdx, mat_name, None)
+        shader, group = create_shader(mat_pdx, mat_name, None)
         IO_PDX_LOG.info("Created material: {0} ({1})".format(mat_name, mat_type))
+        if self.apply_mat.isChecked():
+            selected_objs = [mesh for mesh in pmc.ls(selection=True, type="mesh", dag=True, noIntermediate=True)]
+            for obj in selected_objs:
+                # for each selected mesh, assign the new material
+                obj.backfaceCulling.set(1)
+                pmc.sets(group, edit=True, forceElement=obj)
+                IO_PDX_LOG.info("Applied material: {0} to object: {1}".format(shader, obj))
         self.close()
 
     def showEvent(self, event):
@@ -828,11 +864,11 @@ class MeshIndexPopup_UI(QtWidgets.QWidget):
     @QtCore.Slot()
     def execute(self):
         IO_PDX_LOG.info("Setting mesh index order...")
-        for i in xrange(self.list_meshes.count()):
+        for i in range(self.list_meshes.count()):
             item = self.list_meshes.item(i)
             maya_mesh = pmc.PyNode(item.data(QtCore.Qt.UserRole))  # type: pmc.nt.Mesh
             set_mesh_index(maya_mesh, i)
-            IO_PDX_LOG.info("\t{0} - {0}".format(maya_mesh.name(), i))
+            IO_PDX_LOG.info("\t{0} - {1}".format(maya_mesh.name(), i))
 
         self.close()
 
@@ -872,8 +908,7 @@ class MeshImport_UI(CustomFileDialog):
         self.chk_locs.setObjectName("imp_locs")
 
         self.mesh_settings.layout().addWidget(self.chk_joinmats)
-        self.mesh_settings.layout().setContentsMargins(16, 4, 4, 4)
-        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.mesh_settings.layout().setContentsMargins(20, 4, 4, 4)
         self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
 
         for ctrl in [self.chk_mesh, self.mesh_settings, self.chk_skel, self.chk_locs]:
@@ -902,8 +937,8 @@ class AnimImport_UI(CustomFileDialog):
 
         self.lbl_start = QtWidgets.QLabel("Start frame:")
         self.spn_frame = QtWidgets.QSpinBox()
-        self.spn_frame.setMaximumWidth(100)
         self.spn_frame.setObjectName("frame_start")
+        self.spn_frame.setMaximumWidth(100)
         self.spn_frame.setValue(1)
 
         frame_group = QtWidgets.QHBoxLayout()
@@ -928,36 +963,83 @@ class MeshExport_UI(CustomFileDialog):
         self.setSidebarUrls([QtCore.QUrl.fromLocalFile(last_directory)])
         self.setDefaultSuffix(".mesh")
 
-        self.chk_mesh = QtWidgets.QCheckBox("Mesh")
+        self.chk_mesh = QtWidgets.QCheckBox("Meshes")
         self.chk_mesh.setObjectName("exp_mesh")
+        self.chk_mesh.setToolTip("Export meshes")
 
         self.mesh_settings = QtWidgets.QGroupBox()
         self.mesh_settings.setLayout(QtWidgets.QVBoxLayout())
 
+        self.chk_mesh_blendshape = QtWidgets.QCheckBox("As blendshape")
+        self.chk_mesh_blendshape.setObjectName("as_blendshape")
+
+        self.mesh_settings.layout().addWidget(self.chk_mesh_blendshape)
+        self.mesh_settings.layout().setContentsMargins(20, 4, 4, 4)
+        self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        self.mesh_settings.setVisible(True)
+
         self.chk_skel = QtWidgets.QCheckBox("Skeleton")
         self.chk_skel.setObjectName("exp_skel")
+        self.chk_skel.setToolTip("Export related joints")
 
         self.chk_locs = QtWidgets.QCheckBox("Locators")
         self.chk_locs.setObjectName("exp_locs")
+        self.chk_locs.setToolTip("Export locators data")
 
         self.chk_sel_only = QtWidgets.QCheckBox("Selection only")
         self.chk_sel_only.setObjectName("exp_selected")
+        self.chk_sel_only.setToolTip("Filter export by selection")
+
+        self.chk_debug = QtWidgets.QCheckBox("[debug options]")
+        self.chk_debug.setObjectName("debug_mode")
+        self.chk_debug.setToolTip("Non-standard options")
+
+        self.debug_settings = QtWidgets.QGroupBox()
+        self.debug_settings.setLayout(QtWidgets.QVBoxLayout())
 
         self.chk_split_vtx = QtWidgets.QCheckBox("Split all vertices")
         self.chk_split_vtx.setObjectName("split_verts")
+        self.chk_split_vtx.setToolTip("Splits all vertices (per triangle) during export")
 
-        self.mesh_settings.layout().addWidget(self.chk_split_vtx)
-        self.mesh_settings.layout().setContentsMargins(16, 4, 4, 4)
-        self.mesh_settings.layout().setAlignment(QtCore.Qt.AlignRight)
-        self.mesh_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        sort_vtx_option = QtWidgets.QWidget(self)
+        sort_vtx_option.setLayout(QtWidgets.QHBoxLayout())
+        lbl_sort_vtx = QtWidgets.QLabel("Sort vertices")
+        self.ddl_sort_vtx = QtWidgets.QComboBox(self)
+        self.ddl_sort_vtx.setObjectName("sort_verts")
+        self.ddl_sort_vtx.addItems(["+", "~", "-"])
+        self.ddl_sort_vtx.setMaximumWidth(35)
+        sort_vtx_option.layout().addWidget(lbl_sort_vtx)
+        sort_vtx_option.layout().addWidget(self.ddl_sort_vtx)
+        sort_vtx_option.layout().setContentsMargins(0, 0, 0, 0)
 
-        for ctrl in [self.chk_mesh, self.mesh_settings, self.chk_skel, self.chk_locs, self.chk_sel_only]:
+        self.chk_plain_txt = QtWidgets.QCheckBox("Also export plain text")
+        self.chk_plain_txt.setObjectName("plain_txt")
+        self.chk_plain_txt.setToolTip("Exports a plain text file along with binary")
+
+        self.debug_settings.layout().addWidget(self.chk_split_vtx)
+        self.debug_settings.layout().addWidget(sort_vtx_option)
+        self.debug_settings.layout().addWidget(self.chk_plain_txt)
+        self.debug_settings.layout().setContentsMargins(20, 4, 4, 4)
+        self.debug_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        self.debug_settings.setVisible(False)
+
+        for ctrl in [
+            self.chk_mesh,
+            self.mesh_settings,
+            self.chk_skel,
+            self.chk_locs,
+            self.chk_sel_only,
+            self.chk_debug,
+            self.debug_settings,
+        ]:
             options_group.layout().addWidget(ctrl)
 
+        # TODO: better way to set defaults in multiple places?
         for ctrl in [self.chk_mesh, self.chk_skel, self.chk_locs]:
             ctrl.setChecked(True)
 
         self.chk_mesh.toggled.connect(self.mesh_settings.setVisible)
+        self.chk_debug.toggled.connect(self.debug_settings.setVisible)
 
 
 class AnimExport_UI(CustomFileDialog):
@@ -984,13 +1066,13 @@ class AnimExport_UI(CustomFileDialog):
 
         self.lbl_start = QtWidgets.QLabel("Start frame:")
         self.spn_start = QtWidgets.QSpinBox()
-        self.spn_start.setFixedWidth(65)
         self.spn_start.setObjectName("frame_start")
+        self.spn_start.setFixedWidth(65)
 
         self.lbl_end = QtWidgets.QLabel("End frame:")
         self.spn_end = QtWidgets.QSpinBox()
-        self.spn_end.setFixedWidth(65)
         self.spn_end.setObjectName("frame_end")
+        self.spn_end.setFixedWidth(65)
 
         self.start_group = QtWidgets.QHBoxLayout()
         self.start_group.setContentsMargins(0, 0, 0, 0)
@@ -1003,39 +1085,79 @@ class AnimExport_UI(CustomFileDialog):
 
         self.range_settings.layout().addLayout(self.start_group)
         self.range_settings.layout().addLayout(self.end_group)
-        self.range_settings.layout().setContentsMargins(16, 4, 4, 4)
-        self.range_settings.layout().setAlignment(QtCore.Qt.AlignRight)
+        self.range_settings.layout().setContentsMargins(20, 4, 4, 4)
         self.range_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
 
-        options_group.layout().addWidget(self.chk_custom)
-        options_group.layout().addWidget(self.range_settings)
+        self.chk_uniform_scale = QtWidgets.QCheckBox("Uniform scale only")
+        self.chk_uniform_scale.setObjectName("uniform_scale")
+        self.chk_uniform_scale.setToolTip(
+            "Exports only uniform scale animation data, newer games support non-uniformly scaled bones"
+        )
 
+        self.chk_debug = QtWidgets.QCheckBox("[debug options]")
+        self.chk_debug.setObjectName("debug_mode")
+        self.chk_debug.setToolTip("Non-standard options")
+
+        self.debug_settings = QtWidgets.QGroupBox()
+        self.debug_settings.setLayout(QtWidgets.QVBoxLayout())
+
+        self.chk_plain_txt = QtWidgets.QCheckBox("Also export plain text")
+        self.chk_plain_txt.setObjectName("plain_txt")
+        self.chk_plain_txt.setToolTip("Exports a plain text file along with binary")
+
+        self.debug_settings.layout().addWidget(self.chk_plain_txt)
+        self.debug_settings.layout().setContentsMargins(20, 4, 4, 4)
+        self.debug_settings.setStyleSheet("background-color: rgb(63, 65, 67);")
+        self.debug_settings.setVisible(False)
+
+        for ctrl in [
+            self.chk_custom,
+            self.range_settings,
+            self.chk_uniform_scale,
+            self.chk_debug,
+            self.debug_settings,
+        ]:
+            options_group.layout().addWidget(ctrl)
+
+        # TODO: better way to set defaults in multiple places?
         self.chk_custom.setChecked(False)
         self.range_settings.setVisible(False)
+        self.chk_uniform_scale.setChecked(True)
+
         self.chk_custom.toggled.connect(self.range_settings.setVisible)
+        self.chk_debug.toggled.connect(self.debug_settings.setVisible)
 
 
 class MayaProgress(object):
     """ Wrapping the Maya progress window for convenience. """
 
-    def __init__(self, title, max_value):
-        super(MayaProgress, self).__init__()
-        pmc.progressWindow(title=title, progress=0, min=0, max=max_value, status="", isInterruptable=False)
-
     def __del__(self):
         self.finished()
 
+    def __call__(self, *args):
+        args = list(args)
+        name = args.pop(0)
+        try:
+            fn = getattr(self, name)
+            fn(*args)
+        except AttributeError:
+            IO_PDX_LOG.warning("Maya progress window called with unknown method '{0}'".format(name))
+
+    @staticmethod
+    def show(max_value, title):
+        cmds.progressWindow(title=title, progress=0, min=0, max=max_value, status="", isInterruptable=False)
+
     @staticmethod
     def update(step, status):
-        progress = pmc.progressWindow(query=True, progress=True)
-        max_value = pmc.progressWindow(query=True, max=True)
+        progress = cmds.progressWindow(query=True, progress=True)
+        max_value = cmds.progressWindow(query=True, max=True)
         if progress >= max_value:
-            pmc.progressWindow(edit=True, progress=0)
-        pmc.progressWindow(edit=True, step=step, status=status)
+            cmds.progressWindow(edit=True, progress=0)
+        cmds.progressWindow(edit=True, step=step, status=status)
 
     @staticmethod
     def finished():
-        pmc.progressWindow(endProgress=True)
+        cmds.progressWindow(endProgress=True)
 
 
 """ ====================================================================================================================
@@ -1045,7 +1167,7 @@ class MayaProgress(object):
 
 
 def main():
-    IO_PDX_LOG.info("Launching Maya UI.")
+    IO_PDX_LOG.info("Loading Maya UI.")
 
     maya_main_window = get_maya_mainWindow()
     pdx_tools = maya_main_window.findChild(QtWidgets.QDialog, "PDX_Maya_Tools")

@@ -1,6 +1,6 @@
 """
     IO PDX Mesh Python module.
-    This is designed to allow tools to check if they are out of date or not and supply a download link to the latest.
+    Simple settings object which writes to a JSON file on any value being set.
 
     author : ross-g
 """
@@ -8,7 +8,10 @@
 import os
 import sys
 import json
+import logging
 import os.path as path
+
+SETTINGS_LOG = logging.getLogger("io_pdx.settings")
 
 
 """ ====================================================================================================================
@@ -28,11 +31,12 @@ class PDXsettings(object):
                 os.makedirs(path.dirname(filepath))
                 with open(filepath, "w") as _:
                     pass
-            except OSError as err:
-                print(err)
+            except OSError:
+                SETTINGS_LOG.error("Failed creating new settings file", exc_info=True)
 
         # default settings
         self.config_path = filepath
+        self.config_dir = path.dirname(filepath)
         self.app = sys.executable
 
     def __setattr__(self, name, value):
@@ -57,8 +61,8 @@ class PDXsettings(object):
         with open(filepath) as f:
             try:
                 settings_dict = json.load(f)
-            except Exception as err:
-                print(err)
+            except Exception:
+                SETTINGS_LOG.error("Failed loading settings file", exc_info=True)
 
         self.config_path = filepath
         for k, v in settings_dict.items():
@@ -68,5 +72,5 @@ class PDXsettings(object):
         try:
             with open(self.config_path, "w") as f:
                 json.dump(self.__dict__, f, sort_keys=True, indent=4)
-        except Exception as err:
-            print(err)
+        except Exception:
+            SETTINGS_LOG.error("Failed saving settings file", exc_info=True)

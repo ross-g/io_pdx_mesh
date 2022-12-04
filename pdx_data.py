@@ -10,8 +10,9 @@
 
 from __future__ import print_function, unicode_literals
 
-import os
-import sys
+import mmap
+import json
+import logging
 from struct import pack, unpack_from
 
 try:
@@ -19,13 +20,9 @@ try:
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-# Py2, Py3 compatibility
-try:
-    PY3 = False
-    basestring
-except NameError:
-    PY3 = True
-    basestring = str
+from .external import six
+
+DATA_LOG = logging.getLogger("io_pdx.data")
 
 
 """ ====================================================================================================================
@@ -35,10 +32,8 @@ except NameError:
 
 
 class PDXData(object):
-    """
-        Simple class that turns an XML element hierarchy with attributes into a object for more convenient
-        access to attributes.
-    """
+    """Simple class that turns an XML element hierarchy with attributes into a object for more convenient
+    access to attributes."""
 
     def __init__(self, element, depth=None):
         # use element tag as object name
@@ -92,32 +87,28 @@ class PDXData(object):
         return "\n".join(string)
 
 
+class PDXDataJSON(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, PDXData):
+            d = {}
+            for attr in obj.attrlist:
+                val = getattr(obj, attr)
+                if isinstance(val, list):
+                    d[attr] = [v for v in val]
+                else:
+                    d[attr] = val
+            return d
+        return super(PDXDataJSON, self).default(obj)
+
+
 """ ====================================================================================================================
     Functions for reading and parsing binary data.
 ========================================================================================================================
 """
 
 
-def parseProperty(bdata, pos):
-    # starting at '!'
-    pos += 1
-
-    # get length of property name
-    prop_name_length = unpack_from("b", bdata, offset=pos)[0]
-    pos += 1
-
-    # get property name as string
-    prop_name = parseString(bdata, pos, prop_name_length)
-    pos += prop_name_length
-
-    # get property data
-    prop_values, pos = parseData(bdata, pos)
-
-    return prop_name, prop_values, pos
-
-
 def parseObject(bdata, pos):
-    # skip and record any repeated '[' characters
+    # record any repeated `[` characters as object depth
     objdepth = 0
     while unpack_from("c", bdata, offset=pos)[0].decode() == "[":
         objdepth += 1
@@ -136,6 +127,24 @@ def parseObject(bdata, pos):
     return obj_name, objdepth, pos
 
 
+def parseProperty(bdata, pos):
+    # skip starting `!`
+    pos += 1
+
+    # get length of property name
+    prop_name_length = unpack_from("b", bdata, offset=pos)[0]
+    pos += 1
+
+    # get property name as string
+    prop_name = parseString(bdata, pos, prop_name_length)
+    pos += prop_name_length
+
+    # get property data
+    prop_values, pos = parseData(bdata, pos)
+
+    return prop_name, prop_values, pos
+
+
 def parseString(bdata, pos, length):
     val_tuple = unpack_from("c" * length, bdata, offset=pos)  # TODO: should fmt here be "s" * length ?
 
@@ -150,86 +159,68 @@ def parseString(bdata, pos, length):
 
 
 def parseData(bdata, pos):
-    # determine the  data type
+    # determine the data type
     datatype = unpack_from("c", bdata, offset=pos)[0].decode()
+    pos += 1
+    # determine the data count
+    datacount = unpack_from("i", bdata, offset=pos)[0]
+    pos += 4
+    # collect data values
     # TODO: use an array here instead of list for memory efficiency?
     datavalues = []
 
+    # handle integer data
     if datatype == "i":
-        # handle integer data
-        pos += 1
+        val = unpack_from("i" * datacount, bdata, offset=pos)
+        datavalues.extend(val)
+        pos += 4 * datacount
 
-        # count
-        size = unpack_from("i", bdata, offset=pos)[0]
-        pos += 4
-
-        # values
-        for i in range(0, size):
-            val = unpack_from("i", bdata, offset=pos)[0]
-            datavalues.append(val)
-            pos += 4
-
+    # handle float data
     elif datatype == "f":
-        # handle float data
-        pos += 1
+        val = unpack_from("f" * datacount, bdata, offset=pos)
+        datavalues.extend(val)
+        pos += 4 * datacount
 
-        # count
-        size = unpack_from("i", bdata, offset=pos)[0]
-        pos += 4
-
-        # values
-        for i in range(0, size):
-            val = unpack_from("f", bdata, offset=pos)[0]
-            datavalues.append(val)
-            pos += 4
-
+    # handle string data
     elif datatype == "s":
-        # handle string data
-        pos += 1
-
-        # count
-        size = unpack_from("i", bdata, offset=pos)[0]
-        # TODO: we are assuming that we always have a count of 1 string, not an array of multiple strings
-        pos += 4
-
+        # TODO: we are assuming that we always have a data count of 1 string, not an array of multiple strings
         # string length
         str_data_length = unpack_from("i", bdata, offset=pos)[0]
         pos += 4
 
-        # value
         val = parseString(bdata, pos, str_data_length)
         datavalues.append(val)
         pos += str_data_length
 
     else:
         raise NotImplementedError(
-            "Unknown data type encountered. {} at position {}\n{}".format(datatype, pos, bdata[pos - 10 : pos + 10])
+            "Unknown data type encountered. {} at position {}\neg: {}".format(datatype, pos, bdata[pos - 10 : pos + 10])
         )
 
     return datavalues, pos
 
 
 def read_meshfile(filepath):
-    """
-        Reads through a .mesh file and gathers all the data into hierarchical element structure.
-        The resulting XML is not natively writable to string as it contains Python data types.
-    """
+    """Reads through a .mesh file and gathers all the data into hierarchical element structure.
+    The resulting XML is not natively writable to string as it contains Python data types."""
     # read the data
     with open(filepath, "rb") as fp:
-        fdata = fp.read()
+        # TODO: adopt the Py3 only use of context manager for mmap
+        mm_fp = mmap.mmap(fp.fileno(), length=0, access=mmap.ACCESS_READ)
+        fdata = mm_fp.read(mm_fp.size())
+        mm_fp.close()
 
     # create an XML structure to store the object hierarchy
     file_element = Xml.Element("File")
-    file_element.attrib = dict(name=os.path.split(filepath)[1], path=os.path.split(filepath)[0])
 
     # determine the file length and set initial file read position
     eof = len(fdata)
     pos = 0
 
     # read the file header '@@b@'
-    header = unpack_from("c" * 4, fdata, pos)
+    header = unpack_from("4c", fdata, pos)
     if bytes(b"".join(header)) == b"@@b@":
-        pos = 4
+        pos += 4
     else:
         raise NotImplementedError("Unknown file header. {}".format(header))
 
@@ -240,16 +231,8 @@ def read_meshfile(filepath):
     # parse through until EOF
     while pos < eof:
         next_char = unpack_from("c", fdata, offset=pos)[0].decode()
-        # we have a property
-        if next_char == "!":
-            # check the property type and values
-            prop_name, prop_values, pos = parseProperty(fdata, pos)
-
-            # assign property values to the parent object
-            parent_element.set(prop_name, prop_values)
-
         # we have an object
-        elif next_char == "[":
+        if next_char == "[":
             # check the object type and hierarchy depth
             obj_name, depth, pos = parseObject(fdata, pos)
 
@@ -268,6 +251,14 @@ def read_meshfile(filepath):
             depth_list.append(parent_element)
             current_depth = depth
 
+        # we have a property (of the last read object)
+        elif next_char == "!":
+            # check the property type and values
+            prop_name, prop_values, pos = parseProperty(fdata, pos)
+
+            # assign property values to the parent object
+            parent_element.set(prop_name, prop_values)
+
         # we have something that we can't parse
         else:
             raise NotImplementedError("Unknown object encountered.")
@@ -281,7 +272,27 @@ def read_meshfile(filepath):
 """
 
 
+def writeObject(obj_xml, obj_depth):
+    DATA_LOG.debug("writeObject: %s", obj_depth * "-")
+    datastring = b""
+
+    # write object hierarchy depth
+    for x in range(obj_depth):
+        datastring += pack("c", "[".encode())
+
+    # write object name as string
+    obj_name = obj_xml.tag
+    if not len(obj_name) < 64:
+        raise NotImplementedError("Object name is longer than 64 characters: {}".format(obj_name))
+    datastring += writeString(obj_name)
+    # write zero-byte ending
+    datastring += pack("x")
+
+    return datastring
+
+
 def writeProperty(prop_name, prop_data):
+    DATA_LOG.debug("writeProperty:")
     datastring = b""
 
     try:
@@ -305,25 +316,8 @@ def writeProperty(prop_name, prop_data):
     return datastring
 
 
-def writeObject(obj_xml, obj_depth):
-    datastring = b""
-
-    # write object hierarchy depth
-    for x in range(obj_depth):
-        datastring += pack("c", "[".encode())
-
-    # write object name as string
-    obj_name = obj_xml.tag
-    if not len(obj_name) < 64:
-        raise NotImplementedError("Object name is longer than 64 characters: {}".format(obj_name))
-    datastring += writeString(obj_name)
-    # write zero-byte ending
-    datastring += pack("x")
-
-    return datastring
-
-
 def writeString(string):
+    DATA_LOG.debug("writeString: '%s'", string)
     datastring = b""
 
     string = string.encode("latin-1")
@@ -333,6 +327,7 @@ def writeString(string):
 
 
 def writeData(data_array):
+    DATA_LOG.debug("writeData: [%s]", ", ".join([str(d) for d in data_array]))
     datastring = b""
 
     # determine the data type in the array
@@ -342,7 +337,7 @@ def writeData(data_array):
     elif len(types) < 1:
         return datastring
     else:
-        raise NotImplementedError("Mixed data type encountered. {} - {}".format(types, data_array))
+        raise NotImplementedError("Mixed data types encountered. - {}".format(types))
 
     if all(isinstance(d, int) for d in data_array):
         # write integer data
@@ -366,7 +361,7 @@ def writeData(data_array):
         # values
         datastring += pack("f" * size, *data_array)
 
-    elif all(isinstance(d, basestring) for d in data_array):
+    elif all(isinstance(d, six.string_types) for d in data_array):
         # write string data
         datastring += pack("c", "s".encode())
 
@@ -385,15 +380,13 @@ def writeData(data_array):
         datastring += pack("x")
 
     else:
-        raise NotImplementedError("Unknown data type encountered. {}\n{}".format(datatype, data_array))
+        raise NotImplementedError("Unknown data type encountered. {}\neg: {}".format(datatype, data_array[0]))
 
     return datastring
 
 
 def write_meshfile(filepath, root_xml):
-    """
-        Iterates over an XML element and writes the element structure back into a binary file as mesh data.
-    """
+    """Iterates over an XML element and writes the element structure back into a binary file as mesh data."""
     datastring = b""
 
     # write the file header '@@b@'
@@ -407,7 +400,8 @@ def write_meshfile(filepath, root_xml):
     else:
         raise NotImplementedError("Unknown XML root encountered. {}".format(root_xml.tag))
 
-    # TODO: writing properties would be easier if order was irrelevant, you should test this
+    # TODO: writing properties would be easier if order was irrelevant, only under Py3 do Xml attributes maintain order
+    # TODO: test in game files to determine if order of attributes or objects is important
     # write objects root
     object_xml = root_xml.find("object")
     if object_xml is not None:
@@ -419,6 +413,11 @@ def write_meshfile(filepath, root_xml):
             current_depth = 2
             datastring += writeObject(shape_xml, current_depth)
 
+            # write shape properties
+            for prop in ["lod"]:
+                if shape_xml.get(prop) is not None:
+                    datastring += writeProperty(prop, shape_xml.get(prop))
+
             # write each mesh
             for child_xml in shape_xml:
                 current_depth = 3
@@ -427,7 +426,7 @@ def write_meshfile(filepath, root_xml):
                 if child_xml.tag == "mesh":
                     mesh_xml = child_xml
                     # write mesh properties
-                    for prop in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri"]:
+                    for prop in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "boundingsphere"]:
                         if mesh_xml.get(prop) is not None:
                             datastring += writeProperty(prop, mesh_xml.get(prop))
 
@@ -487,9 +486,7 @@ def write_meshfile(filepath, root_xml):
 
 
 def write_animfile(filepath, root_xml):
-    """
-        Iterates over an XML element and writes the element structure back into a binary file as animation data.
-    """
+    """Iterates over an XML element and writes the element structure back into a binary file as animation data."""
     datastring = b""
 
     # write the file header '@@b@'
@@ -540,37 +537,6 @@ def write_animfile(filepath, root_xml):
         fp.write(datastring)
 
 
-""" ====================================================================================================================
-    Main.
-========================================================================================================================
-"""
-
-
-if __name__ == "__main__":
-    """
-       When called from the command line we just print the structure and contents of the .mesh or .anim file to stdout
-    """
-    os.system("cls")
-    import argparse
-
-    parser = argparse.ArgumentParser(description="io_pdx_mesh CLI")
-    parser.add_argument("file")
-    parser.add_argument("--out", "-o", default=None)
-    parser.add_argument("--verbose", "-v", action="store_true", default=False)
-
-    args = parser.parse_args()
-    _file = args.file
-    _data = read_meshfile(_file)
-    pdx_data = PDXData(_data)
-
-    if args.out:
-        with open(args.out, "wt") as fp:
-            fp.write(str(pdx_data) + "\n")
-    else:
-        print(pdx_data)
-        print()
-
-
 """
 General binary format is:
     data description
@@ -584,8 +550,8 @@ General binary format is:
     header    (@@b@ for binary, @@t@ for text)
     pdxasset    (int)  number of assets? file format version?
         object    (object)  parent item for all 3D objects
-            lodperc    (float)  list of LOD switches, percentage size of bounding sphere?  [IMPERATOR]
-            loddist    (float)  list of LOD switches, some distance metric?  [EU4/STELLARIS/HOI4]
+            lodperc    (float)  list of LOD switches, percentage size on screen of bounding sphere?  [IR/CK3]
+            loddist    (float)  list of LOD switches, distance from camera of object pivot?  [EU4/STELLARIS/HOI4]
             shape    (object)
                 ...  multiple shapes, used for meshes under different node transforms
             shape    (object)
@@ -595,15 +561,15 @@ General binary format is:
                 mesh    (object)
                     ...
                 mesh    (object)
-                    p    (float)  verts
+                    p    (float)  positions
                     n    (float)  normals
                     ta    (float)  tangents
-                    u0    (float)  UVs
-                    tri    (int)  triangles
-                    boundingsphere    (float)  centre and radius of mesh spherical bounds  [IMPERATOR/CK3]
+                    u0    (float)  UVs channel 0 ... etc
+                    tri    (int)  triangles indices
+                    boundingsphere    (float)  centre, radius bounding sphere of mesh  [IR/CK3]
                     aabb    (object)
-                        min    (float)  min bounding box
-                        max    (float)  max bounding box
+                        min    (float)  min bounding box of mesh
+                        max    (float)  max bounding box of mesh
                     material    (object)
                         shader    (string)  shader name
                         diff    (string)  diffuse texture
@@ -623,7 +589,7 @@ General binary format is:
                 p    (float)  position
                 q    (float)  quarternion
                 pa    (string)  parent name
-                tx    (float)  worldspace transform, 4*4 matrix (allow locator scale)  [IMPERATOR]
+                tx    (float)  worldspace transform, 4*4 matrix (allow locator scale)  [IR/CK3]
 
 
 .anim file format
@@ -642,9 +608,9 @@ General binary format is:
                 sa    (string)  animation curve types, combination of 's', 't', 'q'
                 t    (float)  initial translation as vector
                 q    (float)  initial rotation as quaternion
-                s    (float)  initial scale as single float
+                s    (float)  initial scale as single float, or vector (non-uniform scale) [CK3]
         samples    (object)
             t   (floats)    list of translations (size 3), by bone, by frame (translation from parent, in parent space)
             q   (floats)    list of rotations (size 4), by bone, by frame (rotation from parent, in parent space)
-            s   (floats)    list of scales (size 1), by bone, by frame
+            s   (floats)    list of scales (size 1, or size 3 [CK3]), by bone, by frame
 """

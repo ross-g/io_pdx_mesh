@@ -8,7 +8,6 @@
 from __future__ import unicode_literals
 
 import sys
-import site
 import json
 import inspect
 import logging
@@ -20,6 +19,9 @@ from collections import OrderedDict
 
 from .settings import PDXsettings
 
+# vendored package imports
+from .external.appdirs import user_data_dir  # user settings directory
+
 
 bl_info = {
     "author": "ross-g",
@@ -30,11 +32,11 @@ bl_info = {
     "support": "COMMUNITY",
     "blender": (2, 83, 0),
     "maya": (2018),
-    "version": (0, 8),
+    "version": (0, 9),
     "warning": "this add-on is beta",
     "project_name": "io_pdx_mesh",
     "project_url": "https://github.com/ross-g/io_pdx_mesh",
-    "wiki_url": "https://github.com/ross-g/io_pdx_mesh/wiki",
+    "doc_url": "https://github.com/ross-g/io_pdx_mesh/wiki",
     "tracker_url": "https://github.com/ross-g/io_pdx_mesh/issues",
     "forum_url": "https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/",
 }
@@ -45,21 +47,18 @@ bl_info = {
 ========================================================================================================================
 """
 
-environment = sys.executable.lower()
-root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 
 # setup module logging
-log_name = bl_info["project_name"]
+log_name = "io_pdx"
 log_format = "[%(name)s] %(levelname)s:  %(message)s"
+log_lvl = logging.INFO
 
 # setup module preferences
-site.addsitedir(path.join(root_path, "external"))
-from appdirs import user_data_dir  # noqa
-
 config_path = path.join(user_data_dir(bl_info["project_name"], False), "settings.json")
 IO_PDX_SETTINGS = PDXsettings(config_path)
 
 # setup engine/export settings
+root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 export_settings = path.join(root_path, "clausewitz.json")
 ENGINE_SETTINGS = {}
 try:
@@ -85,15 +84,22 @@ except Exception as err:
 ========================================================================================================================
 """
 
-# check if running from Blender
-if "blender" in environment:
-    import bpy  # noqa
+IO_PDX_LOG, running_from, version = None, None, None
+environment = sys.executable.lower()
 
-    logging.basicConfig(level=logging.DEBUG, format=log_format)
+# check if running from Blender
+try:
+    import bpy  # noqa
+    running_from, version = bpy.app.binary_path.lower(), bpy.app.version
+except ImportError:
+    pass
+else:
+    logging.basicConfig(level=log_lvl, format=log_format)
     IO_PDX_LOG = logging.getLogger(log_name)
 
-    IO_PDX_LOG.info("Running from {0}".format(bpy.app.binary_path.lower()))
-    IO_PDX_LOG.info(root_path)
+    if version < bl_info["blender"]:
+        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Blender {0}".format(bl_info["blender"]))
+        bl_info["unsupported_version"] = True
 
     try:
         # register the Blender addon
@@ -103,19 +109,23 @@ if "blender" in environment:
         raise e
 
 # or running from Maya
-elif "maya" in environment:
+try:
     import maya.cmds  # noqa
-
+    running_from, version = sys.executable.lower(), int(maya.cmds.about(version=True))
+except ImportError:
+    pass
+else:
     IO_PDX_LOG = logging.getLogger(log_name)
-    IO_PDX_LOG.setLevel(logging.DEBUG)
+    IO_PDX_LOG.setLevel(log_lvl)
     IO_PDX_LOG.propagate = False
     IO_PDX_LOG.handlers = []
     console = logging.StreamHandler(sys.stdout)
     console.setFormatter(logging.Formatter(log_format))
     IO_PDX_LOG.addHandler(console)
 
-    IO_PDX_LOG.info("Running from {0}".format(environment))
-    IO_PDX_LOG.info(root_path)
+    if version < bl_info["maya"]:
+        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Maya {0}".format(bl_info["maya"]))
+        bl_info["unsupported_version"] = True
 
     try:
         # launch the Maya UI
@@ -126,6 +136,11 @@ elif "maya" in environment:
         traceback.print_exc()
         raise e
 
-# otherwise, we don't support running elsewhere
+if running_from is not None:
+    IO_PDX_LOG.info("Running from {0} ({1})".format(running_from, version))
+    IO_PDX_LOG.info(root_path)
+# otherwise, we don't support running with UI setup
 else:
-    raise NotImplementedError('Running from unknown environment "{0}"'.format(environment))
+    logging.basicConfig(level=logging.DEBUG, format=log_format)
+    IO_PDX_LOG = logging.getLogger(log_name)
+    IO_PDX_LOG.warning('Running without UI from environment "{0}"'.format(sys.executable))
