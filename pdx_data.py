@@ -10,6 +10,7 @@
 
 from __future__ import print_function, unicode_literals
 
+import mmap
 import json
 import logging
 from struct import pack, unpack_from
@@ -19,10 +20,7 @@ try:
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-try:
-    basestring
-except NameError:
-    basestring = str
+from .external import six
 
 DATA_LOG = logging.getLogger("io_pdx.data")
 
@@ -100,7 +98,7 @@ class PDXDataJSON(json.JSONEncoder):
                 else:
                     d[attr] = val
             return d
-        return super(PDXDataJSON, self).default(self, obj)
+        return super(PDXDataJSON, self).default(obj)
 
 
 """ ====================================================================================================================
@@ -207,7 +205,10 @@ def read_meshfile(filepath):
     The resulting XML is not natively writable to string as it contains Python data types."""
     # read the data
     with open(filepath, "rb") as fp:
-        fdata = fp.read()
+        # TODO: adopt the Py3 only use of context manager for mmap
+        mm_fp = mmap.mmap(fp.fileno(), length=0, access=mmap.ACCESS_READ)
+        fdata = mm_fp.read(mm_fp.size())
+        mm_fp.close()
 
     # create an XML structure to store the object hierarchy
     file_element = Xml.Element("File")
@@ -271,6 +272,25 @@ def read_meshfile(filepath):
 """
 
 
+def writeObject(obj_xml, obj_depth):
+    DATA_LOG.debug("writeObject: %s", obj_depth * "-")
+    datastring = b""
+
+    # write object hierarchy depth
+    for x in range(obj_depth):
+        datastring += pack("c", "[".encode())
+
+    # write object name as string
+    obj_name = obj_xml.tag
+    if not len(obj_name) < 64:
+        raise NotImplementedError("Object name is longer than 64 characters: {}".format(obj_name))
+    datastring += writeString(obj_name)
+    # write zero-byte ending
+    datastring += pack("x")
+
+    return datastring
+
+
 def writeProperty(prop_name, prop_data):
     DATA_LOG.debug("writeProperty:")
     datastring = b""
@@ -292,25 +312,6 @@ def writeProperty(prop_name, prop_data):
     except NotImplementedError as err:
         print("Failed writing property: {}".format(prop_name))
         raise err
-
-    return datastring
-
-
-def writeObject(obj_xml, obj_depth):
-    DATA_LOG.debug("writeObject: %s", obj_depth * "-")
-    datastring = b""
-
-    # write object hierarchy depth
-    for x in range(obj_depth):
-        datastring += pack("c", "[".encode())
-
-    # write object name as string
-    obj_name = obj_xml.tag
-    if not len(obj_name) < 64:
-        raise NotImplementedError("Object name is longer than 64 characters: {}".format(obj_name))
-    datastring += writeString(obj_name)
-    # write zero-byte ending
-    datastring += pack("x")
 
     return datastring
 
@@ -360,7 +361,7 @@ def writeData(data_array):
         # values
         datastring += pack("f" * size, *data_array)
 
-    elif all(isinstance(d, basestring) for d in data_array):
+    elif all(isinstance(d, six.string_types) for d in data_array):
         # write string data
         datastring += pack("c", "s".encode())
 
