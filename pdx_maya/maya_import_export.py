@@ -430,6 +430,10 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
                 [dict_vert_idx[indices[0]], dict_vert_idx[indices[2]], dict_vert_idx[indices[1]]]
             )
 
+    if not export_verts:
+        # no mesh data collected?
+        return {}, []
+
     # calculate mesh bounds
     x_vtx_pos = set(mesh_dict["p"][::3])
     y_vtx_pos = set(mesh_dict["p"][1::3])
@@ -1401,6 +1405,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 mesh_info_dict, vert_ids = get_mesh_info(
                     mesh, split_criteria=split_by, split_all=split_verts, sort_vertices=sort_verts
                 )
+                # skip shading groups that are used on no faces
+                if not (mesh_info_dict and vert_ids):
+                    continue
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "boundingsphere"]:
