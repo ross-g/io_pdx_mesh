@@ -32,7 +32,7 @@ bl_info = {
     "support": "COMMUNITY",
     "blender": (2, 83, 0),
     "maya": (2018),
-    "version": (0, 8),
+    "version": (0, 9),
     "warning": "this add-on is beta",
     "project_name": "io_pdx_mesh",
     "project_url": "https://github.com/ross-g/io_pdx_mesh",
