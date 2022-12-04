@@ -1,19 +1,17 @@
 import sys
-import site
 import json
 import warnings
-from os import path
 
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-from . import PY2
 from .pdx_data import PDXData, PDXDataJSON, read_meshfile
 
 # vendored package imports
 from .external import click
+from .external.six import PY2
 
 
 """ ====================================================================================================================
