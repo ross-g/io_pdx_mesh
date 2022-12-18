@@ -46,22 +46,20 @@ from ..library import (
     PDX_MESHINDEX,
     PDX_MAXSKININFS,
     PDX_MAXUVSETS,
+    PDX_DECIMALPTS,
+    PDX_ROUND_ROT,
+    PDX_ROUND_TRANS,
+    PDX_ROUND_SCALE,
 )
 
-# Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
-if sys.version_info >= (3, 0):
-    xrange = range
+# Py2, Py3 compatibility (Maya 2022+ adopts Py3)
+from ..external.six.moves import range
 
 
 """ ====================================================================================================================
     Variables.
 ========================================================================================================================
 """
-
-PDX_DECIMALPTS = 5
-PDX_ROUND_ROT = 4
-PDX_ROUND_TRANS = 3
-PDX_ROUND_SCALE = 2
 
 maya_up = cmds.upAxis(query=True, axis=True)
 # fmt: off
@@ -162,7 +160,7 @@ def connect_nodeplugs(source_mobject, source_mplug, dest_mobject, dest_mplug):
 
 
 def util_round(data, ndigits=0):
-    """Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed). """
+    """Element-wise rounding to a given precision in decimal digits. (reimplementing pmc.util.round for speed)."""
     return tuple(round(x, ndigits) for x in data)
 
 
@@ -353,7 +351,7 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
         num_triangles = triangles[0][face_id]  # number of triangles making this face
 
         # store data for each tri of each face
-        for tri in xrange(0, num_triangles):
+        for tri in range(0, num_triangles):
             tri_vert_ids = mesh.getPolygonTriangleVertices(face_id, tri)  # vertices making this triangle
 
             # process verts for each triangle, sort the list of tri-verts in vertex order or use default Maya ordering
@@ -433,6 +431,10 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
                 [dict_vert_idx[indices[0]], dict_vert_idx[indices[2]], dict_vert_idx[indices[1]]]
             )
 
+    if not export_verts:
+        # no mesh data collected?
+        return {}, []
+
     # calculate mesh bounds
     x_vtx_pos = set(mesh_dict["p"][::3])
     y_vtx_pos = set(mesh_dict["p"][1::3])
@@ -452,7 +454,7 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
 
 
 def get_mesh_skin_info(maya_mesh, vertex_ids=None):
-    """pmc.skinPercent(skin, maya_mesh, normalize=True, pruneWeights=0.1) """
+    # pmc.skinPercent(skin, maya_mesh, normalize=True, pruneWeights=0.1)
     skinclusters = list(set(pmc.listConnections(maya_mesh, type="skinCluster")))
     if not skinclusters:
         return None
@@ -479,7 +481,7 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
 
     # parse all verts in order if we didn't supply a subset of vert ids
     if vertex_ids is None:
-        vertex_ids = xrange(len(maya_mesh.verts))
+        vertex_ids = range(len(maya_mesh.verts))
 
     # iterate over influences to find weights, per vertex
     vert_weights = {v: {} for v in vertex_ids}
@@ -634,7 +636,7 @@ def get_scene_animdata(export_bones, startframe, endframe):
 
     try:
         cmds.refresh(suspend=True)
-        for f in xrange(startframe, endframe + 1):
+        for f in range(startframe, endframe + 1):
             pmc.currentTime(f, edit=True)
             for bone in export_bones:
                 # TODO: this is slow, don't use PyMel here or check f-curves directly
@@ -705,7 +707,7 @@ def swap_coord_space(data, space_mat=SPACE_MATRIX, space_mat_inv=SPACE_MATRIX_IN
 
 
 def create_filetexture(tex_filepath):
-    """Creates and connects up a new file node and place2dTexture node, uses the supplied filepath. """
+    """Creates and connects up a new file node and place2dTexture node, uses the supplied filepath."""
     newFile = pmc.shadingNode("file", asTexture=True)
     new2dTex = pmc.shadingNode("place2dTexture", asUtility=True)
 
@@ -778,7 +780,7 @@ def create_material(PDX_material, mesh, texture_folder):
 
 
 def create_locator(PDX_locator, PDX_bone_dict):
-    """Creates a Maya Locator object. """
+    """Creates a Maya Locator object."""
     # create locator
     new_loc = pmc.spaceLocator()
     pmc.select(new_loc)
@@ -851,7 +853,7 @@ def create_locator(PDX_locator, PDX_bone_dict):
 
 def create_skeleton(PDX_bone_list):
     # keep track of bones as we create them
-    bone_list = [None for _ in xrange(0, len(PDX_bone_list))]
+    bone_list = [None for _ in range(0, len(PDX_bone_list))]
 
     pmc.select(clear=True)
     for bone in PDX_bone_list:
@@ -910,11 +912,11 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
     skin_dict = dict()
 
     num_infs = PDX_skin.bones[0]
-    for vtx in xrange(0, int(len(PDX_skin.ix) / max_infs)):
+    for vtx in range(0, int(len(PDX_skin.ix) / max_infs)):
         skin_dict[vtx] = dict(joints=[], weights=[])
 
     # gather joint index and weighting that each vertex is skinned to
-    for vtx, j in enumerate(xrange(0, len(PDX_skin.ix), max_infs)):
+    for vtx, j in enumerate(range(0, len(PDX_skin.ix), max_infs)):
         skin_dict[vtx]["joints"] = PDX_skin.ix[j : j + num_infs]
         skin_dict[vtx]["weights"] = PDX_skin.w[j : j + num_infs]
 
@@ -934,21 +936,21 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
     mesh_dag = get_MDagPath(mesh.name())
 
     indices = OpenMaya.MIntArray()
-    for vtx in xrange(len(skin_dict.keys())):
+    for vtx in range(len(skin_dict.keys())):
         indices.append(vtx)
     mFn_SingleIdxCo = OpenMaya.MFnSingleIndexedComponent()
     vertex_IdxCo = mFn_SingleIdxCo.create(OpenMaya.MFn.kMeshVertComponent)
     mFn_SingleIdxCo.addElements(indices)  # must only add indices after running create()
 
     infs = OpenMaya.MIntArray()
-    for j in xrange(len(skeleton)):
+    for j in range(len(skeleton)):
         infs.append(j)
 
     weights = OpenMaya.MDoubleArray()
-    for vtx in xrange(len(skin_dict.keys())):
+    for vtx in range(len(skin_dict.keys())):
         jts = skin_dict[vtx]["joints"]
         wts = skin_dict[vtx]["weights"]
-        for j in xrange(len(skeleton)):
+        for j in range(len(skeleton)):
             if j in jts:
                 weights.append(wts[jts.index(j)])
             else:
@@ -962,7 +964,7 @@ def create_skin(PDX_skin, mesh, skeleton, max_infs=None):
 
 
 def create_mesh(PDX_mesh, name=None):
-    """Creates a Maya mesh object. """
+    """Creates a Maya mesh object."""
     # temporary name used during creation
     tmp_mesh_name = "io_pdx_mesh"
 
@@ -989,7 +991,7 @@ def create_mesh(PDX_mesh, name=None):
     # vertices
     numVertices = 0
     vertexArray = OpenMaya.MFloatPointArray()  # array of points
-    for i in xrange(0, len(verts), 3):
+    for i in range(0, len(verts), 3):
         _verts = swap_coord_space([verts[i], verts[i + 1], verts[i + 2]])
         v = OpenMaya.MFloatPoint(_verts[0], _verts[1], _verts[2])
         vertexArray.append(v)
@@ -998,12 +1000,12 @@ def create_mesh(PDX_mesh, name=None):
     # faces
     numPolygons = int(len(tris) / 3)
     polygonCounts = OpenMaya.MIntArray()  # count of vertices per poly
-    for i in xrange(0, numPolygons):
+    for i in range(0, numPolygons):
         polygonCounts.append(3)
 
     # vert connections
     polygonConnects = OpenMaya.MIntArray()
-    for i in xrange(0, len(tris), 3):
+    for i in range(0, len(tris), 3):
         polygonConnects.append(tris[i + 2])  # convert handedness to Maya space
         polygonConnects.append(tris[i + 1])
         polygonConnects.append(tris[i])
@@ -1013,7 +1015,7 @@ def create_mesh(PDX_mesh, name=None):
     vArray = OpenMaya.MFloatArray()
     if uv_Ch.get(0):
         uv_data = uv_Ch[0]
-        for i in xrange(0, len(uv_data), 2):
+        for i in range(0, len(uv_data), 2):
             uArray.append(uv_data[i])
             vArray.append(1 - uv_data[i + 1])  # flip the UV coords in V!
 
@@ -1048,21 +1050,21 @@ def create_mesh(PDX_mesh, name=None):
     # apply the vertex normal data
     if norms:
         normalsIn = OpenMaya.MVectorArray()  # array of vectors
-        for i in xrange(0, len(norms), 3):
+        for i in range(0, len(norms), 3):
             _norms = swap_coord_space([norms[i], norms[i + 1], norms[i + 2]])  # convert vector to Maya space
             n = OpenMaya.MVector(_norms[0], _norms[1], _norms[2])
             normalsIn.append(n)
         vertexList = OpenMaya.MIntArray()  # matches normal to vert by index
-        for i in xrange(0, numVertices):
+        for i in range(0, numVertices):
             vertexList.append(i)
         mFn_Mesh.setVertexNormals(normalsIn, vertexList)
 
     # apply the UV data channels
     uvCounts = OpenMaya.MIntArray()
-    for i in xrange(0, numPolygons):
+    for i in range(0, numPolygons):
         uvCounts.append(3)
     uvIds = OpenMaya.MIntArray()
-    for i in xrange(0, len(tris), 3):
+    for i in range(0, len(tris), 3):
         uvIds.append(tris[i + 2])  # convert handedness to Maya space
         uvIds.append(tris[i + 1])
         uvIds.append(tris[i])
@@ -1080,7 +1082,7 @@ def create_mesh(PDX_mesh, name=None):
 
             uArray = OpenMaya.MFloatArray()
             vArray = OpenMaya.MFloatArray()
-            for i in xrange(0, len(uv_data), 2):
+            for i in range(0, len(uv_data), 2):
                 uArray.append(uv_data[i])
                 vArray.append(1 - uv_data[i + 1])  # flip the UV coords in V!
 
@@ -1141,7 +1143,7 @@ def create_anim_keys(joint_name, key_dict, timestart):
 
     # create a time array
     time_array = OpenMaya.MTimeArray()
-    for t in xrange(timestart, timeend):
+    for t in range(timestart, timeend):
         time_array.append(OpenMaya.MTime(t, OpenMaya.MTime.uiUnit()))
 
     # define anim curve tangent
@@ -1161,9 +1163,11 @@ def create_anim_keys(joint_name, key_dict, timestart):
         z_scale_data = OpenMaya.MDoubleArray()
 
         for scale_data in key_dict["s"]:
-            x_scale_data.append(scale_data[0])
-            y_scale_data.append(scale_data[0])
-            z_scale_data.append(scale_data[0])
+            # TODO: if maya_up == "z"
+            s = MVector(*scale_data)
+            x_scale_data.append(s[0])
+            y_scale_data.append(s[1])
+            z_scale_data.append(s[2])
 
         # add keys to the new curves
         for attrib, data_array in zip(animated_attrs, [x_scale_data, y_scale_data, z_scale_data]):
@@ -1402,9 +1406,12 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 mesh_info_dict, vert_ids = get_mesh_info(
                     mesh, split_criteria=split_by, split_all=split_verts, sort_vertices=sort_verts
                 )
+                # skip shading groups that are used on no faces
+                if not (mesh_info_dict and vert_ids):
+                    continue
 
                 # populate mesh attributes
-                for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri",  "boundingsphere"]:
+                for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "boundingsphere"]:
                     if key in mesh_info_dict and mesh_info_dict[key]:
                         meshnode_xml.set(key, mesh_info_dict[key])
 
@@ -1542,16 +1549,15 @@ def import_animfile(animpath, frame_start=1, **kwargs):
     progress("update", 1, "setting playback range")
     pmc.playbackOptions(edit=True, minTime=frame_start)
     pmc.playbackOptions(edit=True, maxTime=(frame_start + framecount - 1))
-
     pmc.currentTime(frame_start, edit=True)
 
     # check scene has all required bones, check scale uniformity
     IO_PDX_LOG.info("finding bones -")
     progress("update", 1, "finding bones")
+    scale_length = set()
     bone_errors = []
-    bone_list = []
     for bone in info:
-        bone_joint = None
+        scale_length.add(len(bone.attrib["s"]))
         bone_name = clean_imported_name(bone.tag)
         try:
             matching_bones = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)  # type: pmc.nodetypes.joint
@@ -1561,53 +1567,82 @@ def import_animfile(animpath, frame_start=1, **kwargs):
             IO_PDX_LOG.warning("failed to find bone - {0}".format(bone_name))
             progress("update", 1, "failed to find bone!")
 
+    # break on missing bones
+    if bone_errors:
+        raise RuntimeError("Missing bones required for animation: {0}".format(bone_errors))
+
+    # break on variable size scale vectors
+    if len(scale_length) != 1:
+        raise NotImplementedError("Mixed length scale vectors ({0}) are not supported".format(scale_length))
+    # support both uniform ([x]) and non-uniform ([x,y,z]) scale data
+    scale_length = scale_length.pop()
+    scale_padding = 4 - scale_length
+    IO_PDX_LOG.info("animation supports {0}uniform scale -".format("non-" if scale_length > 1 else ""))
+
+    # clear any current pose before attempting to load the animation
+    # TODO: clear existing anim curves from bones and restore bind pose
+
+    # set the initial pose (includes un-keyframed bones)
+    initial_pose = dict()
+    IO_PDX_LOG.info("setting initial pose on bones - {0}".format(len(info)))
+    for bone in info:
+        bone_name = clean_imported_name(bone.tag)
+        matching_bones = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)  # type: pmc.nodetypes.joint
+        bone_joint = matching_bones[0]
+
         # set initial transform and remove any joint orientation (this is baked into rotation values in the .anim file)
         if bone_joint:
             # compose transform parts
-            _scale = [bone.attrib["s"][0], bone.attrib["s"][0], bone.attrib["s"][0]]
+            _scale = MVector(*bone.attrib["s"] * scale_padding)
             _rotation = MQuaternion(*bone.attrib["q"])
             _translation = MVector(*bone.attrib["t"])
 
             bone_joint.setScale(_scale)
-            bone_joint.setRotation(swap_coord_space(_rotation))
-            bone_joint.setTranslation(swap_coord_space(_translation))
+            bone_joint.setRotation(_rotation)
+            bone_joint.setTranslation(_translation)
 
             # zero out joint orientation
             bone_joint.jointOrient.set(0.0, 0.0, 0.0)
+            # apply transform
+            # TODO: set initial pose keyframe (not all bones in this initial pose will be animated)
+            bone_joint.setMatrix(swap_coord_space(bone_joint.getMatrix()))
 
-            bone_list.append(bone_joint)
-
-    # break on bone errors
-    if bone_errors:
-        raise RuntimeError("Missing bones required for animation:\n{0}".format(bone_errors))
+            # record the initial pose
+            initial_pose[bone_name] = bone_joint.getMatrix()
 
     # check which transform types are animated on each bone
     all_bone_keyframes = OrderedDict()
     for bone in info:
         bone_name = clean_imported_name(bone.tag)
-        all_bone_keyframes[bone_name] = {sample_type: [] for sample_type in bone.attrib["sa"][0]}
+        all_bone_keyframes[bone_name] = OrderedDict((sample_type, []) for sample_type in bone.attrib["sa"][0])
 
     # then traverse the samples data to store keys per bone
-    s_index, q_index, t_index = 0, 0, 0
-    for _ in xrange(0, framecount):
+    s_idx, q_idx, t_idx = 0, 0, 0  # track offsets into samples data arrays
+    s_len, q_len, t_len = scale_length, 4, 3  # track stride across samples data arrays
+    for _ in range(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
-
             if "s" in bone_key_data:
-                bone_key_data["s"].append(samples.attrib["s"][s_index : s_index + 1])
-                s_index += 1
+                frame_bone_scale = samples.attrib["s"][s_idx : s_idx + s_len] * scale_padding
+                bone_key_data["s"].append(frame_bone_scale)
+                s_idx += s_len
             if "q" in bone_key_data:
-                bone_key_data["q"].append(samples.attrib["q"][q_index : q_index + 4])
-                q_index += 4
+                frame_bone_quat = samples.attrib["q"][q_idx : q_idx + q_len]
+                bone_key_data["q"].append(frame_bone_quat)
+                q_idx += q_len
             if "t" in bone_key_data:
-                bone_key_data["t"].append(samples.attrib["t"][t_index : t_index + 3])
-                t_index += 3
+                frame_bone_trans = samples.attrib["t"][t_idx : t_idx + t_len]
+                bone_key_data["t"].append(frame_bone_trans)
+                t_idx += t_len
 
     for bone_name in all_bone_keyframes:
         bone_keys = all_bone_keyframes[bone_name]
         # check bone has keyframe values
         if bone_keys.values():
             IO_PDX_LOG.info("setting {0} keyframes on bone - {1}".format(list(bone_keys.keys()), bone_name))
+            non_uni_keys = [i for i, data in enumerate(bone_keys.get("s", [])) if not len(set(data)) == 1]
+            if any(non_uni_keys):
+                IO_PDX_LOG.debug("Bone: {0} has non-uniform scale keyframes at: {1}".format(bone_name, non_uni_keys))
             progress("update", 1, "setting keyframes on bone")
             bone_long_name = pmc.ls(bone_name, type=pmc.nt.Joint, long=True)[0].name()
             create_anim_keys(bone_long_name, bone_keys, frame_start)
@@ -1710,7 +1745,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
-    for i in xrange(frame_samples):
+    for i in range(frame_samples):
         for bone in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone]
             if "t" in bone_key_data:

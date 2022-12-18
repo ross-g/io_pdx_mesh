@@ -17,6 +17,11 @@ PDX_MESHINDEX = "meshindex"
 PDX_MAXSKININFS = 4
 PDX_MAXUVSETS = 4
 
+PDX_DECIMALPTS = 5
+PDX_ROUND_ROT = 4
+PDX_ROUND_TRANS = 3
+PDX_ROUND_SCALE = 2
+
 LOD_PATTERN = r".*_?LOD_?(?P<level>\d)"  # allow LODX or LOD_X, with or without any kind of prefix
 
 

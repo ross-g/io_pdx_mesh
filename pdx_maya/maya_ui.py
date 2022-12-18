@@ -31,6 +31,9 @@ from ..pdx_data import PDXData
 from ..updater import github
 from ..external import numpy
 
+# Py2, Py3 compatibility (Maya 2022+ adopts Py3)
+from ..external.six.moves import range
+
 try:
     from . import maya_import_export
 
@@ -58,7 +61,6 @@ except Exception as err:
 
 # Py2, Py3 compatibility (Maya doesn't yet use Py3, this is purely to stop flake8 complaining)
 if sys.version_info >= (3, 0):
-    xrange = range
     long = int
 
 
@@ -865,7 +867,7 @@ class MeshIndexPopup_UI(QtWidgets.QWidget):
     @QtCore.Slot()
     def execute(self):
         IO_PDX_LOG.info("Setting mesh index order...")
-        for i in xrange(self.list_meshes.count()):
+        for i in range(self.list_meshes.count()):
             item = self.list_meshes.item(i)
             maya_mesh = pmc.PyNode(item.data(QtCore.Qt.UserRole))  # type: pmc.nt.Mesh
             set_mesh_index(maya_mesh, i)

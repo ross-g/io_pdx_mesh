@@ -37,6 +37,10 @@ from ..library import (
     PDX_MESHINDEX,
     PDX_MAXSKININFS,
     PDX_MAXUVSETS,
+    PDX_DECIMALPTS,
+    PDX_ROUND_ROT,
+    PDX_ROUND_TRANS,
+    PDX_ROUND_SCALE,
 )
 
 
@@ -44,11 +48,6 @@ from ..library import (
     Variables.
 ========================================================================================================================
 """
-
-PDX_DECIMALPTS = 5
-PDX_ROUND_ROT = 4
-PDX_ROUND_TRANS = 3
-PDX_ROUND_SCALE = 2
 
 # fmt: off
 SPACE_MATRIX = Matrix((
@@ -89,9 +88,9 @@ def clean_imported_name(name):
 
 def get_bmesh(mesh_data, **kwargs):
     """Returns a BMesh from existing mesh data.
-        `face_normals=True`
-        `use_shape_key=False`
-        `shape_key_index=0`
+    `face_normals=True`
+    `use_shape_key=False`
+    `shape_key_index=0`
     """
     bm = bmesh.new()
     bm.from_mesh(mesh_data, **kwargs)
@@ -164,7 +163,7 @@ def get_mesh_index(blender_mesh):
 
 
 def check_mesh_material(blender_obj):
-    """Object needs at least one of it's materials to be a PDX material if we're going to export it. """
+    """Object needs at least one of it's materials to be a PDX material if we're going to export it."""
     result = False
 
     materials = [slot.material for slot in blender_obj.material_slots]
@@ -332,6 +331,10 @@ def get_mesh_info(blender_obj, mat_id, split_criteria=None, split_all=False, sor
             # to build the tri-face correctly, we need to use the original unsorted vertex order to reference verts
             [dict_vert_idx[indices[0]], dict_vert_idx[indices[2]], dict_vert_idx[indices[1]]]
         )
+
+    if not export_verts:
+        # no mesh data collected?
+        return {}, []
 
     # calculate mesh bounds
     x_vtx_pos = set(mesh_dict["p"][::3])
@@ -898,7 +901,7 @@ def create_skeleton(PDX_bone_list, convert_bonespace=False):
             ))
             # fmt: on
             c_dist = c_mat.to_translation() - safemat.to_translation()
-            bone_dists.append(math.sqrt(c_dist.x ** 2 + c_dist.y ** 2 + c_dist.z ** 2))
+            bone_dists.append(math.sqrt(c_dist.x**2 + c_dist.y**2 + c_dist.z**2))
 
         avg_dist = 5.0
         if bone_children:
@@ -1319,6 +1322,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 mesh_info_dict, vert_ids = get_mesh_info(
                     obj, mat_idx, split_criteria=split_by, split_all=split_verts, sort_vertices=sort_verts
                 )
+                # skip material slots that are used on no faces
+                if not (mesh_info_dict and vert_ids):
+                    continue
 
                 # populate mesh attributes
                 for key in ["p", "n", "ta", "u0", "u1", "u2", "u3", "tri", "boundingsphere"]:
@@ -1542,8 +1548,8 @@ def import_animfile(animpath, frame_start=1, **kwargs):
         all_bone_keyframes[bone_name] = {sample_type: [] for sample_type in bone.attrib["sa"][0]}
 
     # then traverse the samples data to store keys per bone
-    s_idx, q_idx, t_idx = 0, 0, 0               # track offsets into samples data arrays
-    s_len, q_len, t_len = scale_length, 4, 3    # track stride across samples data arrays
+    s_idx, q_idx, t_idx = 0, 0, 0  # track offsets into samples data arrays
+    s_len, q_len, t_len = scale_length, 4, 3  # track stride across samples data arrays
     for _ in range(0, framecount):
         for bone_name in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone_name]
@@ -1565,6 +1571,9 @@ def import_animfile(animpath, frame_start=1, **kwargs):
         # check bone has keyframe values
         if bone_keys.values():
             IO_PDX_LOG.info("setting {0} keyframes on bone - {1}".format(",".join(bone_keys.keys()), bone_name))
+            non_uni_keys = [i for i, data in enumerate(bone_keys.get("s", [])) if not len(set(data)) == 1]
+            if any(non_uni_keys):
+                IO_PDX_LOG.debug("Bone: {0} has non-uniform scale keyframes at: {1}".format(bone_name, non_uni_keys))
             create_anim_keys(rig, bone_name, bone_keys, frame_start, initial_pose)
 
     bpy.context.scene.frame_set(frame_start)
