@@ -27,7 +27,7 @@ bl_info = {
     "author": "ross-g",
     "name": "IO PDX Mesh",
     "description": "Import/Export Paradox asset files for the Clausewitz game engine.",
-    "location": "3D View > Toolbox",
+    "location": "3D Viewport: View > Sidebar (N to toggle)",
     "category": "Import-Export",
     "support": "COMMUNITY",
     "blender": (2, 93, 0),
