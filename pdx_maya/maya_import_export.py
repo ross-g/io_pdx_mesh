@@ -1350,9 +1350,6 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
     # create root element for objects and populate object data
     object_xml = Xml.SubElement(root_xml, "object")
 
-    # create root element for locators
-    locator_xml = Xml.SubElement(root_xml, "locator")
-
     if exp_mesh:
         # get all meshes using at least one PDX material in the scene
         maya_meshes = list_scene_pdx_meshes()
@@ -1460,6 +1457,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                     for key in ["ix", "pa", "tx"]:
                         if key in bone_info_dict and bone_info_dict[key]:
                             bonenode_xml.set(key, bone_info_dict[key])
+
+    # create root element for locators
+    locator_xml = Xml.SubElement(root_xml, "locator")
 
     if exp_skel and not exp_mesh:
         # create dummy element for node data, if exporting bones but not exporting meshes
