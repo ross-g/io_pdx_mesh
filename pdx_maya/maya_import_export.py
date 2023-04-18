@@ -1350,6 +1350,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
     # create root element for objects and populate object data
     object_xml = Xml.SubElement(root_xml, "object")
 
+    # create root element for locators
+    locator_xml = Xml.SubElement(root_xml, "locator")
+
     if exp_mesh:
         # get all meshes using at least one PDX material in the scene
         maya_meshes = list_scene_pdx_meshes()
@@ -1361,7 +1364,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 if pmc.listRelatives(shape, parent=True, type="transform")[0] in current_selection
             ]
 
-        if len(maya_meshes) == 0:
+        # check if exporting locator is enabled and if it has any locators
+        has_any_locators = exp_locs and any(pmc.listRelatives(t, shapes=True, type="locator") for t in pmc.ls(type="transform"))
+
+        # don't throw error if it does have locators and exporting locators is enabled
+        if len(maya_meshes) == 0 and not has_any_locators:
             raise RuntimeError("Mesh export is selected, but found no meshes with PDX materials applied.")
 
         # sort meshes for export by index
@@ -1484,9 +1491,6 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 for key in ["ix", "pa", "tx"]:
                     if key in bone_info_dict and bone_info_dict[key]:
                         bonenode_xml.set(key, bone_info_dict[key])
-
-    # create root element for locators
-    locator_xml = Xml.SubElement(root_xml, "locator")
 
     # populate locator data
     if exp_locs:
