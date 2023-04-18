@@ -1361,7 +1361,11 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 if pmc.listRelatives(shape, parent=True, type="transform")[0] in current_selection
             ]
 
-        if len(maya_meshes) == 0:
+        # check if exporting locator is enabled and if it has any locators
+        has_any_locators = exp_locs and any(pmc.listRelatives(t, shapes=True, type="locator") for t in pmc.ls(type="transform"))
+
+        # don't throw error if it does have locators and exporting locators is enabled
+        if len(maya_meshes) == 0 and not has_any_locators:
             raise RuntimeError("Mesh export is selected, but found no meshes with PDX materials applied.")
 
         # sort meshes for export by index
