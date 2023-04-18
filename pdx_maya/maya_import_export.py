@@ -1458,9 +1458,6 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                         if key in bone_info_dict and bone_info_dict[key]:
                             bonenode_xml.set(key, bone_info_dict[key])
 
-    # create root element for locators
-    locator_xml = Xml.SubElement(root_xml, "locator")
-
     if exp_skel and not exp_mesh:
         # create dummy element for node data, if exporting bones but not exporting meshes
         obj_name = "skel_frame"
@@ -1491,6 +1488,9 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
                 for key in ["ix", "pa", "tx"]:
                     if key in bone_info_dict and bone_info_dict[key]:
                         bonenode_xml.set(key, bone_info_dict[key])
+
+    # create root element for locators
+    locator_xml = Xml.SubElement(root_xml, "locator")
 
     # populate locator data
     if exp_locs:
