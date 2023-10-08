@@ -703,7 +703,14 @@ def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
 
         links.new(material_texture.outputs["Color"], separate_rgb.inputs["Image"])
         # links.new(separate_rgb.outputs['R'], shader_root.inputs['Specular'])  # material.R used for custom mask?
-        links.new(separate_rgb.outputs["G"], shader_root.inputs["Specular"])
+ 
+        if bpy.app.version < (4, 0, 0):
+            # Fallback for older versions of Blender
+            links.new(separate_rgb.outputs["G"], shader_root.inputs["Specular"])
+        else: 
+            # 4.0.0 changed the Specular key to the following:
+            links.new(separate_rgb.outputs["G"], shader_root.inputs["Specular IOR Level"])
+        
         links.new(separate_rgb.outputs["B"], shader_root.inputs["Metallic"])
         links.new(material_texture.outputs["Alpha"], shader_root.inputs["Roughness"])
 
