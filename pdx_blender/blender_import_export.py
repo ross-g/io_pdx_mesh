@@ -10,38 +10,37 @@
 """
 
 import os
-import time
 import pathlib
+import time
+from collections import OrderedDict, defaultdict, namedtuple
 from operator import itemgetter
-from collections import OrderedDict, namedtuple, defaultdict
 
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-import bpy
-import bmesh
 import math
-from mathutils import Vector, Matrix, Quaternion
 
-from .. import IO_PDX_LOG
-from .. import pdx_data
+import bmesh
+import bpy
+from mathutils import Matrix, Quaternion, Vector
+
+from .. import IO_PDX_LOG, pdx_data
 from ..library import (
-    get_lod_level,
-    allow_debug_logging,
-    PDX_SHADER,
     PDX_ANIMATION,
+    PDX_DECIMALPTS,
     PDX_IGNOREJOINT,
-    PDX_MESHINDEX,
     PDX_MAXSKININFS,
     PDX_MAXUVSETS,
-    PDX_DECIMALPTS,
+    PDX_MESHINDEX,
     PDX_ROUND_ROT,
-    PDX_ROUND_TRANS,
     PDX_ROUND_SCALE,
+    PDX_ROUND_TRANS,
+    PDX_SHADER,
+    allow_debug_logging,
+    get_lod_level,
 )
-
 
 """ ====================================================================================================================
     Variables.
@@ -655,6 +654,9 @@ def create_node_texture(node_tree, tex_filepath, as_data=False):
 
 
 def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
+    """A number of nodes were deprecated and Principled BSDF inputs renamed:
+    See - https://wiki.blender.org/wiki/Reference/Release_Notes/4.0/Python_API#Breaking_changes
+    """
     new_shader = bpy.data.materials.new(shader_name)
     new_shader[PDX_SHADER] = PDX_material.shader[0]
     new_shader.use_fake_user = True
@@ -668,8 +670,7 @@ def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
         node.location = Vector((x * 300.0, y * -300.0))
 
     node_tree = new_shader.node_tree
-    nodes = node_tree.nodes
-    links = node_tree.links
+    nodes, links = node_tree.nodes, node_tree.links
 
     shader_root = nodes.get("Principled BSDF")
     if shader_root is None:
@@ -698,13 +699,17 @@ def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
         material_texture = create_node_texture(node_tree, texture_path, as_data=True)
         set_node_pos(material_texture, -5, 1)
 
-        separate_rgb = node_tree.nodes.new(type="ShaderNodeSeparateRGB")
-        set_node_pos(separate_rgb, -4, 1)
+        separate_color = node_tree.nodes.new(type="ShaderNodeSeparateColor")
+        separate_color.mode = "RGB"
+        set_node_pos(separate_color, -4, 1)
 
-        links.new(material_texture.outputs["Color"], separate_rgb.inputs["Image"])
-        # links.new(separate_rgb.outputs['R'], shader_root.inputs['Specular'])  # material.R used for custom mask?
-        links.new(separate_rgb.outputs["G"], shader_root.inputs["Specular"])
-        links.new(separate_rgb.outputs["B"], shader_root.inputs["Metallic"])
+        links.new(material_texture.outputs["Color"], separate_color.inputs["Color"])
+        # links.new(separate_color.outputs['Red'], shader_root.inputs['Specular'])  # material.R used for custom mask?
+        try:
+            links.new(separate_color.outputs["Green"], shader_root.inputs["Specular IOR Level"])
+        except KeyError:  # Blender < 4.0,
+            links.new(separate_color.outputs["Green"], shader_root.inputs["Specular"])
+        links.new(separate_color.outputs["Blue"], shader_root.inputs["Metallic"])
         links.new(material_texture.outputs["Alpha"], shader_root.inputs["Roughness"])
 
     # link up normal texture to normal slot
@@ -714,20 +719,22 @@ def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
         normal_texture = create_node_texture(node_tree, texture_path, as_data=True)
         set_node_pos(normal_texture, -5, 2)
 
-        separate_rgb = node_tree.nodes.new(type="ShaderNodeSeparateRGB")
-        set_node_pos(separate_rgb, -4, 2)
-        combine_rgb = node_tree.nodes.new(type="ShaderNodeCombineRGB")
-        combine_rgb.inputs["B"].default_value = 1.0
-        set_node_pos(combine_rgb, -3, 2)
+        separate_color = node_tree.nodes.new(type="ShaderNodeSeparateColor")
+        separate_color.mode = "RGB"
+        set_node_pos(separate_color, -4, 2)
+        combine_color = node_tree.nodes.new(type="ShaderNodeCombineColor")
+        combine_color.mode = "RGB"
+        combine_color.inputs["Blue"].default_value = 1.0
+        set_node_pos(combine_color, -3, 2)
 
         normal_map = node_tree.nodes.new("ShaderNodeNormalMap")
         set_node_pos(normal_map, -2, 2)
 
-        links.new(normal_texture.outputs["Color"], separate_rgb.inputs["Image"])
-        links.new(separate_rgb.outputs["G"], combine_rgb.inputs["R"])
-        # links.new(separate_rgb.outputs['B'], combine_rgb.inputs['R'])  # normal.B used for emissive?
-        links.new(normal_texture.outputs["Alpha"], combine_rgb.inputs["G"])
-        links.new(combine_rgb.outputs["Image"], normal_map.inputs["Color"])
+        links.new(normal_texture.outputs["Color"], separate_color.inputs["Color"])
+        links.new(separate_color.outputs["Green"], combine_color.inputs["Red"])
+        # links.new(separate_color.outputs['Blue'], shader_root.inputs["Emission"])  # normal.B used for emissive?
+        links.new(normal_texture.outputs["Alpha"], combine_color.inputs["Green"])
+        links.new(combine_color.outputs["Color"], normal_map.inputs["Color"])
         links.new(normal_map.outputs["Normal"], shader_root.inputs["Normal"])
 
     return new_shader
