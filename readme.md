@@ -3,10 +3,10 @@
   
   
 ## IO PDX MESH
-This project aims to allow editing of mesh and animation files used in the various [Clausewitz Engine games](https://en.wikipedia.org/wiki/Paradox_Development_Studio#List_of_games_developed) created by [Paradox Development Studios](https://www.paradoxplaza.com) It's designed to run in *both* Maya (2018+) and Blender (2.83+).
+This project aims to allow editing of mesh and animation files used in the various [Clausewitz Engine games](https://en.wikipedia.org/wiki/Paradox_Development_Studio#List_of_games_developed) created by [Paradox Development Studios](https://www.paradoxplaza.com) It's designed to run in *both* Maya (2018+) and Blender (2.93+).
 
 ### Download
-Click here to view the [latest relase](https://github.com/ross-g/io_pdx_mesh/releases/latest) and download the __*io_pdx_mesh.zip*__ file (this works with both Maya and Blender).
+Click here to view the [latest release](https://github.com/ross-g/io_pdx_mesh/releases/latest) and download the __*io_pdx_mesh.zip*__ file (this works with both Maya and Blender).
 
 
 | Maya          | Blender       |
@@ -23,7 +23,7 @@ Click here to view the [latest relase](https://github.com/ross-g/io_pdx_mesh/rel
 * You can highlight this command and use the middle-mouse button to drag it into a shelf button to save it.  
 * The tool window will now open.
 
-#### Setup for Blender (2.83+)
+#### Setup for Blender (2.93+)
 * Start Blender and open the `User Preferences` panel.  
 * Switch to the `Add-ons` tab and select `Install Add-on from file`. Pick the zip file you have downloaded.  
 * Tick the checkbox to enable the add-on and you should see a new tab in the `Sidebar` of the `3D View`. (`View > Sidebar` if you have it closed)  
