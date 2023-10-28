@@ -9,14 +9,14 @@ from __future__ import print_function, unicode_literals
 import os
 import sys
 import webbrowser
+from functools import partial
 from imp import reload
 from textwrap import wrap
-from functools import partial
 
-import maya.cmds as cmds
-import pymel.core as pmc
-import maya.OpenMayaUI as OpenMayaUI
 import maya.api.OpenMaya as OpenMayaAPI
+import maya.cmds as cmds
+import maya.OpenMayaUI as OpenMayaUI
+import pymel.core as pmc
 
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -26,12 +26,12 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
-from ..pdx_data import PDXData
-from ..updater import github
+from .. import ENGINE_SETTINGS, IO_PDX_LOG, IO_PDX_SETTINGS, bl_info
 
 # Py2, Py3 compatibility (Maya 2022+ adopts Py3)
 from ..external.six.moves import range
+from ..pdx_data import PDXData
+from ..updater import github
 
 try:
     from . import maya_import_export
@@ -75,12 +75,12 @@ def get_maya_mainWindow():
 
 
 def set_widget_icon(widget, icon_name):
-    """ to visually browse for Mayas internal icon set
-            import maya.app.general.resourceBrowser as resourceBrowser
-            resBrowser = resourceBrowser.resourceBrowser()
-            path = resBrowser.run()
-        generate the full list with
-            cmds.resourceManager()
+    """To visually browse for Mayas internal icon set
+        >>> import maya.app.general.resourceBrowser as resourceBrowser
+        >>> resBrowser = resourceBrowser.resourceBrowser()
+        >>> path = resBrowser.run()
+    Generate the full list with
+        >>> cmds.resourceManager()
     """
     try:
         widget.setIcon(QtGui.QIcon(":/{0}".format(icon_name)))
@@ -127,11 +127,11 @@ def VLine():
 
 
 class CollapsingGroupBox(QtWidgets.QGroupBox):
-    def __init__(self, title, parent=None, layout=None, **kwargs):
+    def __init__(self, title, parent=None, **kwargs):
         super(CollapsingGroupBox, self).__init__(title, parent, **kwargs)
-        self.parent = parent
+        self._parent = parent
+        self.font_height = QtGui.QFontMetrics(self.font()).height()
         self.line = HLine()
-
         self.setCheckable(True)
         self.setChecked(True)
         self.setFlat(True)
@@ -157,9 +157,8 @@ class CollapsingGroupBox(QtWidgets.QGroupBox):
         )
 
         # setup inner widget, defaulting to grid layout
-        self.inner = QtWidgets.QWidget(self.parent)
-        layout = layout or QtWidgets.QGridLayout()
-        self.inner.setLayout(layout)
+        self.inner = QtWidgets.QWidget(self._parent)
+        self.inner.setLayout(QtWidgets.QGridLayout())
 
         # setup layout to contain inner widget
         self.setLayout(QtWidgets.QVBoxLayout())
@@ -174,17 +173,14 @@ class CollapsingGroupBox(QtWidgets.QGroupBox):
     def on_toggle(self, state):
         self.inner.setVisible(state)
         self.line.setVisible(state)
-        if state:
-            self.layout().setContentsMargins(4, 18, 4, 4)
-        else:
-            self.layout().setContentsMargins(4, 0, 4, 4)
+        self.layout().setContentsMargins(4, 18 if state else self.font_height, 4, 4)
 
-        QtCore.QCoreApplication.processEvents()
-        self.parent.resize(self.parent.layout().sizeHint())
+        # QtCore.QCoreApplication.processEvents()
+        self._parent.resize(self._parent.layout().sizeHint())
 
     def sizeHint(self):
         if not self.isChecked():
-            return QtCore.QSize(self.width(), 22)
+            return QtCore.QSize(self.width(), 18 + 4)
         else:
             return self.layout().sizeHint()
 
@@ -277,13 +273,16 @@ class PDX_UI(QtWidgets.QDialog):
         super(PDX_UI, self).__init__(parent)
         self.popup = None  # type: QtWidgets.QWidget
         self.settings = None  # type: QtCore.QSettings
+        self.old_position = self.pos()
         self.create_ui()
 
     def create_ui(self):
         # window properties
         self.setObjectName("PDX_Maya_Tools")
         self.setWindowTitle("PDX Maya Tools")
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(
+            self.windowFlags() | QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.Dialog
+        )
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
 
         # populate and connect controls
@@ -291,9 +290,63 @@ class PDX_UI(QtWidgets.QDialog):
         self.connect_signals()
 
     def create_controls(self):
+        # Info panel
+        self.grid_Info = QtWidgets.QGridLayout()
+        self.info_Layout = QtWidgets.QHBoxLayout()
+        self.icon_Info = QtWidgets.QLabel()
+        self.icon_Info.setPixmap(QtGui.QPixmap(":/toolSettings.png"))
+        self.lbl_Info = QtWidgets.QLabel("PDX Maya Tools - v{0}".format(github.CURRENT_VERSION), self)
+        self.btn_Close = QtWidgets.QToolButton(self)
+        set_widget_icon(self.btn_Close, "closeTabButton.png")
+
+        self.info_Layout.addWidget(self.icon_Info)
+        self.info_Layout.addWidget(self.lbl_Info)
+        self.info_Layout.addStretch()
+        self.info_Layout.addWidget(self.btn_Close)
+
+        self.btn_Donate = QtWidgets.QPushButton("Donate", self)
+        set_widget_icon(self.btn_Donate, "SE_FavoriteStar.png")
+        self.btn_UpdateVersion = QtWidgets.QPushButton("UPDATE - v{0}".format(github.LATEST_VERSION), self)
+        set_widget_icon(self.btn_UpdateVersion, "LM_ambientLight.png")
+        self.btn_AboutVersion = QtWidgets.QPushButton("", self)
+        set_widget_icon(self.btn_AboutVersion, "info.png")
+        # update info appears if we aren't at the latest tag version
+        self.btn_UpdateVersion.setVisible(github.AT_LATEST is False)
+
+        self.grid_Info.addLayout(self.info_Layout, 0, 0, 1, 3)
+        self.grid_Info.addWidget(self.btn_Donate, 1, 0)
+        self.grid_Info.addWidget(self.btn_UpdateVersion, 1, 1)
+        self.grid_Info.addWidget(self.btn_AboutVersion, 1, 2)
+        self.grid_Info.setColumnStretch(0 if github.AT_LATEST else 1, 1)
+        self.grid_Info.setContentsMargins(0, 0, 0, 0)
+        self.grid_Info.setSpacing(4)
+
+        self.file_rollout()
+        self.tools_rollout()
+        self.display_rollout()
+        self.setup_rollout()
+        self.help_rollout()
+
+        # main layout
+        self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
+        self.layout().setContentsMargins(4, 4, 4, 4)
+        self.layout().setSpacing(4)
+        self.layout().addLayout(self.grid_Info)
+        for group_widget in [self.grp_File, self.grp_Tools, self.grp_Display, self.grp_Setup]:
+            group_widget.inner.layout().setContentsMargins(0, 0, 0, 0)
+            group_widget.inner.layout().setSpacing(4)
+            self.layout().addWidget(group_widget)
+
+        self.layout().addStretch()
+
+        for btn in self.findChildren(QtWidgets.QPushButton):
+            btn.setMaximumHeight(20)
+
+    def file_rollout(self):
         # File panel
-        grp_File = CollapsingGroupBox("File", self)
-        grp_File.setObjectName("grpFile")
+        self.grp_File = CollapsingGroupBox("File", self)
+        self.grp_File.setObjectName("grpFile")
 
         lbl_Import = QtWidgets.QLabel("Import:", self)
         self.mesh_import = btn_ImportMesh = QtWidgets.QPushButton("Load mesh ...", self)
@@ -306,16 +359,17 @@ class PDX_UI(QtWidgets.QDialog):
         self.anim_export = btn_ExportAnim = QtWidgets.QPushButton("Save anim ...", self)
         set_widget_icon(btn_ExportAnim, "out_renderLayer.png")
 
-        grp_File.inner.layout().addWidget(lbl_Import, 0, 0, 1, 2)
-        grp_File.inner.layout().addWidget(btn_ImportMesh, 1, 0)
-        grp_File.inner.layout().addWidget(btn_ImportAnim, 1, 1)
-        grp_File.inner.layout().addWidget(lbl_Export, 2, 0, 1, 2)
-        grp_File.inner.layout().addWidget(btn_ExportMesh, 3, 0)
-        grp_File.inner.layout().addWidget(btn_ExportAnim, 3, 1)
+        self.grp_File.inner.layout().addWidget(lbl_Import, 0, 0, 1, 2)
+        self.grp_File.inner.layout().addWidget(btn_ImportMesh, 1, 0)
+        self.grp_File.inner.layout().addWidget(btn_ImportAnim, 1, 1)
+        self.grp_File.inner.layout().addWidget(lbl_Export, 2, 0, 1, 2)
+        self.grp_File.inner.layout().addWidget(btn_ExportMesh, 3, 0)
+        self.grp_File.inner.layout().addWidget(btn_ExportAnim, 3, 1)
 
+    def tools_rollout(self):
         # Tools panel
-        grp_Tools = CollapsingGroupBox("Tools", self)
-        grp_Tools.setObjectName("grpTools")
+        self.grp_Tools = CollapsingGroupBox("Tools", self)
+        self.grp_Tools.setObjectName("grpTools")
 
         lbl_Materials = QtWidgets.QLabel("PDX materials:", self)
         self.material_create_popup = btn_MaterialCreate = QtWidgets.QPushButton("Create", self)
@@ -331,18 +385,19 @@ class PDX_UI(QtWidgets.QDialog):
         self.mesh_index_popup = btn_MeshOrder = QtWidgets.QPushButton("Set mesh order ...", self)
         set_widget_icon(btn_MeshOrder, "sortName.png")
 
-        grp_Tools.inner.layout().addWidget(lbl_Materials, 0, 0, 1, 2)
-        grp_Tools.inner.layout().addWidget(btn_MaterialCreate, 1, 0)
-        grp_Tools.inner.layout().addWidget(btn_MaterialEdit, 1, 1)
-        grp_Tools.inner.layout().addWidget(lbl_Bones, 2, 0, 1, 2)
-        grp_Tools.inner.layout().addWidget(btn_BoneIgnore, 3, 0)
-        grp_Tools.inner.layout().addWidget(btn_BoneUnignore, 3, 1)
-        grp_Tools.inner.layout().addWidget(lbl_Meshes, 4, 0, 1, 2)
-        grp_Tools.inner.layout().addWidget(btn_MeshOrder, 5, 0, 1, 2)
+        self.grp_Tools.inner.layout().addWidget(lbl_Materials, 0, 0, 1, 2)
+        self.grp_Tools.inner.layout().addWidget(btn_MaterialCreate, 1, 0)
+        self.grp_Tools.inner.layout().addWidget(btn_MaterialEdit, 1, 1)
+        self.grp_Tools.inner.layout().addWidget(lbl_Bones, 2, 0, 1, 2)
+        self.grp_Tools.inner.layout().addWidget(btn_BoneIgnore, 3, 0)
+        self.grp_Tools.inner.layout().addWidget(btn_BoneUnignore, 3, 1)
+        self.grp_Tools.inner.layout().addWidget(lbl_Meshes, 4, 0, 1, 2)
+        self.grp_Tools.inner.layout().addWidget(btn_MeshOrder, 5, 0, 1, 2)
 
+    def display_rollout(self):
         # Display panel
-        grp_Display = CollapsingGroupBox("Display", self)
-        grp_Display.setObjectName("grpDisplay")
+        self.grp_Display = CollapsingGroupBox("Display", self)
+        self.grp_Display.setObjectName("grpDisplay")
 
         lbl_Display = QtWidgets.QLabel("Display local axes:", self)
         self.show_axis_bones = btn_ShowBones = QtWidgets.QPushButton("Show on bones", self)
@@ -354,15 +409,16 @@ class PDX_UI(QtWidgets.QDialog):
         self.hide_axis_locators = btn_HideLocators = QtWidgets.QPushButton("Hide on locators", self)
         set_widget_icon(btn_HideLocators, "out_holder.png")
 
-        grp_Display.inner.layout().addWidget(lbl_Display, 0, 0, 1, 2)
-        grp_Display.inner.layout().addWidget(btn_ShowBones, 1, 0)
-        grp_Display.inner.layout().addWidget(btn_HideBones, 1, 1)
-        grp_Display.inner.layout().addWidget(btn_ShowLocators, 2, 0)
-        grp_Display.inner.layout().addWidget(btn_HideLocators, 2, 1)
+        self.grp_Display.inner.layout().addWidget(lbl_Display, 0, 0, 1, 2)
+        self.grp_Display.inner.layout().addWidget(btn_ShowBones, 1, 0)
+        self.grp_Display.inner.layout().addWidget(btn_HideBones, 1, 1)
+        self.grp_Display.inner.layout().addWidget(btn_ShowLocators, 2, 0)
+        self.grp_Display.inner.layout().addWidget(btn_HideLocators, 2, 1)
 
+    def setup_rollout(self):
         # Setup panel
-        grp_Setup = CollapsingGroupBox("Setup", self)
-        grp_Setup.setObjectName("grpSetup")
+        self.grp_Setup = CollapsingGroupBox("Setup", self)
+        self.grp_Setup.setObjectName("grpSetup")
 
         lbl_SetupEngine = QtWidgets.QLabel("Engine:", self)
         self.ddl_EngineSelect = QtWidgets.QComboBox(self)
@@ -372,29 +428,16 @@ class PDX_UI(QtWidgets.QDialog):
         self.spn_AnimationFps.setPrefix("FPS ")
         self.spn_AnimationFps.setKeyboardTracking(False)
 
-        grp_Setup.inner.layout().addWidget(lbl_SetupEngine, 0, 0)
-        grp_Setup.inner.layout().addWidget(self.ddl_EngineSelect, 0, 1)
-        grp_Setup.inner.layout().addWidget(lbl_SetupAnimation, 1, 0)
-        grp_Setup.inner.layout().addWidget(self.spn_AnimationFps, 1, 1)
-        grp_Setup.inner.layout().setColumnStretch(1, 1)
+        self.grp_Setup.inner.layout().addWidget(lbl_SetupEngine, 0, 0)
+        self.grp_Setup.inner.layout().addWidget(self.ddl_EngineSelect, 0, 1)
+        self.grp_Setup.inner.layout().addWidget(lbl_SetupAnimation, 1, 0)
+        self.grp_Setup.inner.layout().addWidget(self.spn_AnimationFps, 1, 1)
+        self.grp_Setup.inner.layout().setColumnStretch(1, 1)
 
-        # Info panel
-        grp_Info = CollapsingGroupBox("Info", self)
-        grp_Info.setObjectName("grpInfo")
-
-        lbl_Current = QtWidgets.QLabel("current version: {0}".format(github.CURRENT_VERSION), self)
-        self.update_version, self.about_popup = None, None
-        if github.AT_LATEST is False:  # update info appears if we aren't at the latest tag version
-            self.update_version = btn_UpdateVersion = QtWidgets.QPushButton(
-                "NEW UPDATE {0}".format(github.LATEST_VERSION), self
-            )
-            set_widget_icon(btn_UpdateVersion, "SE_FavoriteStar.png")
-            self.about_popup = btn_AboutVersion = QtWidgets.QPushButton("About", self)
-            set_widget_icon(btn_AboutVersion, "info.png")
-
+    def help_rollout(self):
         # Help sub panel
-        grp_Help = CollapsingGroupBox("Help", self)
-        grp_Help.setObjectName("grpHelp")
+        self.grp_Help = CollapsingGroupBox("Help", self)
+        self.grp_Help.setObjectName("grpHelp")
 
         self.help_wiki = btn_HelpWiki = QtWidgets.QPushButton("Tool Wiki", self)
         set_widget_icon(btn_HelpWiki, "help.png")
@@ -403,34 +446,13 @@ class PDX_UI(QtWidgets.QDialog):
         self.help_source = btn_HelpSource = QtWidgets.QPushButton("Source code", self)
         set_widget_icon(btn_HelpSource, "help.png")
 
-        grp_Help.inner.layout().addWidget(btn_HelpWiki, 0, 0)
-        grp_Help.inner.layout().addWidget(btn_HelpForum, 1, 0)
-        grp_Help.inner.layout().addWidget(btn_HelpSource, 2, 0)
-        grp_Help.inner.layout().setContentsMargins(0, 0, 0, 0)
-        grp_Help.inner.layout().setSpacing(4)
+        self.grp_Help.inner.layout().addWidget(btn_HelpWiki, 0, 0)
+        self.grp_Help.inner.layout().addWidget(btn_HelpForum, 1, 0)
+        self.grp_Help.inner.layout().addWidget(btn_HelpSource, 2, 0)
+        self.grp_Help.inner.layout().setContentsMargins(0, 0, 0, 0)
+        self.grp_Help.inner.layout().setSpacing(4)
 
-        grp_Info.inner.layout().addWidget(lbl_Current, 0, 0, 1, 2)
-        if github.AT_LATEST is False:
-            grp_Info.inner.layout().addWidget(btn_UpdateVersion, 1, 0)
-            grp_Info.inner.layout().addWidget(btn_AboutVersion, 1, 1)
-            grp_Info.inner.layout().setColumnStretch(0, 1)
-        grp_Info.inner.layout().addWidget(grp_Help, 3, 0, 1, 2)
-        grp_Info.inner.layout().setRowMinimumHeight(2, 4)
-
-        # main layout
-        self.setLayout(QtWidgets.QVBoxLayout())
-        self.layout().setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
-        self.layout().setContentsMargins(4, 4, 4, 4)
-        self.layout().setSpacing(6)
-        for group_widget in [grp_File, grp_Tools, grp_Display, grp_Setup, grp_Info]:
-            group_widget.inner.layout().setContentsMargins(0, 0, 0, 0)
-            group_widget.inner.layout().setSpacing(4)
-            self.layout().addWidget(group_widget)
-
-        self.layout().addStretch()
-
-        for btn in self.findChildren(QtWidgets.QPushButton):
-            btn.setMaximumHeight(22)
+        self.grid_Info.addWidget(self.grp_Help, 2, 0, 1, 3)
 
     def connect_signals(self):
         self.mesh_import.clicked.connect(self.import_mesh)
@@ -452,15 +474,16 @@ class PDX_UI(QtWidgets.QDialog):
         self.ddl_EngineSelect.currentIndexChanged.connect(self.set_engine)
         self.spn_AnimationFps.valueChanged.connect(self.set_fps)
 
-        if self.update_version:
-            self.update_version.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
-        if self.about_popup:
-            self.about_popup.clicked.connect(self.show_update_notes)
+        self.btn_Close.clicked.connect(self.close)
+        self.btn_UpdateVersion.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
+        self.btn_AboutVersion.clicked.connect(self.show_update_notes)
+        self.btn_Donate.clicked.connect(partial(webbrowser.open, bl_info["sponsor_url"]))
         self.help_wiki.clicked.connect(partial(webbrowser.open, bl_info["doc_url"]))
         self.help_forum.clicked.connect(partial(webbrowser.open, bl_info["forum_url"]))
         self.help_source.clicked.connect(partial(webbrowser.open, bl_info["project_url"]))
 
     def showEvent(self, event):
+        self.grp_Help.setChecked(False)
         self.read_ui_settings()
         self.id = OpenMayaAPI.MEventMessage.addEventCallback("timeUnitChanged", partial(self.on_timeUnitChanged, self))
         event.accept()
@@ -471,6 +494,18 @@ class PDX_UI(QtWidgets.QDialog):
         if self.popup:
             self.popup.close()
         event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.old_position = event.globalPos()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.old_position is not None:
+            mouse_delta = event.globalPos() - self.old_position
+            self.move(self.pos() + mouse_delta)
+            self.old_position = event.globalPos()
+            event.accept()
 
     def read_ui_settings(self):
         self.settings = QtCore.QSettings(
@@ -1129,7 +1164,7 @@ class AnimExport_UI(CustomFileDialog):
 
 
 class MayaProgress(object):
-    """ Wrapping the Maya progress window for convenience. """
+    """Wrapping the Maya progress window for convenience."""
 
     def __del__(self):
         self.finished()
