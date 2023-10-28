@@ -6,28 +6,19 @@
 """
 
 import json
-import time
 import logging
-from datetime import datetime, date
+import time
+from datetime import date, datetime
 
 # Py2, Py3 compatibility
 try:
-    from urllib.request import urlopen, Request, URLError
+    from urllib.request import Request, URLError, urlopen
 except ImportError:
-    from urllib2 import urlopen, Request, URLError
+    from urllib2 import Request, URLError, urlopen
 
-from . import bl_info, IO_PDX_SETTINGS
+from . import IO_PDX_SETTINGS, bl_info
 
 UPDATER_LOG = logging.getLogger("io_pdx.updater")
-
-
-""" ====================================================================================================================
-    Variables.
-========================================================================================================================
-"""
-
-TIMEOUT = 1.0  # seconds
-API_URL = "https://api.github.com"
 
 
 """ ====================================================================================================================
@@ -38,25 +29,28 @@ API_URL = "https://api.github.com"
 
 class Github_API(object):
     """
-        Handles connection to Githubs API to get some data on releases for this repository.
+    Handles connection to Githubs API to get some data on releases for this repository.
     """
 
-    def __init__(self):
-        self.LATEST_VERSION = None
-        self.LATEST_URL = None
-        self.AT_LATEST = None
-        self.CURRENT_VERSION = float(".".join(map(str, bl_info["version"])))
+    API_URL = "https://api.github.com"
 
-        self.api = API_URL
-        self.owner = bl_info["author"]
-        self.repo = bl_info["project_name"]
+    def __init__(self, owner, repo):
+        self.api = self.API_URL
+        self.owner = owner
+        self.repo = repo
         self.args = {"owner": self.owner, "repo": self.repo, "api": self.api}
+
+        self.AT_LATEST = False
+        self.LATEST_VERSION = 0.0
+        self.LATEST_URL = "https://github.com/{owner}/{repo}/releases/latest".format(**self.args)
+        self.LATEST_NOTES = ""
+        self.CURRENT_VERSION = float(".".join(map(str, bl_info["version"])))
         self.refresh()
 
     @staticmethod
-    def get_data(url, t):
+    def get_data(url, time=1.0):
         req = Request(url)
-        result = urlopen(req, timeout=t)
+        result = urlopen(req, timeout=time)
         result_str = result.read()
         result.close()
 
@@ -75,15 +69,18 @@ class Github_API(object):
 
             # get latest release data
             releases_url = "{api}/repos/{owner}/{repo}/releases".format(**self.args)
+
             try:
-                release_list = self.get_data(releases_url, TIMEOUT)
+                release_list = self.get_data(releases_url)
+                self.LATEST_RELEASE = release_list[0]
             except URLError as err:
                 UPDATER_LOG.warning("Unable to check for update. ({})".format(err.reason))
                 return
+            except IndexError as err:
+                UPDATER_LOG.warning("Found no releases during update check. ({})".format(err))
             except Exception as err:
-                UPDATER_LOG.error("Failed on check for update. ({})".format(err))
+                UPDATER_LOG.error("Failed during update check. ({})".format(err))
                 return
-            self.LATEST_RELEASE = release_list[0]
 
             latest = release_list[0]
 
@@ -113,4 +110,4 @@ class Github_API(object):
         self.AT_LATEST = self.CURRENT_VERSION == self.LATEST_VERSION
 
 
-github = Github_API()
+github = Github_API(owner=bl_info["author"], repo=bl_info["project_name"])
