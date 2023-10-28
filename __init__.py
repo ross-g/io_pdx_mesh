@@ -7,21 +7,19 @@
 
 from __future__ import unicode_literals
 
-import sys
-import json
 import inspect
+import json
 import logging
-import zipfile
-import traceback
 import os.path as path
-from imp import reload
+import sys
+import traceback
+import zipfile
 from collections import OrderedDict
-
-from .settings import PDXsettings
+from imp import reload
 
 # vendored package imports
 from .external.appdirs import user_data_dir  # user settings directory
-
+from .settings import PDXsettings
 
 bl_info = {
     "author": "ross-g",
@@ -30,14 +28,15 @@ bl_info = {
     "location": "3D Viewport: View > Sidebar (N to toggle)",
     "category": "Import-Export",
     "support": "COMMUNITY",
-    "blender": (2, 93, 0),
+    "blender": (3, 3, 0),
     "maya": (2018),
-    "version": (0, 9),
+    "version": (0, 91),
     "warning": "this add-on is beta",
     "project_name": "io_pdx_mesh",
     "project_url": "https://github.com/ross-g/io_pdx_mesh",
     "doc_url": "https://github.com/ross-g/io_pdx_mesh/wiki",
     "tracker_url": "https://github.com/ross-g/io_pdx_mesh/issues",
+    "sponsor_url": "https://www.paypal.me/rossg85",
     "forum_url": "https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/",
 }
 
@@ -90,6 +89,7 @@ environment = sys.executable.lower()
 # check if running from Blender
 try:
     import bpy  # noqa
+
     running_from, version = bpy.app.binary_path.lower(), bpy.app.version
 except ImportError:
     pass
@@ -111,6 +111,7 @@ else:
 # or running from Maya
 try:
     import maya.cmds  # noqa
+
     running_from, version = sys.executable.lower(), int(maya.cmds.about(version=True))
 except ImportError:
     pass
@@ -130,6 +131,7 @@ else:
     try:
         # launch the Maya UI
         from .pdx_maya import maya_ui
+
         reload(maya_ui)
         maya_ui.main()
     except Exception as e:
