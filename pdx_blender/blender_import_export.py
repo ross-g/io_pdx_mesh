@@ -1041,8 +1041,8 @@ def create_mesh(PDX_mesh, name=None):
 
         new_mesh.polygons.foreach_set("use_smooth", [True] * len(new_mesh.polygons))
         new_mesh.normals_split_custom_set_from_vertices(normals)
-        new_mesh.use_auto_smooth = True
-        new_mesh.free_normals_split()
+        # new_mesh.use_auto_smooth = True
+        # new_mesh.free_normals_split()
 
     # apply the UV data channels
     for idx in uv_Ch:
