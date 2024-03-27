@@ -703,7 +703,14 @@ def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
 
         links.new(material_texture.outputs["Color"], separate_rgb.inputs["Image"])
         # links.new(separate_rgb.outputs['R'], shader_root.inputs['Specular'])  # material.R used for custom mask?
-        links.new(separate_rgb.outputs["G"], shader_root.inputs["Specular"])
+ 
+        if bpy.app.version < (4, 0, 0):
+            # Fallback for older versions of Blender
+            links.new(separate_rgb.outputs["G"], shader_root.inputs["Specular"])
+        else: 
+            # 4.0.0 changed the Specular key to the following:
+            links.new(separate_rgb.outputs["G"], shader_root.inputs["Specular IOR Level"])
+        
         links.new(separate_rgb.outputs["B"], shader_root.inputs["Metallic"])
         links.new(material_texture.outputs["Alpha"], shader_root.inputs["Roughness"])
 
@@ -1034,8 +1041,8 @@ def create_mesh(PDX_mesh, name=None):
 
         new_mesh.polygons.foreach_set("use_smooth", [True] * len(new_mesh.polygons))
         new_mesh.normals_split_custom_set_from_vertices(normals)
-        new_mesh.use_auto_smooth = True
-        new_mesh.free_normals_split()
+        # new_mesh.use_auto_smooth = True
+        # new_mesh.free_normals_split()
 
     # apply the UV data channels
     for idx in uv_Ch:
