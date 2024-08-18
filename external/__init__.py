@@ -1,7 +1,6 @@
-import site
 import inspect
 import os.path as path
-
+import site
 
 external_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 site.addsitedir(external_path)

@@ -1,8 +1,8 @@
 """
-    IO PDX Mesh Python module.
-    Supports Maya 2018 and up, supports Blender 2.83 and up.
+IO PDX Mesh Python module.
+Supports Maya 2018 and up, supports Blender 2.83 and up.
 
-    author : ross-g
+author : ross-g
 """
 
 from __future__ import unicode_literals

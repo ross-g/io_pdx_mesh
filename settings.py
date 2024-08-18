@@ -1,15 +1,15 @@
 """
-    IO PDX Mesh Python module.
-    Simple settings object which writes to a JSON file on any value being set.
+IO PDX Mesh Python module.
+Simple settings object which writes to a JSON file on any value being set.
 
-    author : ross-g
+author : ross-g
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import os.path as path
+import sys
 
 SETTINGS_LOG = logging.getLogger("io_pdx.settings")
 

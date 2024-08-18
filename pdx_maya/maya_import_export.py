@@ -1,11 +1,11 @@
 """
-    Paradox asset files, Maya import/export.
+Paradox asset files, Maya import/export.
 
-    As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
-    mirror all positions, normals etc about the XY plane and flip texture coordinates in V.
-    Note - Maya treats matrices as row-major.
+As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
+mirror all positions, normals etc about the XY plane and flip texture coordinates in V.
+Note - Maya treats matrices as row-major.
 
-    author : ross-g
+author : ross-g
 """
 
 from __future__ import print_function, unicode_literals
@@ -13,47 +13,44 @@ from __future__ import print_function, unicode_literals
 import os
 import sys
 import time
+from collections import OrderedDict, defaultdict, namedtuple
 from operator import itemgetter
-from collections import OrderedDict, namedtuple, defaultdict
 
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
     import xml.etree.ElementTree as Xml
 
+# Maya Python API 2.0
+import maya.api.OpenMaya as OpenMayaAPI
 import maya.cmds as cmds
-import pymel.core as pmc
-import pymel.core.datatypes as pmdt
 
 # Maya Python API 1.0
 import maya.OpenMaya as OpenMaya
 import maya.OpenMayaAnim as OpenMayaAnim
+import pymel.core as pmc
+import pymel.core.datatypes as pmdt
+from maya.api.OpenMaya import MMatrix, MQuaternion, MTransformationMatrix, MVector
 
-# Maya Python API 2.0
-import maya.api.OpenMaya as OpenMayaAPI
-from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion
-
-from .. import IO_PDX_LOG
-from .. import pdx_data
+from .. import IO_PDX_LOG, pdx_data
 from ..external import pathlib
-from ..library import (
-    get_lod_level,
-    allow_debug_logging,
-    PDX_SHADER,
-    PDX_ANIMATION,
-    PDX_IGNOREJOINT,
-    PDX_MESHINDEX,
-    PDX_MAXSKININFS,
-    PDX_MAXUVSETS,
-    PDX_DECIMALPTS,
-    PDX_ROUND_ROT,
-    PDX_ROUND_TRANS,
-    PDX_ROUND_SCALE,
-)
 
 # Py2, Py3 compatibility (Maya 2022+ adopts Py3)
 from ..external.six.moves import range
-
+from ..library import (
+    PDX_ANIMATION,
+    PDX_DECIMALPTS,
+    PDX_IGNOREJOINT,
+    PDX_MAXSKININFS,
+    PDX_MAXUVSETS,
+    PDX_MESHINDEX,
+    PDX_ROUND_ROT,
+    PDX_ROUND_SCALE,
+    PDX_ROUND_TRANS,
+    PDX_SHADER,
+    allow_debug_logging,
+    get_lod_level,
+)
 
 """ ====================================================================================================================
     Variables.

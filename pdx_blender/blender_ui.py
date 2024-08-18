@@ -1,7 +1,7 @@
 """
-    Paradox asset files, Blender import/export interface.
+Paradox asset files, Blender import/export interface.
 
-    author : ross-g
+author : ross-g
 """
 
 import importlib

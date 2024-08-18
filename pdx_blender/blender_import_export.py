@@ -1,12 +1,12 @@
 """
-    Paradox asset files, Blender import/export.
+Paradox asset files, Blender import/export.
 
-    As Blenders 3D space is (Z-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
-    mirror all positions, normals etc about the XY plane AND rotate 90 about X and flip texture coordinates in V.
-    Note - Blender treats matrices as column-major.
-         - Blender 2.8 mathutils uses Pythons PEP 465 binary operator for multiplying matrices/vectors. @
+As Blenders 3D space is (Z-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
+mirror all positions, normals etc about the XY plane AND rotate 90 about X and flip texture coordinates in V.
+Note - Blender treats matrices as column-major.
+     - Blender 2.8 mathutils uses Pythons PEP 465 binary operator for multiplying matrices/vectors. @
 
-    author : ross-g
+author : ross-g
 """
 
 import os

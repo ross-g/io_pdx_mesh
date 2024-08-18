@@ -1,8 +1,8 @@
 """
-    IO PDX Mesh Python module.
-    This is designed to allow tools to check if they are out of date or not and supply a download link to the latest.
+IO PDX Mesh Python module.
+This is designed to allow tools to check if they are out of date or not and supply a download link to the latest.
 
-    author : ross-g
+author : ross-g
 """
 
 import json

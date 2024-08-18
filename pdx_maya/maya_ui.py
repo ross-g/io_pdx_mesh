@@ -1,7 +1,7 @@
 """
-    Paradox asset files, Maya import/export interface.
+Paradox asset files, Maya import/export interface.
 
-    author : ross-g
+author : ross-g
 """
 
 from __future__ import print_function, unicode_literals
