@@ -707,7 +707,8 @@ def create_shader(PDX_material, shader_name, texture_dir, template_only=False):
         # links.new(separate_color.outputs['Red'], shader_root.inputs['Specular'])  # material.R used for custom mask?
         try:
             links.new(separate_color.outputs["Green"], shader_root.inputs["Specular IOR Level"])
-        except KeyError:  # Blender < 4.0,
+        except KeyError:  # Blender < 4.0
+            # https://developer.blender.org/docs/release_notes/4.0/python_api/#shader-nodes
             links.new(separate_color.outputs["Green"], shader_root.inputs["Specular"])
         links.new(separate_color.outputs["Blue"], shader_root.inputs["Metallic"])
         links.new(material_texture.outputs["Alpha"], shader_root.inputs["Roughness"])
@@ -1039,10 +1040,13 @@ def create_mesh(PDX_mesh, name=None):
             n = swap_coord_space([norms[i], norms[i + 1], norms[i + 2]])
             normals.append(n)
 
-        new_mesh.polygons.foreach_set("use_smooth", [True] * len(new_mesh.polygons))
         new_mesh.normals_split_custom_set_from_vertices(normals)
-        new_mesh.use_auto_smooth = True
-        new_mesh.free_normals_split()
+        try:  # Blender < 4.1
+            # https://developer.blender.org/docs/release_notes/4.1/python_api/#mesh
+            new_mesh.use_auto_smooth = True
+            new_mesh.polygons.foreach_set("use_smooth", [True] * len(new_mesh.polygons))
+        except AttributeError:
+            pass
 
     # apply the UV data channels
     for idx in uv_Ch:
