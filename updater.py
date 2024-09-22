@@ -9,6 +9,7 @@ import json
 import logging
 import time
 from datetime import date, datetime
+from os.path import splitext
 
 # Py2, Py3 compatibility
 try:
@@ -42,8 +43,9 @@ class Github_API(object):
 
         self.AT_LATEST = False
         self.LATEST_VERSION = 0.0
-        self.LATEST_URL = "https://github.com/{owner}/{repo}/releases/latest".format(**self.args)
+        self.LATEST_RELEASE = "https://github.com/{owner}/{repo}/releases/latest".format(**self.args)
         self.LATEST_NOTES = ""
+        self.LATEST_URL = ""
         self.CURRENT_VERSION = IO_PDX_INFO["current_git_tag"]
         self.refresh()
 
@@ -86,7 +88,9 @@ class Github_API(object):
 
             # store data
             self.LATEST_VERSION = float(latest["tag_name"])
-            self.LATEST_URL = latest["assets"][0]["browser_download_url"]
+            self.LATEST_URL = {
+                splitext(asset["name"])[0].split("-")[0]: asset["browser_download_url"] for asset in latest["assets"]
+            }
             self.LATEST_NOTES = "{0}\r\nRelease version: {1}\r\n{2}".format(
                 latest["published_at"].split("T")[0], latest["tag_name"], latest["body"]
             )

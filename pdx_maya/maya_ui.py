@@ -475,7 +475,9 @@ class PDX_UI(QtWidgets.QDialog):
         self.spn_AnimationFps.valueChanged.connect(self.set_fps)
 
         self.btn_Close.clicked.connect(self.close)
-        self.btn_UpdateVersion.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
+        self.btn_UpdateVersion.clicked.connect(
+            partial(webbrowser.open, str(github.LATEST_URL.get("maya", github.LATEST_RELEASE)))
+        )
         self.btn_AboutVersion.clicked.connect(self.show_update_notes)
         self.btn_Donate.clicked.connect(partial(webbrowser.open, IO_PDX_INFO["sponsor_url"]))
         self.help_wiki.clicked.connect(partial(webbrowser.open, IO_PDX_INFO["doc_url"]))

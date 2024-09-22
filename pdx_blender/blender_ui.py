@@ -751,7 +751,9 @@ class IOPDX_PT_PDXblender_info(PDXUI, Panel):
             split = col1.split(factor=0.4, align=True)
             col1, col2 = split.column(align=True), split.column(align=True)
             btn_txt = "UPDATE - v{}".format(github.LATEST_VERSION)
-            col2.operator("wm.url_open", icon="OUTLINER_OB_LIGHT", text=btn_txt).url = str(github.LATEST_URL)
+            col2.operator("wm.url_open", icon="OUTLINER_OB_LIGHT", text=btn_txt).url = str(
+                github.LATEST_URL.get("blender", github.LATEST_RELEASE)
+            )
         col1.operator("wm.url_open", icon="FUND", text="Donate").url = str(IO_PDX_INFO["sponsor_url"])
         popup = col3.operator("io_pdx_mesh.popup_message", icon="INFO", text="")
         popup.msg_text = github.LATEST_NOTES
