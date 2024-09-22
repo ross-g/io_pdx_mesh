@@ -1,0 +1,35 @@
+schema_version = "1.0.0"
+
+# Required
+id = "io_pdx_mesh"
+name = "IO PDX Mesh"
+maintainer = "ross-g"
+tagline = "Import/Export Paradox asset files for the Clausewitz game engine"
+type = "add-on"
+version = "0.91.0"
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+# Optional
+tags = ["Import-Export", "Mesh", "Animation"]
+website = "https://github.com/ross-g/io_pdx_mesh"
+current_git_tag = 0.91
+maya_support_min = [2018]
+blender_support_min = [3, 6, 4]
+sponsor_url = "https://www.paypal.me/rossg85"
+doc_url = "https://github.com/ross-g/io_pdx_mesh/wiki"
+forum_url = "https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/"
+
+
+[permissions]
+files = "Import/export PDX Mesh & Anim files, save user settings to disk"
+network = "Check GithubAPI for extension updates, release notes"
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "external/numpy_maya/",
+    "test files/",
+    "*.pyc",
+    ".*/",
+]

@@ -7,12 +7,12 @@ author : ross-g
 import importlib
 from textwrap import wrap
 
-import bpy
-from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
-from bpy.types import Operator, Panel, UIList
-from bpy_extras.io_utils import ExportHelper, ImportHelper
+import bpy  # type: ignore
+from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty  # type: ignore
+from bpy.types import Operator, Panel, UIList  # type: ignore
+from bpy_extras.io_utils import ExportHelper, ImportHelper  # type: ignore
 
-from .. import ENGINE_SETTINGS, IO_PDX_LOG, IO_PDX_SETTINGS, bl_info
+from .. import ENGINE_SETTINGS, IO_PDX_INFO, IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
 
@@ -73,7 +73,7 @@ def set_engine(self, context):
 
 class IOPDX_OT_popup_message(Operator):
     bl_idname = "io_pdx_mesh.popup_message"
-    bl_label = bl_info["name"]
+    bl_label = IO_PDX_INFO["name"]
     bl_description = "Popup Message"
     bl_options = {"REGISTER"}
     # fmt:off
@@ -752,7 +752,7 @@ class IOPDX_PT_PDXblender_info(PDXUI, Panel):
             col1, col2 = split.column(align=True), split.column(align=True)
             btn_txt = "UPDATE - v{}".format(github.LATEST_VERSION)
             col2.operator("wm.url_open", icon="OUTLINER_OB_LIGHT", text=btn_txt).url = str(github.LATEST_URL)
-        col1.operator("wm.url_open", icon="FUND", text="Donate").url = str(bl_info["sponsor_url"])
+        col1.operator("wm.url_open", icon="FUND", text="Donate").url = str(IO_PDX_INFO["sponsor_url"])
         popup = col3.operator("io_pdx_mesh.popup_message", icon="INFO", text="")
         popup.msg_text = github.LATEST_NOTES
         popup.msg_icon = "INFO"
@@ -860,6 +860,6 @@ class IOPDX_PT_PDXblender_help(PDXUI, Panel):
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = bl_info["doc_url"]
-        col.operator("wm.url_open", icon="QUESTION", text="Paradox forums").url = bl_info["forum_url"]
-        col.operator("wm.url_open", icon="QUESTION", text="Source code").url = bl_info["project_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = IO_PDX_INFO["doc_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Paradox forums").url = IO_PDX_INFO["forum_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Source code").url = IO_PDX_INFO["website"]

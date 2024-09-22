@@ -11,7 +11,6 @@ author : ross-g
 from __future__ import print_function, unicode_literals
 
 import os
-import sys
 import time
 from collections import OrderedDict, defaultdict, namedtuple
 from operator import itemgetter

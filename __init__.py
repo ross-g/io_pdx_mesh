@@ -18,27 +18,22 @@ from collections import OrderedDict
 from imp import reload
 
 # vendored package imports
+from .external import tomllib
 from .external.appdirs import user_data_dir  # user settings directory
 from .settings import PDXsettings
 
-bl_info = {
+bl_info = {  # legacy support: Blender < 4.2
     "author": "ross-g",
     "name": "IO PDX Mesh",
     "description": "Import/Export Paradox asset files for the Clausewitz game engine.",
     "location": "3D Viewport: View > Sidebar (N to toggle)",
     "category": "Import-Export",
     "support": "COMMUNITY",
-    "blender": (3, 3, 0),
-    "maya": (2018),
-    "version": (0, 91),
-    "warning": "this add-on is beta",
-    "project_name": "io_pdx_mesh",
-    "project_url": "https://github.com/ross-g/io_pdx_mesh",
-    "doc_url": "https://github.com/ross-g/io_pdx_mesh/wiki",
-    "tracker_url": "https://github.com/ross-g/io_pdx_mesh/issues",
-    "sponsor_url": "https://www.paypal.me/rossg85",
-    "forum_url": "https://forum.paradoxplaza.com/forum/index.php?forums/clausewitz-maya-exporter-modding-tool.935/",
+    "blender": (3, 6, 4),
 }
+root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
+with open(path.join(root_path, "blender_manifest.toml"), "rb") as fh:
+    IO_PDX_INFO = tomllib.load(fh)
 
 
 """ ====================================================================================================================
@@ -53,11 +48,10 @@ log_format = "[%(name)s] %(levelname)s:  %(message)s"
 log_lvl = logging.INFO
 
 # setup module preferences
-config_path = path.join(user_data_dir(bl_info["project_name"], False), "settings.json")
+config_path = path.join(user_data_dir(IO_PDX_INFO["id"], False), "settings.json")
 IO_PDX_SETTINGS = PDXsettings(config_path)
 
 # setup engine/export settings
-root_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
 export_settings = path.join(root_path, "clausewitz.json")
 ENGINE_SETTINGS = {}
 try:
@@ -97,9 +91,10 @@ else:
     logging.basicConfig(level=log_lvl, format=log_format)
     IO_PDX_LOG = logging.getLogger(log_name)
 
-    if version < bl_info["blender"]:
-        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Blender {0}".format(bl_info["blender"]))
-        bl_info["unsupported_version"] = True
+    min_version = tuple(IO_PDX_INFO["blender_support_min"])
+    if version < min_version:
+        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Blender {0}".format(min_version))
+        IO_PDX_INFO["unsupported_version"] = True
 
     try:
         # register the Blender addon
@@ -124,9 +119,10 @@ else:
     console.setFormatter(logging.Formatter(log_format))
     IO_PDX_LOG.addHandler(console)
 
-    if version < bl_info["maya"]:
-        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Maya {0}".format(bl_info["maya"]))
-        bl_info["unsupported_version"] = True
+    min_version = tuple(IO_PDX_INFO["maya_support_min"])[0]
+    if version < min_version:
+        IO_PDX_LOG.warning("UNSUPPORTED VERSION! Update to Maya {0}".format(min_version))
+        IO_PDX_INFO["unsupported_version"] = True
 
     try:
         # launch the Maya UI
@@ -139,7 +135,7 @@ else:
         raise e
 
 if running_from is not None:
-    IO_PDX_LOG.info("Running from {0} ({1})".format(running_from, version))
+    IO_PDX_LOG.info("Running {0} from {1} ({2})".format(__package__, running_from, version))
     IO_PDX_LOG.info(root_path)
 # otherwise, we don't support running with UI setup
 else:

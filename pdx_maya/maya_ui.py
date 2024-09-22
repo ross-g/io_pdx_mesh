@@ -26,7 +26,7 @@ except ImportError:
     from PySide import QtGui as QtWidgets
     from shiboken import wrapInstance
 
-from .. import ENGINE_SETTINGS, IO_PDX_LOG, IO_PDX_SETTINGS, bl_info
+from .. import ENGINE_SETTINGS, IO_PDX_INFO, IO_PDX_LOG, IO_PDX_SETTINGS
 
 # Py2, Py3 compatibility (Maya 2022+ adopts Py3)
 from ..external.six.moves import range
@@ -477,10 +477,10 @@ class PDX_UI(QtWidgets.QDialog):
         self.btn_Close.clicked.connect(self.close)
         self.btn_UpdateVersion.clicked.connect(partial(webbrowser.open, str(github.LATEST_URL)))
         self.btn_AboutVersion.clicked.connect(self.show_update_notes)
-        self.btn_Donate.clicked.connect(partial(webbrowser.open, bl_info["sponsor_url"]))
-        self.help_wiki.clicked.connect(partial(webbrowser.open, bl_info["doc_url"]))
-        self.help_forum.clicked.connect(partial(webbrowser.open, bl_info["forum_url"]))
-        self.help_source.clicked.connect(partial(webbrowser.open, bl_info["project_url"]))
+        self.btn_Donate.clicked.connect(partial(webbrowser.open, IO_PDX_INFO["sponsor_url"]))
+        self.help_wiki.clicked.connect(partial(webbrowser.open, IO_PDX_INFO["doc_url"]))
+        self.help_forum.clicked.connect(partial(webbrowser.open, IO_PDX_INFO["forum_url"]))
+        self.help_source.clicked.connect(partial(webbrowser.open, IO_PDX_INFO["website"]))
 
     def showEvent(self, event):
         self.grp_Help.setChecked(False)
@@ -659,7 +659,7 @@ class PDX_UI(QtWidgets.QDialog):
             txt_lines.extend(wrap(line, 450 / 6))
             txt_lines.append("")
 
-        QtWidgets.QMessageBox.information(self, bl_info["name"], "\n".join(txt_lines))
+        QtWidgets.QMessageBox.information(self, IO_PDX_INFO["name"], "\n".join(txt_lines))
 
 
 class MaterialCreatePopup_UI(QtWidgets.QWidget):

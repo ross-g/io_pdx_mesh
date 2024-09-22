@@ -106,11 +106,6 @@ classes.sort(key=lambda cls: cls.panel_order if hasattr(cls, "panel_order") else
 
 def register():
     IO_PDX_LOG.info("Loading Blender UI.")
-    import importlib
-
-    importlib.reload(blender_import_export)
-    importlib.reload(blender_ui)
-
     for cls in classes:
         bpy.utils.register_class(cls)
 

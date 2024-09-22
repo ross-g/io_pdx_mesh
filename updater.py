@@ -16,7 +16,7 @@ try:
 except ImportError:
     from urllib2 import Request, URLError, urlopen
 
-from . import IO_PDX_SETTINGS, bl_info
+from . import IO_PDX_INFO, IO_PDX_SETTINGS
 
 UPDATER_LOG = logging.getLogger("io_pdx.updater")
 
@@ -44,7 +44,7 @@ class Github_API(object):
         self.LATEST_VERSION = 0.0
         self.LATEST_URL = "https://github.com/{owner}/{repo}/releases/latest".format(**self.args)
         self.LATEST_NOTES = ""
-        self.CURRENT_VERSION = float(".".join(map(str, bl_info["version"])))
+        self.CURRENT_VERSION = IO_PDX_INFO["current_git_tag"]
         self.refresh()
 
     @staticmethod
@@ -110,4 +110,4 @@ class Github_API(object):
         self.AT_LATEST = self.CURRENT_VERSION == self.LATEST_VERSION
 
 
-github = Github_API(owner=bl_info["author"], repo=bl_info["project_name"])
+github = Github_API(owner=IO_PDX_INFO["maintainer"], repo=IO_PDX_INFO["id"])

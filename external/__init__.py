@@ -1,24 +1,32 @@
-import inspect
-import os.path as path
-import site
+import sys
 
-external_path = path.abspath(path.dirname(inspect.getfile(inspect.currentframe())))
-site.addsitedir(external_path)
-
-import six  # noqa
-import click  # noqa
-import appdirs  # noqa
-import scandir  # noqa
+from . import (
+    appdirs,  # noqa
+    click,  # noqa
+    six,  # noqa  # TODO: drop along with Py2 support
+)
 
 try:
+    # Py 3.4
     import pathlib
 except ImportError:
-    import pathlib2 as pathlib  # noqa
+    from . import scandir  # noqa  # TODO: drop along with Py2 support
+
+    sys.modules["scandir"] = scandir
+    from . import pathlib2 as pathlib  # noqa  # TODO: drop along with Py2 support
+
+
+try:
+    # Py 3.11
+    import tomllib  # noqa
+except ImportError:
+    from . import toml_tools as tomllib  # noqa
 
 __all__ = [
-    "six",
-    "click",
     "appdirs",
-    "scandir",
+    "click",
     "pathlib",
+    "scandir",
+    "six",
+    "tomllib",
 ]
