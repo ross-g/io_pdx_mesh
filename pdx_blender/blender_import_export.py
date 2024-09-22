@@ -22,9 +22,9 @@ except ImportError:
 
 import math
 
-import bmesh
-import bpy
-from mathutils import Matrix, Quaternion, Vector
+import bmesh  # type: ignore
+import bpy  # type: ignore
+from mathutils import Matrix, Quaternion, Vector  # type: ignore
 
 from .. import IO_PDX_LOG, pdx_data
 from ..library import (
@@ -97,7 +97,7 @@ def get_bmesh(mesh_data, **kwargs):
 
 
 def get_rig_from_bone_name(bone_name):
-    scene_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature]
+    scene_rigs = [obj for obj in bpy.data.objects if isinstance(obj.data, bpy.types.Armature)]
 
     for rig in scene_rigs:
         armt = rig.data
@@ -106,7 +106,7 @@ def get_rig_from_bone_name(bone_name):
 
 
 def get_rig_from_mesh(blender_obj):
-    skin_modifier = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
+    skin_modifier = [mod for mod in blender_obj.modifiers if isinstance(mod, bpy.types.ArmatureModifier)]
 
     if skin_modifier:
         # we only allow a mesh to be connected to one armature modifier
@@ -121,12 +121,14 @@ def get_rig_from_mesh(blender_obj):
 
 def list_scene_pdx_meshes():
     # restrict to current scene, so use bpy.context.scene.objects not bpy.data.objects
-    return [obj for obj in bpy.context.scene.objects if type(obj.data) == bpy.types.Mesh and check_mesh_material(obj)]
+    return [
+        obj for obj in bpy.context.scene.objects if isinstance(obj.data, bpy.types.Mesh) and check_mesh_material(obj)
+    ]
 
 
 def set_local_axis_display(state, data_type):
     type_dict = {"EMPTY": type(None), "ARMATURE": bpy.types.Armature}
-    object_list = [obj for obj in bpy.data.objects if type(obj.data) == type_dict[data_type]]
+    object_list = [obj for obj in bpy.data.objects if isinstance(obj.data, type_dict[data_type])]
 
     for node in object_list:
         try:
@@ -185,14 +187,14 @@ def get_material_textures(blender_material):
     # find the first valid Matrial Output node linked to a Surface shader
     try:
         material_output = next(
-            n for n in nodes if type(n) == bpy.types.ShaderNodeOutputMaterial and n.inputs["Surface"].is_linked
+            n for n in nodes if isinstance(n, bpy.types.ShaderNodeOutputMaterial) and n.inputs["Surface"].is_linked
         )
     except StopIteration:
-        raise RuntimeError("No connected 'Material Output' found for material: {0}".format(blender_material.name))
+        raise RuntimeError("No connected 'Material Output' found for material: {0}".format(blender_material.name))  # noqa: B904
 
     surface_input = material_output.inputs["Surface"].links[0]
     shader_root = surface_input.from_node
-    if not type(surface_input.from_socket) == bpy.types.NodeSocketShader:
+    if not isinstance(surface_input.from_socket, bpy.types.NodeSocketShader):
         raise RuntimeError(
             "No BSDF shader connected to 'Material Output > Surface' for material: {0}".format(blender_material.name)
         )
@@ -202,7 +204,7 @@ def get_material_textures(blender_material):
         if shader_root.inputs[bsdf_input].is_linked:
             try:
                 input_node = shader_root.inputs[bsdf_input].links[0].from_node
-                while type(input_node) != bpy.types.ShaderNodeTexImage:
+                while not isinstance(input_node, bpy.types.ShaderNodeTexImage):
                     # just check the first connected input for simplicity and continue upstream
                     first_link = next(i for i in input_node.inputs if i.is_linked)
                     input_node = first_link.links[0].from_node
@@ -282,7 +284,7 @@ def get_mesh_info(blender_obj, mat_id, split_criteria=None, split_all=False, sor
 
             # uv
             _uv_coords = ()
-            for i, uv_set in enumerate(uv_setnames):
+            for _, uv_set in enumerate(uv_setnames):
                 uv_layer = mesh.uv_layers[uv_set]
                 uv = uv_layer.data[loop.index].uv
                 uv = tuple(swap_coord_space(tuple(uv)))
@@ -313,7 +315,7 @@ def get_mesh_info(blender_obj, mat_id, split_criteria=None, split_all=False, sor
                 # add this vert data to the mesh dict
                 mesh_dict["p"].extend(_position)
                 mesh_dict["n"].extend(_normal)
-                for i, uv_set in enumerate(uv_setnames):
+                for i, _uv_set in enumerate(uv_setnames):
                     mesh_dict["u" + str(i)].extend(_uv_coords[i])
                 if uv_setnames:
                     mesh_dict["ta"].extend(_tangent)
@@ -359,7 +361,7 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
     """
     bpy.ops.object.vertex_group_limit_total(group_select_mode='', limit=4)
     """
-    skin_mod = [mod for mod in blender_obj.modifiers if type(mod) == bpy.types.ArmatureModifier]
+    skin_mod = [mod for mod in blender_obj.modifiers if isinstance(mod, bpy.types.ArmatureModifier)]
     if not skin_mod:
         return None
 
@@ -394,12 +396,11 @@ def get_mesh_skin_info(blender_obj, vertex_ids=None):
             try:
                 bone_index = bone_names.index(group_names[group_index])
             except ValueError:
-                raise RuntimeError(
-                    "Mesh {0} has vertices skinned to a group ({1}) targeting a missing or excluded armature bone!"
-                    "Check all bones using the '{2}' property.".format(
-                        mesh.name, group_names[group_index], PDX_IGNOREJOINT
-                    )
+                msg = "Mesh {0} has vertices skinned to a group ({1}) targeting a missing or excluded armature bone! Check all bones using the '{2}' property.".format(
+                    mesh.name, group_names[group_index], PDX_IGNOREJOINT
                 )
+                raise RuntimeError(msg)  # noqa: B904
+
             if group_index < len(blender_obj.vertex_groups):
                 # check we actually want this vertex (in case of material split meshes)
                 if vert_id in vertex_ids:
@@ -461,7 +462,7 @@ def get_bones_info(blender_bones):
 
         # bone inverse world-space transform
         armature = bone.id_data
-        rig = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature and obj.data == armature][0]
+        rig = [obj for obj in bpy.data.objects if isinstance(obj.data, bpy.types.Armature) and obj.data == armature][0]
         mat = swap_coord_space(rig.matrix_world @ bone.matrix_local).inverted_safe()
         mat.transpose()
         mat = [i for vector in mat for i in vector]  # flatten matrix to list
@@ -595,14 +596,14 @@ def get_scene_animdata(rig, export_bones, startframe, endframe):
 def swap_coord_space(data, space_mat=SPACE_MATRIX, space_mat_inv=SPACE_MATRIX_INV):
     """Transforms from PDX space (-Z forward, Y up) to Blender space (-Y forward, Z up)."""
     # matrix
-    if type(data) == Matrix:
+    if isinstance(data, Matrix):
         return space_mat @ data.to_4x4() @ space_mat_inv
     # quaternion
-    elif type(data) == Quaternion:
+    elif isinstance(data, Quaternion):
         mat = data.to_matrix()
         return (space_mat @ mat.to_4x4() @ space_mat_inv).to_quaternion()
     # vector
-    elif type(data) == Vector or len(data) == 3:
+    elif isinstance(data, Vector) or len(data) == 3:
         vec = Vector(data)
         return vec @ space_mat
     # uv coordinate
@@ -1384,7 +1385,7 @@ def export_meshfile(meshpath, exp_mesh=True, exp_skel=True, exp_locs=True, exp_s
         IO_PDX_LOG.info("writing node - {0}".format(obj_name))
         objnode_xml = Xml.SubElement(object_xml, obj_name)
 
-        blender_rigs = [obj for obj in bpy.data.objects if type(obj.data) == bpy.types.Armature]
+        blender_rigs = [obj for obj in bpy.data.objects if isinstance(obj.data, bpy.types.Armature)]
         # optionally intersect with selection
         if exp_selected:
             blender_rigs = [obj for obj in blender_rigs if obj.select_get()]
@@ -1464,7 +1465,7 @@ def import_animfile(animpath, frame_start=1, **kwargs):
         bpy.context.scene.render.fps = fps
     except Exception as err:
         IO_PDX_LOG.error(err)
-        raise RuntimeError("Unsupported animation speed. {0}".format(fps))
+        raise RuntimeError("Unsupported animation speed. {0}".format(fps))  # noqa: B904
     bpy.context.scene.render.fps_base = 1.0
 
     IO_PDX_LOG.info("setting playback range - ({0},{1})".format(frame_start, (frame_start + framecount - 1)))

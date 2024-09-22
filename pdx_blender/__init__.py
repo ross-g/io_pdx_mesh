@@ -7,7 +7,7 @@ author : ross-g
 import importlib
 import inspect
 
-import bpy
+import bpy  # type: ignore
 from bpy.props import (  # type: ignore
     BoolProperty,
     CollectionProperty,
@@ -90,7 +90,7 @@ class PDXExport_settings(PropertyGroup):
 classes = [PDXBlender_settings, PDXMaterial_settings, PDXObject_Pointer, PDXObject_Group, PDXExport_settings]
 
 # Append classes dynamically from submodules
-for name, obj in inspect.getmembers(blender_ui, inspect.isclass):
+for _name, obj in inspect.getmembers(blender_ui, inspect.isclass):
     if obj.__module__.startswith(__name__) and hasattr(obj, "bl_rna"):
         classes.append(obj)
 

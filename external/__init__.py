@@ -1,26 +1,26 @@
 import sys
 
 from . import (
-    appdirs,  # noqa
-    click,  # noqa
-    six,  # noqa  # TODO: drop along with Py2 support
+    appdirs,  # type: ignore
+    click,  # type: ignore
+    six,  # type: ignore  # TODO: drop along with Py2 support
 )
 
 try:
     # Py 3.4
     import pathlib
 except ImportError:
-    from . import scandir  # noqa  # TODO: drop along with Py2 support
+    from . import scandir  # type: ignore  # TODO: drop along with Py2 support
 
     sys.modules["scandir"] = scandir
-    from . import pathlib2 as pathlib  # noqa  # TODO: drop along with Py2 support
+    from . import pathlib2 as pathlib  # type: ignore  # TODO: drop along with Py2 support
 
 
 try:
     # Py 3.11
-    import tomllib  # noqa
+    import tomllib  # type: ignore
 except ImportError:
-    from . import toml_tools as tomllib  # noqa
+    from . import toml_tools as tomllib  # type: ignore
 
 __all__ = [
     "appdirs",

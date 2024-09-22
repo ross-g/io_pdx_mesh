@@ -14,7 +14,7 @@ from datetime import date, datetime
 try:
     from urllib.request import Request, URLError, urlopen
 except ImportError:
-    from urllib2 import Request, URLError, urlopen
+    from urllib2 import Request, URLError, urlopen  # type: ignore
 
 from . import IO_PDX_INFO, IO_PDX_SETTINGS
 

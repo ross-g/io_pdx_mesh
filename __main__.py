@@ -77,7 +77,8 @@ if __name__ == "__main__":
         warnings.warn(
             "Commandline mode is only supported under Python 3 (running from {0})".format(
                 ".".join(str(c) for c in sys.version_info)
-            )
+            ),
+            stacklevel=3,
         )
     else:
         cli()

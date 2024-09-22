@@ -69,7 +69,7 @@ except Exception as err:
         "CRITICAL ERROR! Your 'clausewitz.json' settings file has errors and is unreadable."
         "Some functions of the tool will not work without these settings."
     )
-    raise RuntimeError(msg)
+    raise RuntimeError(msg)  # noqa: B904
 
 
 """ ====================================================================================================================
@@ -82,7 +82,7 @@ environment = sys.executable.lower()
 
 # check if running from Blender
 try:
-    import bpy  # noqa
+    import bpy  # type: ignore
 
     running_from, version = bpy.app.binary_path.lower(), bpy.app.version
 except ImportError:

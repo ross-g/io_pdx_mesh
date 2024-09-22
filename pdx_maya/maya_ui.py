@@ -15,21 +15,21 @@ from textwrap import wrap
 
 import maya.api.OpenMaya as OpenMayaAPI
 import maya.cmds as cmds
-import maya.OpenMayaUI as OpenMayaUI
+import maya.OpenMayaUI as OpenMayaUI  # type: ignore
 import pymel.core as pmc
 
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
     from shiboken2 import wrapInstance
 except ImportError:
-    from PySide import QtCore, QtGui
-    from PySide import QtGui as QtWidgets
-    from shiboken import wrapInstance
+    from PySide import QtCore, QtGui  # type: ignore
+    from PySide import QtGui as QtWidgets  # type: ignore
+    from shiboken import wrapInstance  # type: ignore
 
 from .. import ENGINE_SETTINGS, IO_PDX_INFO, IO_PDX_LOG, IO_PDX_SETTINGS
 
 # Py2, Py3 compatibility (Maya 2022+ adopts Py3)
-from ..external.six.moves import range
+from ..external.six.moves import range  # type: ignore
 from ..pdx_data import PDXData
 from ..updater import github
 
