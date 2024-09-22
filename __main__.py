@@ -1,5 +1,5 @@
-import sys
 import json
+import sys
 import warnings
 
 try:
@@ -7,17 +7,10 @@ try:
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-from .pdx_data import PDXData, PDXDataJSON, read_meshfile
-
 # vendored package imports
 from .external import click
 from .external.six import PY2
-
-
-""" ====================================================================================================================
-    Main.
-========================================================================================================================
-"""
+from .pdx_data import PDXData, PDXDataJSON, read_meshfile
 
 
 @click.group()
@@ -73,7 +66,7 @@ def convert_to(inpath, outpath, out_format):
                 tree.write(str(out_file))
         else:
             print("-" * 120)
-            print(f"{i + 1}/{len(files)} : {in_file.relative_to(inpath.parent)}",  end="\n")
+            print(f"{i + 1}/{len(files)} : {in_file.relative_to(inpath.parent)}", end="\n")
             print(str(pdx_Data))
 
 
@@ -84,7 +77,8 @@ if __name__ == "__main__":
         warnings.warn(
             "Commandline mode is only supported under Python 3 (running from {0})".format(
                 ".".join(str(c) for c in sys.version_info)
-            )
+            ),
+            stacklevel=3,
         )
     else:
         cli()

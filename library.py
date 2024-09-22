@@ -1,14 +1,13 @@
 """
-    IO PDX Mesh Python module.
-    Collection of shared library functions and constants.
+IO PDX Mesh Python module.
+Collection of shared library functions and constants.
 
-    author : ross-g
+author : ross-g
 """
 
-import re
-import logging
 import functools
-
+import logging
+import re
 
 PDX_SHADER = "shader"
 PDX_ANIMATION = "animation"

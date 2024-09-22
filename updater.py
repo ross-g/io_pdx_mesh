@@ -1,33 +1,25 @@
 """
-    IO PDX Mesh Python module.
-    This is designed to allow tools to check if they are out of date or not and supply a download link to the latest.
+IO PDX Mesh Python module.
+This is designed to allow tools to check if they are out of date or not and supply a download link to the latest.
 
-    author : ross-g
+author : ross-g
 """
 
 import json
-import time
 import logging
-from datetime import datetime, date
+import time
+from datetime import date, datetime
+from os.path import splitext
 
 # Py2, Py3 compatibility
 try:
-    from urllib.request import urlopen, Request, URLError
+    from urllib.request import Request, URLError, urlopen
 except ImportError:
-    from urllib2 import urlopen, Request, URLError
+    from urllib2 import Request, URLError, urlopen  # type: ignore
 
-from . import bl_info, IO_PDX_SETTINGS
+from . import IO_PDX_INFO, IO_PDX_SETTINGS
 
 UPDATER_LOG = logging.getLogger("io_pdx.updater")
-
-
-""" ====================================================================================================================
-    Variables.
-========================================================================================================================
-"""
-
-TIMEOUT = 1.0  # seconds
-API_URL = "https://api.github.com"
 
 
 """ ====================================================================================================================
@@ -38,25 +30,29 @@ API_URL = "https://api.github.com"
 
 class Github_API(object):
     """
-        Handles connection to Githubs API to get some data on releases for this repository.
+    Handles connection to Githubs API to get some data on releases for this repository.
     """
 
-    def __init__(self):
-        self.LATEST_VERSION = None
-        self.LATEST_URL = None
-        self.AT_LATEST = None
-        self.CURRENT_VERSION = float(".".join(map(str, bl_info["version"])))
+    API_URL = "https://api.github.com"
 
-        self.api = API_URL
-        self.owner = bl_info["author"]
-        self.repo = bl_info["project_name"]
+    def __init__(self, owner, repo):
+        self.api = self.API_URL
+        self.owner = owner
+        self.repo = repo
         self.args = {"owner": self.owner, "repo": self.repo, "api": self.api}
+
+        self.AT_LATEST = False
+        self.LATEST_VERSION = 0.0
+        self.LATEST_RELEASE = "https://github.com/{owner}/{repo}/releases/latest".format(**self.args)
+        self.LATEST_NOTES = ""
+        self.LATEST_URL = ""
+        self.CURRENT_VERSION = IO_PDX_INFO["current_git_tag"]
         self.refresh()
 
     @staticmethod
-    def get_data(url, t):
+    def get_data(url, time=1.0):
         req = Request(url)
-        result = urlopen(req, timeout=t)
+        result = urlopen(req, timeout=time)
         result_str = result.read()
         result.close()
 
@@ -75,21 +71,26 @@ class Github_API(object):
 
             # get latest release data
             releases_url = "{api}/repos/{owner}/{repo}/releases".format(**self.args)
+
             try:
-                release_list = self.get_data(releases_url, TIMEOUT)
+                release_list = self.get_data(releases_url)
+                self.LATEST_RELEASE = release_list[0]
             except URLError as err:
                 UPDATER_LOG.warning("Unable to check for update. ({})".format(err.reason))
                 return
+            except IndexError as err:
+                UPDATER_LOG.warning("Found no releases during update check. ({})".format(err))
             except Exception as err:
-                UPDATER_LOG.error("Failed on check for update. ({})".format(err))
+                UPDATER_LOG.error("Failed during update check. ({})".format(err))
                 return
-            self.LATEST_RELEASE = release_list[0]
 
             latest = release_list[0]
 
             # store data
             self.LATEST_VERSION = float(latest["tag_name"])
-            self.LATEST_URL = latest["assets"][0]["browser_download_url"]
+            self.LATEST_URL = {
+                splitext(asset["name"])[0].split("-")[0]: asset["browser_download_url"] for asset in latest["assets"]
+            }
             self.LATEST_NOTES = "{0}\r\nRelease version: {1}\r\n{2}".format(
                 latest["published_at"].split("T")[0], latest["tag_name"], latest["body"]
             )
@@ -113,4 +114,4 @@ class Github_API(object):
         self.AT_LATEST = self.CURRENT_VERSION == self.LATEST_VERSION
 
 
-github = Github_API()
+github = Github_API(owner=IO_PDX_INFO["maintainer"], repo=IO_PDX_INFO["id"])

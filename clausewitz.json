@@ -92,7 +92,7 @@
             "tree_alpha_to_coverage"
         ]
     },
-    "crusader_kings_3" :{
+    "crusader_kings_3" : {
         "material": [
             "Collision",
             "PdxMeshColor",
@@ -121,6 +121,34 @@
             "standard_atlas",
             "standard_usercolor",
             "standard_usercolor_coa",
+            "tree"
+        ]
+    },
+    "victoria_3" :{
+        "material": [
+            "Collision",
+            "PdxMeshStandard",
+            "PdxMeshTerra",
+            "decal_local",
+            "decal_world",
+            "lake",
+            "material_test",
+            "portrait_attachment_alpha_to_coverage",
+            "portrait_attachment_pattern_alpha_to_coverage",
+            "portrait_attachment_pattern",
+            "portrait_attachment",
+            "portrait_eye",
+            "portrait_hair_alpha",
+            "portrait_hair",
+            "portrait_skin",
+            "snap_to_terrain_alpha_to_coverage_colormap",
+            "snap_to_terrain_alpha_to_coverage",
+            "snap_to_terrain",
+            "standard_alpha_blend",
+            "standard_alpha_to_coverage",
+            "standard_atlas",
+            "standard_flag_basic",
+            "standard",
             "tree"
         ]
     }

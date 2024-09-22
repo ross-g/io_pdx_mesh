@@ -1,18 +1,18 @@
 """
-    Paradox asset files, read/write binary data.
+Paradox asset files, read/write binary data.
 
-    This is designed to be compatible with both Python 2 and Python 3 (so code can be shared across Maya and Blender)
-    Critically, the way strings and binary data are handled must now be done with care, see...
-        http://python-future.org/compatible_idioms.html#byte-string-literals
+This is designed to be compatible with both Python 2 and Python 3 (so code can be shared across Maya and Blender)
+Critically, the way strings and binary data are handled must now be done with care, see...
+    http://python-future.org/compatible_idioms.html#byte-string-literals
 
-    author : ross-g
+author : ross-g
 """
 
 from __future__ import print_function, unicode_literals
 
-import mmap
 import json
 import logging
+import mmap
 from struct import pack, unpack_from
 
 try:
@@ -37,7 +37,7 @@ class PDXData(object):
 
     def __init__(self, element, depth=None):
         # use element tag as object name
-        setattr(self, "name", element.tag)
+        self.name = element.tag
 
         # object depth in hierarchy
         self.depth = depth or 0
@@ -55,7 +55,7 @@ class PDXData(object):
             child_data = type(self)(child, self.depth + 1)
             if hasattr(self, child.tag):
                 curr_data = getattr(self, child.tag)
-                if type(curr_data) == list:
+                if isinstance(curr_data, list):
                     curr_data.append(child_data)
                 else:
                     setattr(self, child.tag, [curr_data, child_data])
@@ -70,12 +70,12 @@ class PDXData(object):
         for _key in self.attrlist:
             _val = getattr(self, _key)
 
-            if type(_val) == type(self):
+            if isinstance(_val, type(self)):
                 string.append("{}{}:".format(self.depth * indent, _key))
                 string.append("{}".format(_val))
 
             else:
-                if all(type(v) == type(self) for v in _val):
+                if all(isinstance(v, type(self)) for v in _val):
                     for v in _val:
                         string.append("{}{}:".format(self.depth * indent, _key))
                         string.append("{}".format(v))
@@ -277,7 +277,7 @@ def writeObject(obj_xml, obj_depth):
     datastring = b""
 
     # write object hierarchy depth
-    for x in range(obj_depth):
+    for _ in range(obj_depth):
         datastring += pack("c", "[".encode())
 
     # write object name as string

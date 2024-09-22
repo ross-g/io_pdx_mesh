@@ -1,59 +1,55 @@
 """
-    Paradox asset files, Maya import/export.
+Paradox asset files, Maya import/export.
 
-    As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
-    mirror all positions, normals etc about the XY plane and flip texture coordinates in V.
-    Note - Maya treats matrices as row-major.
+As Mayas 3D space is (Y-up, right-handed) and the Clausewitz engine seems to be (Y-up, left-handed) we have to
+mirror all positions, normals etc about the XY plane and flip texture coordinates in V.
+Note - Maya treats matrices as row-major.
 
-    author : ross-g
+author : ross-g
 """
 
 from __future__ import print_function, unicode_literals
 
 import os
-import sys
 import time
+from collections import OrderedDict, defaultdict, namedtuple
 from operator import itemgetter
-from collections import OrderedDict, namedtuple, defaultdict
 
 try:
     import xml.etree.cElementTree as Xml
 except ImportError:
     import xml.etree.ElementTree as Xml
 
-import maya.cmds as cmds
-import pymel.core as pmc
-import pymel.core.datatypes as pmdt
-
-# Maya Python API 1.0
-import maya.OpenMaya as OpenMaya
-import maya.OpenMayaAnim as OpenMayaAnim
-
 # Maya Python API 2.0
 import maya.api.OpenMaya as OpenMayaAPI
-from maya.api.OpenMaya import MVector, MMatrix, MTransformationMatrix, MQuaternion
+import maya.cmds as cmds
 
-from .. import IO_PDX_LOG
-from .. import pdx_data
+# Maya Python API 1.0
+import maya.OpenMaya as OpenMaya  # type: ignore
+import maya.OpenMayaAnim as OpenMayaAnim  # type: ignore
+import pymel.core as pmc
+import pymel.core.datatypes as pmdt
+from maya.api.OpenMaya import MMatrix, MQuaternion, MTransformationMatrix, MVector
+
+from .. import IO_PDX_LOG, pdx_data
 from ..external import pathlib
-from ..library import (
-    get_lod_level,
-    allow_debug_logging,
-    PDX_SHADER,
-    PDX_ANIMATION,
-    PDX_IGNOREJOINT,
-    PDX_MESHINDEX,
-    PDX_MAXSKININFS,
-    PDX_MAXUVSETS,
-    PDX_DECIMALPTS,
-    PDX_ROUND_ROT,
-    PDX_ROUND_TRANS,
-    PDX_ROUND_SCALE,
-)
 
 # Py2, Py3 compatibility (Maya 2022+ adopts Py3)
-from ..external.six.moves import range
-
+from ..external.six.moves import range  # type: ignore
+from ..library import (
+    PDX_ANIMATION,
+    PDX_DECIMALPTS,
+    PDX_IGNOREJOINT,
+    PDX_MAXSKININFS,
+    PDX_MAXUVSETS,
+    PDX_MESHINDEX,
+    PDX_ROUND_ROT,
+    PDX_ROUND_SCALE,
+    PDX_ROUND_TRANS,
+    PDX_SHADER,
+    allow_debug_logging,
+    get_lod_level,
+)
 
 """ ====================================================================================================================
     Variables.
@@ -229,7 +225,7 @@ def set_animation_fps(fps):
         elif fps == 60:
             cmds.currentUnit(time="ntscf")
         else:
-            raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))
+            raise RuntimeError("Unsupported animation speed. ({0} fps)".format(fps))  # noqa: B904
 
 
 def set_mesh_index(maya_mesh, i):
@@ -306,10 +302,10 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
     `sort_vertices` will allow for descending/DCC-native/ascending vertex order.
     """
     # get references to MeshFace and Mesh types
-    if type(maya_mesh) == pmc.general.MeshFace:
+    if isinstance(maya_mesh, pmc.general.MeshFace):
         meshfaces = maya_mesh
         mesh = meshfaces.node()
-    elif type(maya_mesh) == pmc.nt.Mesh:
+    elif isinstance(maya_mesh, pmc.nt.Mesh):
         meshfaces = maya_mesh.faces
         mesh = maya_mesh
     else:
@@ -413,7 +409,7 @@ def get_mesh_info(maya_mesh, split_criteria=None, split_all=False, sort_vertices
                     # add this vert data to the mesh dict
                     mesh_dict["p"].extend(_position)
                     mesh_dict["n"].extend(_normal)
-                    for i, uv_set in enumerate(uv_setnames):
+                    for i, _uv_set in enumerate(uv_setnames):
                         mesh_dict["u" + str(i)].extend(_uv_coords[i])
                     if uv_setnames:
                         mesh_dict["ta"].extend(_tangent)
@@ -488,11 +484,10 @@ def get_mesh_skin_info(maya_mesh, vertex_ids=None):
         try:
             bone_index = all_bones.index(bone)
         except ValueError:
-            raise RuntimeError(
-                "A skinned bone ({0}) is being excluded from export! Check all bones using the '{1}' property.".format(
-                    bone, PDX_IGNOREJOINT
-                )
+            msg = "Skinned bone ({0}) excluded from export! Check any bones with the '{1}' property.".format(
+                bone, PDX_IGNOREJOINT
             )
+            raise RuntimeError(msg)  # noqa: B904
 
         # do not use skin.indexForInfluenceObject (bones can be plugged into the cluster but are not influence objects)
         inf_index = skin_bones.index(bone)
@@ -582,7 +577,7 @@ def get_locators_info(maya_locators):
 
         # parented to bone, use local position/rotation
         loc_parent = loc.getParent()
-        if loc_parent is not None and type(loc_parent) == pmc.nt.Joint:
+        if loc_parent is not None and isinstance(loc_parent, pmc.nt.Joint):
             locator_list[i]["pa"] = [loc_parent.name()]
             _position = loc.getTranslation()
             _rotation = loc.getRotation(quaternion=True)
@@ -680,15 +675,15 @@ def get_scene_animdata(export_bones, startframe, endframe):
 def swap_coord_space(data, space_mat=SPACE_MATRIX, space_mat_inv=SPACE_MATRIX_INV):
     """Transforms from PDX space (-Z forward, Y up) to Maya space (Z forward, Y up)."""
     # matrix
-    if type(data) == MMatrix or type(data) == pmdt.Matrix:
+    if isinstance(data, (MMatrix, pmdt.Matrix)):
         mat = MMatrix(data)
         return space_mat * mat * space_mat_inv
     # quaternion
-    elif type(data) == MQuaternion or type(data) == pmdt.Quaternion:
+    elif isinstance(data, (MQuaternion, pmdt.Quaternion)):
         mat = MMatrix(data.asMatrix())
         return MTransformationMatrix(space_mat * mat * space_mat_inv).rotation(asQuaternion=True)
     # vector
-    elif type(data) == MVector or type(data) == pmdt.Vector or len(data) == 3:
+    elif isinstance(data, (MVector, pmdt.Vector)) or len(data) == 3:
         vec = MVector(data)
         return vec * space_mat
     # uv coordinate
@@ -999,7 +994,7 @@ def create_mesh(PDX_mesh, name=None):
     # faces
     numPolygons = int(len(tris) / 3)
     polygonCounts = OpenMaya.MIntArray()  # count of vertices per poly
-    for i in range(0, numPolygons):
+    for _ in range(0, numPolygons):
         polygonCounts.append(3)
 
     # vert connections
@@ -1060,7 +1055,7 @@ def create_mesh(PDX_mesh, name=None):
 
     # apply the UV data channels
     uvCounts = OpenMaya.MIntArray()
-    for i in range(0, numPolygons):
+    for _ in range(0, numPolygons):
         uvCounts.append(3)
     uvIds = OpenMaya.MIntArray()
     for i in range(0, len(tris), 3):
@@ -1744,7 +1739,7 @@ def export_animfile(animpath, frame_start=1, frame_end=10, **kwargs):
 
     # pack all scene animation data into flat keyframe lists
     t_packed, q_packed, s_packed = [], [], []
-    for i in range(frame_samples):
+    for _ in range(frame_samples):
         for bone in all_bone_keyframes:
             bone_key_data = all_bone_keyframes[bone]
             if "t" in bone_key_data:

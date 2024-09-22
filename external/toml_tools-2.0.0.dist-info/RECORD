@@ -1,0 +1,17 @@
+toml_tools-2.0.0.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+toml_tools-2.0.0.dist-info/LICENSE,sha256=NLWbOee6V3odhpJCGMcSKbFj0785A67HhCmfclyJ0yQ,1093
+toml_tools-2.0.0.dist-info/METADATA,sha256=0sJ94zQJmh-GaF_1yKwxoguDLQAbbmdo36tDfJycRmE,15227
+toml_tools-2.0.0.dist-info/RECORD,,
+toml_tools-2.0.0.dist-info/REQUESTED,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+toml_tools-2.0.0.dist-info/WHEEL,sha256=-G_t0oGuE7UD0DrSpVZnq1hHMBV9DD2XkS5v7XpmTnk,110
+toml_tools-2.0.0.dist-info/top_level.txt,sha256=EB4mI4u4cEvE1f7T_nICLLOYAG92KM-Cg5nejqG0uw0,11
+toml_tools/__init__.py,sha256=ZsqWySPFuilKX_-yKWGLRAPH1RN-dsKE8bIO-XBhWuM,449
+toml_tools/__pycache__/__init__.cpython-37.pyc,,
+toml_tools/__pycache__/_helpers.cpython-37.pyc,,
+toml_tools/__pycache__/_parser.cpython-37.pyc,,
+toml_tools/__pycache__/_re.cpython-37.pyc,,
+toml_tools/__pycache__/_writer.cpython-37.pyc,,
+toml_tools/_helpers.py,sha256=h8Rmi_FYyNCbDlkHIVm2o1d_qlA3GMIQ7DbqavX_nfI,1494
+toml_tools/_parser.py,sha256=uab0-JB8teJzlWpdcWWKLKwPTyOksOjuRJnz8vmoGFs,24206
+toml_tools/_re.py,sha256=nOdqvFPkGfszKd1tp68BQN1HtLlpXS0IrPGkTTici70,4391
+toml_tools/_writer.py,sha256=0g2avw0lkBy2dcCY1WO51N2ga8XWp45HOFvd6Jsm6wQ,6687

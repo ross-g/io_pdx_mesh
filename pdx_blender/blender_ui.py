@@ -1,18 +1,18 @@
 """
-    Paradox asset files, Blender import/export interface.
+Paradox asset files, Blender import/export interface.
 
-    author : ross-g
+author : ross-g
 """
 
 import importlib
 from textwrap import wrap
 
-import bpy
-from bpy.types import Operator, Panel, UIList
-from bpy.props import StringProperty, IntProperty, BoolProperty, EnumProperty
-from bpy_extras.io_utils import ImportHelper, ExportHelper
+import bpy  # type: ignore
+from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty  # type: ignore
+from bpy.types import Operator, Panel, UIList  # type: ignore
+from bpy_extras.io_utils import ExportHelper, ImportHelper  # type: ignore
 
-from .. import bl_info, IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
+from .. import ENGINE_SETTINGS, IO_PDX_INFO, IO_PDX_LOG, IO_PDX_SETTINGS
 from ..pdx_data import PDXData
 from ..updater import github
 
@@ -73,7 +73,7 @@ def set_engine(self, context):
 
 class IOPDX_OT_popup_message(Operator):
     bl_idname = "io_pdx_mesh.popup_message"
-    bl_label = bl_info["name"]
+    bl_label = IO_PDX_INFO["name"]
     bl_description = "Popup Message"
     bl_options = {"REGISTER"}
     # fmt:off
@@ -177,9 +177,8 @@ class IOPDX_OT_material_create_popup(material_popup, Operator):
         mat_type = box.row()
         mat_type.prop(self, "mat_type")
         split = box.split(factor=0.3)
-        col1 = split.column()
+        col1, col2 = split.column(), split.column()
         col1.prop(self, "use_custom")
-        col2 = split.column()
         col2.prop(self, "custom_type", text="")
         col2.enabled = False
         if self.use_custom:
@@ -388,7 +387,7 @@ class IOPDX_OT_import_mesh(Operator, ImportHelper):
                 join_materials=self.chk_joinmats,
                 bonespace=self.chk_bonespace,
             )
-            self.report({"INFO"}, "[io_pdx_mesh] Finsihed importing {}".format(self.filepath))
+            self.report({"INFO"}, "[io_pdx_mesh] Finished importing {}".format(self.filepath))
             IO_PDX_SETTINGS.last_import_mesh = self.filepath
 
         except Exception as err:
@@ -735,6 +734,33 @@ class PDXUI(object):
     bl_region_type = "UI"
 
 
+class IOPDX_PT_PDXblender_info(PDXUI, Panel):
+    # bl_idname = 'panel.io_pdx_mesh.help'
+    bl_label = "Info"
+    bl_options = {"HIDE_HEADER"}
+    panel_order = 0
+
+    def draw(self, context):
+        self.layout.label(text="PDX Blender Tools - v{}".format(github.CURRENT_VERSION), icon="TOOL_SETTINGS")
+
+        row = self.layout.row(align=True)
+        split = row.split(factor=0.85, align=True)
+        col1, col3 = split.column(align=True), split.column(align=True)
+        # update info appears if we aren't at the latest tag version
+        if github.AT_LATEST is False:
+            split = col1.split(factor=0.4, align=True)
+            col1, col2 = split.column(align=True), split.column(align=True)
+            btn_txt = "UPDATE - v{}".format(github.LATEST_VERSION)
+            col2.operator("wm.url_open", icon="OUTLINER_OB_LIGHT", text=btn_txt).url = str(
+                github.LATEST_URL.get("blender", github.LATEST_RELEASE)
+            )
+        col1.operator("wm.url_open", icon="FUND", text="Donate").url = str(IO_PDX_INFO["sponsor_url"])
+        popup = col3.operator("io_pdx_mesh.popup_message", icon="INFO", text="")
+        popup.msg_text = github.LATEST_NOTES
+        popup.msg_icon = "INFO"
+        popup.msg_width = 450
+
+
 class IOPDX_PT_PDXblender_file(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.file'
     bl_label = "File"
@@ -826,36 +852,16 @@ class IOPDX_PT_PDXblender_setup(PDXUI, Panel):
         row.prop(context.scene.render, "fps", text="FPS")
 
 
-class IOPDX_PT_PDXblender_info(PDXUI, Panel):
-    # bl_idname = 'panel.io_pdx_mesh.help'
-    bl_label = "Info"
-    # bl_options = {'HIDE_HEADER'}
-    panel_order = 5
-
-    def draw(self, context):
-        col = self.layout.column(align=True)
-
-        col.label(text="current version: {}".format(github.CURRENT_VERSION))
-        if github.AT_LATEST is False:  # update info appears if we aren't at the latest tag version
-            btn_txt = "NEW UPDATE {}".format(github.LATEST_VERSION)
-            split = col.split(factor=0.7, align=True)
-            split.operator("wm.url_open", icon="FUND", text=btn_txt).url = str(github.LATEST_URL)
-            popup = split.operator("io_pdx_mesh.popup_message", icon="INFO", text="About")
-            popup.msg_text = github.LATEST_NOTES
-            popup.msg_icon = "INFO"
-            popup.msg_width = 450
-
-
 class IOPDX_PT_PDXblender_help(PDXUI, Panel):
     # bl_idname = 'panel.io_pdx_mesh.help'
     bl_label = "Help"
     bl_parent_id = "IOPDX_PT_PDXblender_info"
     bl_options = {"DEFAULT_CLOSED"}
-    panel_order = 6
+    panel_order = 5
 
     def draw(self, context):
         col = self.layout.column(align=True)
 
-        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = bl_info["doc_url"]
-        col.operator("wm.url_open", icon="QUESTION", text="Paradox forums").url = bl_info["forum_url"]
-        col.operator("wm.url_open", icon="QUESTION", text="Source code").url = bl_info["project_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Addon Wiki").url = IO_PDX_INFO["doc_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Paradox forums").url = IO_PDX_INFO["forum_url"]
+        col.operator("wm.url_open", icon="QUESTION", text="Source code").url = IO_PDX_INFO["website"]

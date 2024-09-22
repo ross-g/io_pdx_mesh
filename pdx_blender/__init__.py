@@ -1,18 +1,24 @@
 """
-    Paradox asset files, Blender import/export.
+Paradox asset files, Blender import/export.
 
-    author : ross-g
+author : ross-g
 """
 
-import inspect
 import importlib
+import inspect
 
-import bpy
-from bpy.types import PropertyGroup
-from bpy.props import PointerProperty, CollectionProperty, StringProperty, BoolProperty, EnumProperty, IntProperty
+import bpy  # type: ignore
+from bpy.props import (  # type: ignore
+    BoolProperty,
+    CollectionProperty,
+    EnumProperty,
+    IntProperty,
+    PointerProperty,
+    StringProperty,
+)
+from bpy.types import PropertyGroup  # type: ignore
 
-from .. import IO_PDX_LOG, IO_PDX_SETTINGS, ENGINE_SETTINGS
-
+from .. import ENGINE_SETTINGS, IO_PDX_LOG, IO_PDX_SETTINGS
 from . import blender_import_export, blender_ui
 
 importlib.reload(blender_import_export)
@@ -84,7 +90,7 @@ class PDXExport_settings(PropertyGroup):
 classes = [PDXBlender_settings, PDXMaterial_settings, PDXObject_Pointer, PDXObject_Group, PDXExport_settings]
 
 # Append classes dynamically from submodules
-for name, obj in inspect.getmembers(blender_ui, inspect.isclass):
+for _name, obj in inspect.getmembers(blender_ui, inspect.isclass):
     if obj.__module__.startswith(__name__) and hasattr(obj, "bl_rna"):
         classes.append(obj)
 
@@ -100,11 +106,6 @@ classes.sort(key=lambda cls: cls.panel_order if hasattr(cls, "panel_order") else
 
 def register():
     IO_PDX_LOG.info("Loading Blender UI.")
-    import importlib
-
-    importlib.reload(blender_import_export)
-    importlib.reload(blender_ui)
-
     for cls in classes:
         bpy.utils.register_class(cls)
 
