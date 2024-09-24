@@ -310,7 +310,7 @@ def writeProperty(prop_name, prop_data):
         datastring += writeData(prop_data)
 
     except NotImplementedError as err:
-        print("Failed writing property: {}".format(prop_name))
+        DATA_LOG.error("Failed writing property: {}".format(prop_name))
         raise err
 
     return datastring
@@ -320,7 +320,12 @@ def writeString(string):
     DATA_LOG.debug("writeString: '%s'", string)
     datastring = b""
 
-    string = string.encode("latin-1")
+    try:
+        string = string.encode("latin-1")
+    except UnicodeEncodeError as err:
+        DATA_LOG.error("String '{}' contains characters outside the Latin-1 set.".format(string))
+        raise err
+
     datastring += pack("{0}s".format(len(string)), string)
 
     return datastring
