@@ -235,7 +235,11 @@ def get_mesh_info(blender_obj, mat_id, split_criteria=None, split_all=False, sor
     mesh.name = blender_obj.data.name + "_export"
     mesh.transform(blender_obj.matrix_world)
     mesh.calc_loop_triangles()
-    mesh.calc_normals_split()
+    try:  # Blender < 4.1
+        # https://developer.blender.org/docs/release_notes/4.1/python_api/#mesh
+        mesh.calc_normals_split()
+    except AttributeError:
+        pass
 
     # cache some mesh data
     uv_setnames = [uv_set.name for uv_set in mesh.uv_layers if len(uv_set.data)][:PDX_MAXUVSETS]
